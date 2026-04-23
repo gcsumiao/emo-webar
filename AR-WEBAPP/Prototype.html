@@ -16,9 +16,14 @@
     .mascot-bob { animation: mascot-bob 3.6s ease-in-out infinite; transform-origin: 50% 100%; }
     @keyframes mascot-pop { 0% { transform: scale(0.2) translateY(30px); opacity: 0; } 60% { transform: scale(1.08) translateY(-4px); opacity: 1; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
     @keyframes mascot-appear { 0% { transform: translateX(-50%) scale(0.3) translateY(40px); opacity: 0; } 60% { transform: translateX(-50%) scale(1.08) translateY(-6px); opacity: 1; } 100% { transform: translateX(-50%) scale(1) translateY(0); opacity: 1; } }
-    @keyframes scan-sweep { 0% { top: 10%; opacity: 0; } 10%,90% { opacity: 1; } 50% { top: 90%; } 100% { top: 10%; opacity: 0; } }
+    @keyframes scan-sweep { 0% { top: 0%; opacity: 0; } 8%,92% { opacity: 1; } 50% { top: 100%; } 100% { top: 0%; opacity: 0; } }
     @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.85); } }
     @keyframes twinkle { 0%,100% { opacity: 0.3; transform: scale(0.7) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(180deg); } }
+    @keyframes loading-bar-fill { 0% { transform: translateX(-100%); } 100% { transform: translateX(0%); } }
+    @keyframes loading-bar-shimmer { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }
+    @keyframes icon-slide-out { 0% { transform: translateX(0); opacity: 1; } 100% { transform: translateX(140px); opacity: 0; } }
+    @keyframes mascot-settle { 0% { transform: scale(1.035); } 100% { transform: scale(1); } }
+    @keyframes glow-pulse { 0%,100% { opacity: 0.55; transform: translateX(-50%) scale(1); } 50% { opacity: 0.85; transform: translateX(-50%) scale(1.08); } }
     .sprout-sprite { animation: sprout-grow 3.8s steps(23, end) infinite; }
     @keyframes sprout-grow { 0% { background-position-x: 0; } 55% { background-position-x: var(--frameShift); } 100% { background-position-x: var(--frameShift); } }
     @keyframes sprout-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
@@ -134,39 +139,15 @@
         // "Open in browser" pill near bottom
         { top: 700, left: 60, width: 270, height: 48, go: 'landing', label: 'Open link' },
       ],
-      landing: [
-        // Primary CTA: "开启 AR 体验" button (bottom area)
-        { top: 700, left: 24, width: FRAME_W - 48, height: 54, go: 'permission', label: 'Start AR' },
-      ],
-      permission: [
-        // "允许" allow button — top of the two stacked buttons near bottom
-        { top: 640, left: 24, width: FRAME_W - 48, height: 54, go: 'loading', label: 'Allow' },
-        // "不允许" deny button — bottom button
-        { top: 705, left: 24, width: FRAME_W - 48, height: 54, go: 'denied', label: 'Deny' },
-      ],
+      landing: [],
+      permission: [],
       loading: [
         // No hotspots — auto-advances after 2.2s
       ],
-      scan: [
-        // Whole screen → tap to "find" → AR active (simulates detecting the poster)
-        { top: 100, left: 24, width: FRAME_W - 48, height: 500, go: 'ar', label: 'Tap to detect' },
-      ],
-      ar: [
-        // Close (X) in top right corner
-        { top: 60, left: FRAME_W - 68, width: 48, height: 48, go: 'landing', label: 'Close' },
-      ],
-      denied: [
-        // Primary action: open settings (fake) → goes back to permission
-        { top: 640, left: 24, width: FRAME_W - 48, height: 54, go: 'permission', label: 'Retry' },
-        // Secondary: dismiss → landing
-        { top: 705, left: 24, width: FRAME_W - 48, height: 54, go: 'landing', label: 'Dismiss' },
-      ],
-      error: [
-        // Reload → loading
-        { top: 660, left: 16, width: FRAME_W - 32, height: 46, go: 'loading', label: 'Reload' },
-        // Contact → landing
-        { top: 712, left: 16, width: FRAME_W - 32, height: 46, go: 'landing', label: 'Contact' },
-      ],
+      scan: [],
+      ar: [],
+      denied: [],
+      error: [],
     };
 
     function Phone({ children }) {
@@ -177,17 +158,17 @@
       );
     }
 
-    function ScreenFor({ state }) {
+    function ScreenFor({ state, lang, setLang }) {
       switch (state) {
-        case 'qr':         return <ScreenQR/>;
-        case 'landing':    return <ScreenLanding/>;
-        case 'permission': return <ScreenPermission/>;
-        case 'loading':    return <ScreenLoading/>;
-        case 'scan':       return <ScreenScan/>;
-        case 'ar':         return <ScreenARActive/>;
-        case 'denied':     return <ScreenDenied/>;
-        case 'error':      return <ScreenError/>;
-        default:           return <ScreenQR/>;
+        case 'qr':         return <ScreenQR lang={lang} setLang={setLang}/>;
+        case 'landing':    return <ScreenLanding lang={lang} setLang={setLang}/>;
+        case 'permission': return <ScreenPermission lang={lang} setLang={setLang}/>;
+        case 'loading':    return <ScreenLoading lang={lang} setLang={setLang}/>;
+        case 'scan':       return <ScreenScan lang={lang} setLang={setLang}/>;
+        case 'ar':         return <ScreenARActive lang={lang} setLang={setLang}/>;
+        case 'denied':     return <ScreenDenied lang={lang} setLang={setLang}/>;
+        case 'error':      return <ScreenError lang={lang} setLang={setLang}/>;
+        default:           return <ScreenQR lang={lang} setLang={setLang}/>;
       }
     }
 
@@ -195,6 +176,9 @@
       // Persist position so refresh doesn't boot user back to start
       const [state, setStateRaw] = React.useState(() => {
         try { return localStorage.getItem('emo_proto_state') || 'qr'; } catch { return 'qr'; }
+      });
+      const [lang, setLangRaw] = React.useState(() => {
+        try { return localStorage.getItem('emo_proto_lang') || 'zh'; } catch { return 'zh'; }
       });
       const [debug, setDebug] = React.useState(false);
       const [nonce, setNonce] = React.useState(0);  // bump to retrigger enter animation
@@ -204,6 +188,22 @@
         setNonce(n => n + 1);
         try { localStorage.setItem('emo_proto_state', s); } catch {}
       }, []);
+
+      const setLang = React.useCallback((nextLang) => {
+        setLangRaw(nextLang);
+        try { localStorage.setItem('emo_proto_lang', nextLang); } catch {}
+      }, []);
+
+      React.useEffect(() => {
+        document.documentElement.lang = lang === 'en' ? 'en' : 'zh';
+      }, [lang]);
+
+      React.useEffect(() => {
+        window.__setProtoState = setState;
+        return () => {
+          if (window.__setProtoState === setState) delete window.__setProtoState;
+        };
+      }, [setState]);
 
       // Auto-advance on loading state
       React.useEffect(() => {
@@ -261,7 +261,7 @@
               <Phone>
                 {/* Re-key on nonce so entry animation plays on every transition */}
                 <div key={nonce} className="screen-container screen-enter">
-                  <ScreenFor state={state}/>
+                  <ScreenFor state={state} lang={lang} setLang={setLang}/>
                 </div>
               </Phone>
 

@@ -2,13 +2,15 @@
 
 const STEP06_MANIFEST_URL = 'assets/step06/manifest.json';
 const step06ManifestDefaults = {
-  introImageUrl: 'assets/step06/intro/yimao-intro.apng',
-  introPosterUrl: 'assets/step06/intro/yimao-intro-poster.png',
+  frameUrls: [],
+  frameCount: 292,
   introDurationMs: 10004,
+  frameDurationMs: 34,
   audioUrl: 'assets/step06/audio/yimao-intro.m4a',
   glbUrl: 'assets/step06/models/yimao-sitting.glb',
-  width: 1024,
-  height: 1024,
+  finalFrameUrl: 'assets/step06/sequence/1_0300.png',
+  width: 768,
+  height: 768,
   fps: 29.188,
 };
 const step06AudioUrl = step06ManifestDefaults.audioUrl;
@@ -21,6 +23,7 @@ const Step06Assets = (() => {
   let warmAudio = null;
 
   function primeImage(url) {
+    if (!url) return Promise.resolve(null);
     if (imageCache.has(url)) return imageCache.get(url);
     const promise = new Promise((resolve, reject) => {
       const image = new Image();
@@ -50,8 +53,11 @@ const Step06Assets = (() => {
 
   function preload({ full = false } = {}) {
     loadManifest().then((loaded) => {
-      primeImage(loaded.introPosterUrl);
-      primeImage(loaded.introImageUrl);
+      if (loaded.frameUrls.length) {
+        primeImage(loaded.frameUrls[0]);
+        primeImage(loaded.finalFrameUrl || loaded.frameUrls[loaded.frameUrls.length - 1]);
+        if (full) loaded.frameUrls.forEach(primeImage);
+      }
 
       if (!warmAudio) {
         warmAudio = new Audio(loaded.audioUrl);
@@ -69,11 +75,16 @@ const Step06Assets = (() => {
     return audio;
   }
 
+  function getFrameUrl(index) {
+    return manifest.frameUrls[index] || manifest.finalFrameUrl || manifest.frameUrls[manifest.frameUrls.length - 1] || null;
+  }
+
   return {
     loadManifest,
     preload,
     createAudio,
     getManifest: () => manifest,
+    getFrameUrl,
   };
 })();
 
@@ -97,7 +108,6 @@ function Mascot3D({ size = 220, state = 'idle', animate = 'bob', style = {}, sha
 
 function Step06SequencePlayer({
   size = 260,
-  fps = 24,
   autoplay = false,
   onComplete,
   className = '',
@@ -105,9 +115,9 @@ function Step06SequencePlayer({
 }) {
   const [manifest, setManifest] = React.useState(() => Step06Assets.getManifest());
   const [ready, setReady] = React.useState(false);
-  const [imageFailed, setImageFailed] = React.useState(false);
-  const [playbackKey, setPlaybackKey] = React.useState(0);
-  const completeTimerRef = React.useRef(null);
+  const [frameIndex, setFrameIndex] = React.useState(0);
+  const rafRef = React.useRef(null);
+  const startRef = React.useRef(0);
 
   React.useEffect(() => {
     let off = false;
@@ -115,40 +125,57 @@ function Step06SequencePlayer({
     Step06Assets.loadManifest().then((loaded) => {
       if (off) return;
       setManifest(loaded);
-      const probeUrl = loaded.introImageUrl;
-      const image = new Image();
-      image.onload = () => {
+      const probeUrl = loaded.frameUrls[0] || loaded.finalFrameUrl;
+      Step06Assets.preload({ full: false });
+      Step06Assets.loadManifest().then(() => {
         if (!off) {
-          setImageFailed(false);
+          Step06Assets.getFrameUrl(0);
           setReady(true);
         }
-      };
-      image.onerror = () => {
-        if (!off) {
-          setImageFailed(true);
-          setReady(true);
-        }
-      };
-      image.src = probeUrl;
+      });
+      if (probeUrl) {
+        const image = new Image();
+        image.onload = () => !off && setReady(true);
+        image.onerror = () => !off && setReady(true);
+        image.src = probeUrl;
+      } else {
+        setReady(true);
+      }
     });
     return () => { off = true; };
   }, []);
 
   React.useEffect(() => {
-    clearTimeout(completeTimerRef.current);
-    if (!autoplay || !ready) return undefined;
+    cancelAnimationFrame(rafRef.current);
+    if (!autoplay || !ready || !manifest.frameUrls.length) {
+      setFrameIndex(0);
+      return undefined;
+    }
 
-    setPlaybackKey((value) => value + 1);
-    completeTimerRef.current = window.setTimeout(() => {
-      onComplete?.();
-    }, manifest.introDurationMs);
+    setFrameIndex(0);
+    startRef.current = 0;
 
-    return () => {
-      clearTimeout(completeTimerRef.current);
+    const tick = (ts) => {
+      if (!startRef.current) startRef.current = ts;
+      const elapsed = ts - startRef.current;
+      const progress = Math.min(1, elapsed / manifest.introDurationMs);
+      const nextIndex = Math.min(
+        manifest.frameUrls.length - 1,
+        Math.floor(progress * manifest.frameUrls.length)
+      );
+      setFrameIndex(nextIndex);
+      if (progress < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        onComplete?.();
+      }
     };
-  }, [autoplay, fps, manifest.introDurationMs, onComplete, ready]);
 
-  const src = autoplay && !imageFailed ? manifest.introImageUrl : manifest.introPosterUrl;
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [autoplay, manifest.frameUrls, manifest.introDurationMs, onComplete, ready]);
+
+  const currentSrc = Step06Assets.getFrameUrl(frameIndex) || manifest.finalFrameUrl;
 
   return (
     <div
@@ -162,26 +189,39 @@ function Step06SequencePlayer({
         ...style,
       }}
     >
-      <img
-        key={playbackKey}
-        src={src}
-        alt="Yi Mao intro animation"
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
-          display: 'block',
-          opacity: ready ? 1 : 0,
-        }}
-      />
+      {currentSrc && (
+        <img
+          src={currentSrc}
+          alt="一毛动画帧"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            display: 'block',
+            opacity: ready ? 1 : 0,
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function applyYimaoMaterial(viewer) {
+  const materials = viewer?.model?.materials || [];
+  materials.forEach((material) => {
+    const pbr = material.pbrMetallicRoughness;
+    pbr?.setBaseColorFactor?.([1.0, 0.49, 0.61, 1.0]);
+    pbr?.setMetallicFactor?.(0);
+    pbr?.setRoughnessFactor?.(0.82);
+    material.setEmissiveFactor?.([0.02, 0.0, 0.01]);
+  });
 }
 
 function ModelViewerIdle({ size = 260, src = step06GlbUrl, active = false, style = {} }) {
   const [viewerReady, setViewerReady] = React.useState(
     !!window.customElements?.get('model-viewer')
   );
+  const viewerRef = React.useRef(null);
 
   React.useEffect(() => {
     if (viewerReady || !window.customElements?.whenDefined) return undefined;
@@ -191,6 +231,16 @@ function ModelViewerIdle({ size = 260, src = step06GlbUrl, active = false, style
     });
     return () => { off = true; };
   }, [viewerReady]);
+
+  React.useEffect(() => {
+    if (!viewerReady) return undefined;
+    const viewer = viewerRef.current;
+    if (!viewer) return undefined;
+    const recolor = () => applyYimaoMaterial(viewer);
+    viewer.addEventListener('load', recolor);
+    requestAnimationFrame(recolor);
+    return () => viewer.removeEventListener('load', recolor);
+  }, [src, viewerReady]);
 
   const viewerStyle = {
     width: '100%',
@@ -216,23 +266,29 @@ function ModelViewerIdle({ size = 260, src = step06GlbUrl, active = false, style
     >
       {viewerReady
         ? React.createElement('model-viewer', {
+            ref: viewerRef,
             src,
-            alt: 'Yi Mao 3D idle model',
-            autoplay: '',
-            'auto-rotate': '',
-            'rotation-per-second': '12deg',
-            'interaction-prompt': 'none',
+            alt: '一毛 3D 模型',
             'camera-controls': '',
+            'interaction-prompt': 'none',
             'disable-zoom': '',
-            exposure: '1.08',
-            shadowIntensity: '0',
+            exposure: '0.72',
+            shadowIntensity: '0.08',
+            'camera-orbit': '0deg 78deg 115%',
+            'field-of-view': '30deg',
             style: viewerStyle,
           })
         : (
           <img
             src="assets/mascot/m_sprout.png"
-            alt="Yi Mao idle fallback"
-            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+            alt="一毛模型回退图"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              display: 'block',
+              filter: 'sepia(0.38) saturate(1.35) hue-rotate(314deg) brightness(1.08)',
+            }}
           />
         )}
     </div>

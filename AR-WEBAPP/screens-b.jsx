@@ -1,96 +1,173 @@
 // Scan, AR active, denied, error, loading screens
 
-// Camera viewfinder background (dark gradient mimicking camera feed)
-function CameraFeed({ children, mode = 'looking' }) {
+const SCAN_SCENE_URL = 'assets/scan/scene-01.jpg';
+const SCAN_OUTLINE_URL = 'assets/scan/yimao-outline.png';
+// Outline aspect (w/h) = 0.961. Frames hug the real inflatable in scene-01.jpg.
+// Photo-mapped inflatable bbox in phone coords: left≈59 top≈484 width≈280 height≈273.
+const SCAN_SEARCHING_FRAME = { left: 74, top: 484, width: 242, height: 252 };
+const SCAN_LOCKED_FRAME = { left: 50, top: 462, width: 290, height: 302 };
+
+const SCENE_COVER_STYLE = {
+  backgroundImage: `url(${SCAN_SCENE_URL})`,
+  backgroundSize: 'cover',
+  backgroundPosition: 'center center',
+  backgroundRepeat: 'no-repeat',
+};
+
+function SceneBackdrop({ darkness = 0, blur = 0 }) {
   return (
-    <div style={{
-      position: 'absolute', inset: 0,
-      background: mode === 'active'
-        ? 'linear-gradient(170deg, #36404a 0%, #1c2329 60%, #0a0d11 100%)'
-        : 'linear-gradient(180deg, #2b343d 0%, #131821 100%)',
-      overflow: 'hidden',
-    }}>
-      {/* faux camera noise/pattern */}
-      <div style={{
-        position: 'absolute', inset: 0, opacity: 0.12,
-        background: 'repeating-linear-gradient(35deg, transparent 0, transparent 3px, rgba(255,255,255,0.08) 3px, rgba(255,255,255,0.08) 4px)',
-      }}/>
-      {/* simulated target poster (light rectangle) */}
-      {mode === 'looking' && (
-        <div style={{
-          position: 'absolute', left: '50%', top: '54%', transform: 'translate(-50%,-50%) rotate(-3deg)',
-          width: 180, height: 240, borderRadius: 10,
-          background: 'linear-gradient(180deg, #f4d5dd 0%, #e9b5c4 100%)',
-          boxShadow: '0 14px 30px rgba(0,0,0,0.5)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          overflow: 'hidden',
-        }}>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: 'rgba(31,26,31,0.4)', letterSpacing: '0.2em', marginBottom: 6 }}>POSTER</div>
-          <img src="assets/mascot/m_idle.png" style={{ width: 80, height: 80, objectFit: 'contain' }}/>
-          <div style={{ fontFamily: FONT_ZH, fontSize: 13, fontWeight: 700, color: TOKENS.ink, marginTop: 8 }}>一毛的奇遇</div>
-          <div style={{ fontFamily: FONT_EN, fontSize: 9, color: TOKENS.ink60, marginTop: 2 }}>EMO · AR</div>
-          <div style={{
-            position: 'absolute', left: 8, bottom: 8, width: 24, height: 24,
-            background: '#fff', borderRadius: 3,
-            backgroundImage: 'linear-gradient(90deg, #000 1px, transparent 1px), linear-gradient(#000 1px, transparent 1px)',
-            backgroundSize: '4px 4px',
-          }} />
-        </div>
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        ...SCENE_COVER_STYLE,
+        filter: blur ? `blur(${blur}px)` : 'none',
+        transform: blur ? 'scale(1.04)' : 'none',
+      }}
+    >
+      {darkness > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: `linear-gradient(180deg, rgba(13,16,20,${darkness * 0.78}) 0%, rgba(13,16,20,${darkness}) 100%)`,
+          }}
+        />
       )}
-      {children}
+    </div>
+  );
+}
+
+function MaskedSilhouette({ frame, color = 'rgba(255,225,234,0.98)', inset = 0, opacity = 1, backgroundClone = false }) {
+  const width = Math.max(8, frame.width - inset * 2);
+  const height = Math.max(8, frame.height - inset * 2);
+  const left = frame.left + inset;
+  const top = frame.top + inset;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        ...(backgroundClone ? { inset: 0 } : { left, top, width, height }),
+        ...(backgroundClone ? SCENE_COVER_STYLE : { background: color }),
+        opacity,
+        WebkitMaskImage: `url(${SCAN_OUTLINE_URL})`,
+        WebkitMaskRepeat: 'no-repeat',
+        WebkitMaskPosition: backgroundClone ? `${left}px ${top}px` : 'center center',
+        WebkitMaskSize: `${width}px ${height}px`,
+        maskImage: `url(${SCAN_OUTLINE_URL})`,
+        maskRepeat: 'no-repeat',
+        maskPosition: backgroundClone ? `${left}px ${top}px` : 'center center',
+        maskSize: `${width}px ${height}px`,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
+function ScanTargetFrame({ frame, locked = false }) {
+  return (
+    <>
+      <MaskedSilhouette
+        frame={frame}
+        color={locked ? 'rgba(255,217,229,0.58)' : 'rgba(255,233,240,0.52)'}
+      />
+      <MaskedSilhouette frame={frame} backgroundClone inset={locked ? 5 : 4} />
+      <div
+        style={{
+          position: 'absolute',
+          left: frame.left - 8,
+          top: frame.top - 8,
+          width: frame.width + 16,
+          height: frame.height + 16,
+          filter: locked ? 'drop-shadow(0 0 12px rgba(242,156,176,0.38))' : 'drop-shadow(0 0 8px rgba(242,156,176,0.26))',
+          borderRadius: 28,
+          pointerEvents: 'none',
+        }}
+      />
+    </>
+  );
+}
+
+function ScanSweepLine({ frame }) {
+  const width = Math.max(8, frame.width);
+  const height = Math.max(8, frame.height);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: frame.left,
+        top: frame.top,
+        width,
+        height,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+        WebkitMaskImage: `url(${SCAN_OUTLINE_URL})`,
+        WebkitMaskRepeat: 'no-repeat',
+        WebkitMaskPosition: 'center center',
+        WebkitMaskSize: `${width}px ${height}px`,
+        maskImage: `url(${SCAN_OUTLINE_URL})`,
+        maskRepeat: 'no-repeat',
+        maskPosition: 'center center',
+        maskSize: `${width}px ${height}px`,
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          height: 4,
+          marginTop: -2,
+          borderRadius: 999,
+          background: 'rgba(255,243,247,0.88)',
+          boxShadow: '0 0 14px rgba(255,243,247,0.76)',
+          animation: 'scan-sweep 4.8s ease-in-out infinite',
+        }}
+      />
     </div>
   );
 }
 
 // ─── SCREEN 3: Scan — looking for target ──────────────────────
-function ScreenScan() {
+function ScreenScan({ lang = 'zh', setLang }) {
+  const [scanState, setScanState] = React.useState('searching');
+  const frame = scanState === 'searching' ? SCAN_SEARCHING_FRAME : SCAN_LOCKED_FRAME;
+  const showSweep = scanState === 'searching';
+  const isLocked = scanState === 'locked';
+
+  const lockTarget = React.useCallback(() => {
+    setScanState((current) => current === 'searching' ? 'locked' : current);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isLocked) return undefined;
+    const t = setTimeout(() => {
+      window.__setProtoState?.('ar');
+    }, 900);
+    return () => clearTimeout(t);
+  }, [isLocked]);
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#000' }}>
-      <CameraFeed mode="looking" />
+      <SceneBackdrop darkness={0.14} />
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(8,10,14,0.12) 0%, rgba(8,10,14,0.28) 100%)' }} />
 
-      {/* Dim overlay around reticle */}
-      <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        <defs>
-          <mask id="reticleMask">
-            <rect width="100%" height="100%" fill="white"/>
-            <rect x="50%" y="50%" width="240" height="300" rx="18" transform="translate(-120,-150)" fill="black"/>
-          </mask>
-        </defs>
-        <rect width="100%" height="100%" fill="rgba(0,0,0,0.45)" mask="url(#reticleMask)"/>
-      </svg>
-
-      {/* Reticle corners */}
-      <div style={{
-        position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
-        width: 240, height: 300, pointerEvents: 'none',
-      }}>
-        {[
-          { top: 0, left: 0, rotate: 0 },
-          { top: 0, right: 0, rotate: 90 },
-          { bottom: 0, right: 0, rotate: 180 },
-          { bottom: 0, left: 0, rotate: 270 },
-        ].map((pos, i) => (
-          <svg key={i} width="32" height="32" style={{ position: 'absolute', ...pos, transform: `rotate(${pos.rotate}deg)` }}>
-            <path d="M2 14 L2 2 L14 2" stroke={TOKENS.pink} strokeWidth="3" fill="none" strokeLinecap="round"/>
-          </svg>
-        ))}
-        {/* scan line */}
-        <div style={{
-          position: 'absolute', left: 6, right: 6, top: '50%', height: 2,
-          background: `linear-gradient(90deg, transparent 0%, ${TOKENS.pink} 50%, transparent 100%)`,
-          animation: 'scan-sweep 2.2s ease-in-out infinite',
-          boxShadow: `0 0 12px ${TOKENS.pink}`,
-        }}/>
+      <div style={{ position: 'absolute', inset: 0, transition: 'all 420ms cubic-bezier(.22,1,.36,1)' }}>
+        <ScanTargetFrame frame={frame} locked={scanState !== 'searching'} />
       </div>
+
+      {showSweep && <ScanSweepLine frame={frame} />}
 
       <IOSStatusBar dark />
 
-      {/* Top chrome */}
       <div style={{
         position: 'absolute', top: 58, left: 16, right: 16,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button style={{
+        <button
+          type="button"
+          onClick={() => window.__setProtoState?.('landing')}
+          style={{
           width: 38, height: 38, borderRadius: 999, border: 'none',
           background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)', color: '#fff',
@@ -101,84 +178,106 @@ function ScreenScan() {
 
         <div style={{
           padding: '8px 14px', borderRadius: 999,
-          background: 'rgba(255,255,255,0.16)', backdropFilter: 'blur(12px)',
+          background: isLocked ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.16)',
+          backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
           display: 'flex', alignItems: 'center', gap: 8,
+          border: isLocked ? `0.5px solid rgba(169,212,90,0.5)` : 'none',
+          transition: 'background 220ms ease, border-color 220ms ease',
         }}>
-          <div style={{ width: 8, height: 8, borderRadius: 999, background: TOKENS.pink, boxShadow: `0 0 8px ${TOKENS.pink}`, animation: 'pulse 1.4s infinite' }}/>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: '#fff', letterSpacing: '0.16em' }}>SCANNING</div>
+          <div style={{
+            width: 8, height: 8, borderRadius: 999,
+            background: isLocked ? TOKENS.green : TOKENS.pink,
+            boxShadow: `0 0 8px ${isLocked ? TOKENS.green : TOKENS.pink}`,
+            animation: isLocked ? 'none' : 'pulse 1.4s infinite',
+          }}/>
+          <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: '#fff', letterSpacing: '0.16em' }}>
+            {isLocked ? t(lang, '已锁定', 'LOCKED') : t(lang, '扫描中', 'SCANNING')}
+          </div>
         </div>
 
-        <button style={{
-          width: 38, height: 38, borderRadius: 999, border: 'none',
+        <button
+          type="button"
+          onClick={lockTarget}
+          style={{
+          minWidth: 78, height: 38, borderRadius: 999, border: 'none',
           background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 8, color: '#fff', padding: '0 12px',
         }}>
           <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14M1 8h14" stroke="#fff" strokeWidth="1.5"/><circle cx="8" cy="8" r="6.5" stroke="#fff" strokeWidth="1.2" fill="none"/></svg>
+          <span style={{ fontFamily: lang === 'en' ? FONT_MONO : FONT_ZH, fontSize: 11, fontWeight: 700 }}>
+            {scanState === 'searching' ? t(lang, '锁定', 'TARGET') : t(lang, '已锁定', 'LOCKED')}
+          </span>
         </button>
       </div>
 
-      {/* Title above reticle */}
-      <div style={{
-        position: 'absolute', top: 130, left: 0, right: 0, textAlign: 'center',
-      }}>
-        <div style={{ fontFamily: FONT_ZH, fontSize: 22, fontWeight: 700, color: '#fff', letterSpacing: '0.01em' }}>寻找一毛</div>
-        <div style={{ fontFamily: FONT_EN, fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 4, fontWeight: 500 }}>Look for EMO</div>
-      </div>
+    </div>
+  );
+}
 
-      {/* Bottom hint card */}
-      <div style={{
-        position: 'absolute', left: 16, right: 16, bottom: 110,
-        padding: '14px 16px', borderRadius: 22,
-        background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        border: '0.5px solid rgba(255,255,255,0.2)',
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <div style={{
-          width: 40, height: 40, borderRadius: 12, background: 'rgba(255,255,255,0.15)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <rect x="3" y="5" width="14" height="10" rx="2" stroke="#fff" strokeWidth="1.5"/>
-            <circle cx="10" cy="10" r="2.5" fill="#fff"/>
-          </svg>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: FONT_ZH, fontSize: 13.5, fontWeight: 600, color: '#fff' }}>
-            将相机对准活动海报
-          </div>
-          <div style={{ fontFamily: FONT_EN, fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>
-            Aim at the event poster
-          </div>
-        </div>
-      </div>
-
-      {/* Tip strip */}
-      <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 58, textAlign: 'center',
-        fontFamily: FONT_MONO, fontSize: 10, color: 'rgba(255,255,255,0.55)', letterSpacing: '0.14em',
-      }}>
-        保持平稳 · HOLD STEADY · 光线充足效果最好
-      </div>
+function OrbitTextRing({ lang = 'zh', size = 360, frozen = false }) {
+  const radius = size / 2 - 18;
+  const cx = size / 2;
+  const cy = size / 2;
+  const pathId = 'orbit-ring-path';
+  const pathD =
+    `M ${cx - radius},${cy} ` +
+    `a ${radius},${radius} 0 1,1 ${radius * 2},0 ` +
+    `a ${radius},${radius} 0 1,1 -${radius * 2},0`;
+  const phrase = lang === 'en'
+    ? 'EMO IS HERE · IFS PLAZA AR LIMITED · '
+    : '一毛来和你玩 · 国金天地 AR 限定 · ';
+  const ringText = phrase.repeat(3);
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        width: size,
+        height: size,
+        transform: 'translate(-50%, -50%)',
+        pointerEvents: 'none',
+        animation: 'orbit-spin 22s linear infinite',
+        animationPlayState: frozen ? 'paused' : 'running',
+        filter: 'drop-shadow(0 0 6px rgba(242,156,176,0.55))',
+        zIndex: 3,
+      }}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
+        <defs>
+          <path id={pathId} d={pathD} fill="none" />
+        </defs>
+        <text
+          style={{
+            fontFamily: lang === 'en' ? FONT_MONO : FONT_ZH,
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: lang === 'en' ? '0.28em' : '0.22em',
+            fill: 'rgba(255,255,255,0.82)',
+            textTransform: lang === 'en' ? 'uppercase' : 'none',
+          }}
+        >
+          <textPath href={`#${pathId}`} startOffset="0">
+            {ringText}
+          </textPath>
+        </text>
+      </svg>
     </div>
   );
 }
 
 // ─── SCREEN 4: AR Active ──────────────────────────────────────
-function ScreenARActive() {
-  const [introPhase, setIntroPhase] = React.useState('boot');
+function ScreenARActive({ lang = 'zh', setLang }) {
+  const [arPhase, setArPhase] = React.useState('intro-playing');
   const audioRef = React.useRef(null);
-  const audioStartedRef = React.useRef(false);
-  const handoffTimerRef = React.useRef(null);
 
   React.useEffect(() => {
     Step06Assets.preload({ full: true });
-    const bootTimer = setTimeout(() => setIntroPhase('intro'), 220);
     return () => {
-      clearTimeout(bootTimer);
-      clearTimeout(handoffTimerRef.current);
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
@@ -187,122 +286,106 @@ function ScreenARActive() {
   }, []);
 
   React.useEffect(() => {
-    if (introPhase !== 'intro' || audioStartedRef.current) return undefined;
+    if (arPhase !== 'intro-playing') return undefined;
     const audio = Step06Assets.createAudio();
     audioRef.current = audio;
-    audioStartedRef.current = true;
     audio.currentTime = 0;
     audio.play().catch(() => {});
-  }, [introPhase]);
+  }, [arPhase]);
 
   const handleIntroComplete = React.useCallback(() => {
-    setIntroPhase('handoff');
-    clearTimeout(handoffTimerRef.current);
-    handoffTimerRef.current = setTimeout(() => setIntroPhase('idle3d'), 220);
+    setArPhase('final-live-3d');
   }, []);
+
+  const captureFrame = React.useCallback(() => {
+    setArPhase((current) => current === 'captured-frame' ? 'final-live-3d' : 'captured-frame');
+  }, []);
+
+  const isLive3D = arPhase === 'final-live-3d' || arPhase === 'captured-frame';
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#000' }}>
-      <CameraFeed mode="active" />
+      <SceneBackdrop darkness={0.48} />
 
-      {/* Environment: faux plaza floor */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 0, height: '45%',
-        background: 'linear-gradient(180deg, rgba(245,225,215,0.15) 0%, rgba(60,48,48,0.3) 100%)',
-        backdropFilter: 'blur(2px)',
+        position: 'absolute',
+        inset: 0,
+        background: 'linear-gradient(180deg, rgba(6,8,12,0.08) 0%, rgba(6,8,12,0.22) 30%, rgba(6,8,12,0.55) 100%)',
       }}/>
 
-      {/* Ground marker under mascot */}
       <div style={{
-        position: 'absolute', left: '50%', bottom: '32%', transform: 'translateX(-50%)',
-        width: 220, height: 38, borderRadius: '50%',
-        background: 'radial-gradient(closest-side, rgba(242,156,176,0.7), rgba(242,156,176,0))',
-      }}/>
-      {/* Ring on ground */}
-      <svg width="240" height="80" style={{ position: 'absolute', left: '50%', bottom: '30%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
-        <ellipse cx="120" cy="40" rx="110" ry="16" stroke={TOKENS.pink} strokeWidth="1.2" strokeDasharray="3 5" fill="none" opacity="0.7"/>
-      </svg>
-
-      {/* Mascot — centered, with sprout-grow sequence (matches reference video) */}
-      <div style={{
-        position: 'absolute', left: '50%', bottom: '34%', transform: 'translateX(-50%)',
-        width: 260, height: 260,
-        animation: 'mascot-appear 900ms cubic-bezier(.22,1,.36,1) both',
+        position: 'absolute', left: '50%', bottom: '22%', transform: 'translateX(-50%)',
+        width: 360, height: 460,
+        animation: 'mascot-appear 820ms cubic-bezier(.22,1,.36,1) both',
       }}>
         <div style={{
           position: 'absolute',
           inset: 0,
-          opacity: introPhase === 'idle3d' ? 0 : 1,
-          transition: 'opacity 220ms ease',
+          opacity: isLive3D ? 0 : 1,
+          transition: 'opacity 420ms ease-out',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'visible',
         }}>
+          {/* PNG mascot occupies ~35% of its 768×768 frame (bbox y≈[350,620], center≈63%).
+              Container 740 → visible mascot ≈ 258px, matches GLB at size 280.
+              translateY shifts off-center mascot onto wrapper's vertical middle. */}
           <Step06SequencePlayer
-            size={260}
-            fps={24}
-            autoplay={introPhase === 'intro'}
+            size={740}
+            autoplay={arPhase === 'intro-playing'}
             onComplete={handleIntroComplete}
+            style={{ transform: 'translateY(-98px)' }}
           />
         </div>
 
         <div style={{
           position: 'absolute',
           inset: 0,
-          opacity: introPhase === 'idle3d' ? 1 : 0,
-          transition: 'opacity 220ms ease',
+          opacity: isLive3D ? 1 : 0,
+          transition: 'opacity 460ms ease-out',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          animation: isLive3D ? 'mascot-settle 520ms ease-out both' : 'none',
         }}>
           <ModelViewerIdle
-            size={260}
+            size={280}
             src={step06GlbUrl}
-            active={introPhase === 'idle3d'}
+            active={isLive3D}
+            style={{ position: 'relative', zIndex: 2, pointerEvents: arPhase === 'captured-frame' ? 'none' : 'auto' }}
           />
         </div>
 
-        {/* Orbiting text ring — matches the circular caption in the reference video */}
-        <svg viewBox="0 0 260 260" style={{
-          position: 'absolute', left: '50%', top: '50%',
-          width: 260, height: 260,
-          animation: 'orbit-spin 16s linear infinite',
-          pointerEvents: 'none',
-        }}>
-          <defs>
-            <path id="orbitPath" d="M 130,130 m -118,0 a 118,118 0 1,1 236,0 a 118,118 0 1,1 -236,0"/>
-          </defs>
-          <text fill="#fff" style={{
-            fontFamily: FONT_ZH, fontSize: 13, fontWeight: 600, letterSpacing: '0.28em',
-            filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))',
-          }}>
-            <textPath href="#orbitPath" startOffset="0">
-              一毛来和你玩 · EMO IS HERE · 国金天地 AR 限定 · LIFE PLAZA · 
-            </textPath>
-          </text>
-        </svg>
+        {isLive3D && (
+          <OrbitTextRing
+            lang={lang}
+            size={280}
+            frozen={arPhase === 'captured-frame'}
+          />
+        )}
       </div>
 
-      {/* Sparkles */}
-      {[
-        { x: '22%', y: '28%', size: 16, color: TOKENS.pink, delay: 0 },
-        { x: '78%', y: '24%', size: 12, color: '#fff', delay: 0.3 },
-        { x: '16%', y: '48%', size: 10, color: TOKENS.green, delay: 0.6 },
-        { x: '82%', y: '46%', size: 14, color: TOKENS.pink, delay: 0.9 },
-      ].map((s, i) => (
-        <svg key={i} width={s.size} height={s.size} style={{
-          position: 'absolute', left: s.x, top: s.y,
-          animation: `twinkle 2s ${s.delay}s infinite`,
-        }}>
-          <path d={`M${s.size/2} 0 L${s.size*0.6} ${s.size*0.4} L${s.size} ${s.size/2} L${s.size*0.6} ${s.size*0.6} L${s.size/2} ${s.size} L${s.size*0.4} ${s.size*0.6} L0 ${s.size/2} L${s.size*0.4} ${s.size*0.4} Z`} fill={s.color}/>
-        </svg>
-      ))}
+      {isLive3D && (
+        <div style={{
+          position: 'absolute', left: '50%', bottom: '26%', transform: 'translateX(-50%)',
+          width: 220, height: 40, borderRadius: '50%',
+          background: 'radial-gradient(closest-side, rgba(242,156,176,0.48), rgba(242,156,176,0))',
+          animation: 'glow-pulse 3.2s ease-in-out infinite',
+          animationPlayState: arPhase === 'captured-frame' ? 'paused' : 'running',
+        }}/>
+      )}
 
       <IOSStatusBar dark />
 
-      {/* Top chrome — tracking confirmed chip */}
       <div style={{
         position: 'absolute', top: 58, left: 16, right: 16,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button style={{
+        <button
+          type="button"
+          onClick={() => window.__setProtoState?.('landing')}
+          style={{
           width: 38, height: 38, borderRadius: 999, border: 'none',
           background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)', cursor: 'pointer',
@@ -319,68 +402,68 @@ function ScreenARActive() {
           border: `0.5px solid rgba(169,212,90,0.5)`,
         }}>
           <div style={{ width: 7, height: 7, borderRadius: 999, background: TOKENS.green, boxShadow: `0 0 8px ${TOKENS.green}` }}/>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: '#fff', letterSpacing: '0.16em' }}>TRACKING</div>
+          <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: '#fff', letterSpacing: '0.16em' }}>
+            {arPhase === 'captured-frame' ? t(lang, '已拍照', 'CAPTURED') : t(lang, '实景已锁定', 'LOCKED')}
+          </div>
         </div>
 
-        <div style={{
-          padding: '6px 10px', borderRadius: 999, background: 'rgba(255,255,255,0.18)',
-          backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
-          fontFamily: FONT_MONO, fontSize: 11, color: '#fff',
-        }}>中/EN</div>
+        <LangChip lang={lang} onToggle={setLang} />
       </div>
 
-      {/* Caption banner */}
       <div style={{
-        position: 'absolute', top: 120, left: '50%', transform: 'translateX(-50%)',
-        padding: '10px 18px', borderRadius: 999,
-        background: '#fff',
-        display: 'flex', alignItems: 'center', gap: 10,
-        boxShadow: '0 10px 30px rgba(0,0,0,0.3)',
-        animation: 'mascot-appear 900ms 200ms cubic-bezier(.22,1,.36,1) both',
-      }}>
-        <img src="assets/mascot/m_sprout.png" style={{ width: 28, height: 28, objectFit: 'contain' }}/>
-        <div>
-          <div style={{ fontFamily: FONT_ZH, fontSize: 13, fontWeight: 700, color: TOKENS.ink, lineHeight: 1 }}>一毛来啦！</div>
-          <div style={{ fontFamily: FONT_EN, fontSize: 9.5, color: TOKENS.ink60, marginTop: 2, lineHeight: 1 }}>EMO is here!</div>
-        </div>
-      </div>
-
-      {/* Bottom action bar */}
-      <div style={{
-        position: 'absolute', left: 16, right: 16, bottom: 50,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+        position: 'absolute', left: 0, right: 0, bottom: 80,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+        pointerEvents: 'none',
       }}>
         <div style={{
-          padding: '10px 14px', borderRadius: 999,
+          padding: '10px 16px', borderRadius: 999,
           background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)',
-          fontFamily: FONT_ZH, fontSize: 11, color: 'rgba(255,255,255,0.9)',
+          fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)',
+          maxWidth: 320, textAlign: 'center',
         }}>
-          轻轻移动手机 · Move around
+          {arPhase === 'intro-playing'
+            ? t(lang, '一毛出现中…', 'EMO is appearing…')
+            : arPhase === 'captured-frame'
+            ? t(lang, '已定格，可再次按下返回实时画面', 'Captured · tap shutter again for live view')
+            : t(lang, '拍下一毛并分享', 'Capture & share EMO')}
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          {/* Share */}
-          <button style={{
-            width: 52, height: 52, borderRadius: 999, border: 'none',
-            background: 'rgba(255,255,255,0.16)', backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)', cursor: 'pointer',
+        <button
+          type="button"
+          onClick={captureFrame}
+          disabled={!isLive3D}
+          style={{
+            pointerEvents: 'auto',
+            width: 68, height: 68, borderRadius: 999, border: '3px solid #fff',
+            background: TOKENS.pink, cursor: isLive3D ? 'pointer' : 'default',
+            boxShadow: '0 0 0 2px rgba(255,255,255,0.3), 0 10px 28px rgba(0,0,0,0.42)',
+            opacity: isLive3D ? 1 : 0.55,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0,
           }}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M9 2v10M5 6l4-4 4 4M3 12v3h12v-3" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-          {/* Capture — big */}
-          <button style={{
-            width: 64, height: 64, borderRadius: 999, border: '3px solid #fff',
-            background: TOKENS.pink, cursor: 'pointer',
-            boxShadow: '0 0 0 2px rgba(255,255,255,0.3), 0 8px 24px rgba(0,0,0,0.4)',
-          }}>
-          </button>
-        </div>
+          <div style={{
+            width: 20,
+            height: 20,
+            borderRadius: arPhase === 'captured-frame' ? 4 : 999,
+            background: '#fff',
+          }}/>
+        </button>
       </div>
 
-      {/* Home indicator hint */}
+      {arPhase === 'captured-frame' && (
+        <div style={{
+          position: 'absolute',
+          left: 38,
+          right: 38,
+          top: 138,
+          bottom: 188,
+          borderRadius: 28,
+          border: '14px solid rgba(255,255,255,0.96)',
+          boxShadow: '0 28px 60px rgba(0,0,0,0.28), inset 0 0 0 10px rgba(244,183,200,0.9)',
+          pointerEvents: 'none',
+        }}/>
+      )}
+
       <div style={{
         position: 'absolute', left: '50%', bottom: 8, transform: 'translateX(-50%)',
         width: 140, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.7)',
@@ -390,7 +473,7 @@ function ScreenARActive() {
 }
 
 // ─── SCREEN 5: Permission Denied ──────────────────────────────
-function ScreenDenied() {
+function ScreenDenied({ lang = 'zh', setLang }) {
   return (
     <div style={{
       width: '100%', height: '100%', position: 'relative', overflow: 'hidden',
@@ -399,13 +482,16 @@ function ScreenDenied() {
       <IOSStatusBar />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px 0' }}>
-        <button style={{
+        <button
+          type="button"
+          onClick={() => window.__setProtoState?.('landing')}
+          style={{
           width: 36, height: 36, borderRadius: 999, border: 'none',
           background: 'rgba(31,26,31,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         }}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke={TOKENS.ink} strokeWidth="1.8" fill="none" strokeLinecap="round"/></svg>
         </button>
-        <LangChip />
+        <LangChip lang={lang} onToggle={setLang} />
       </div>
 
       {/* Sad mascot vignette */}
@@ -436,14 +522,11 @@ function ScreenDenied() {
       </div>
 
       <div style={{ padding: '34px 28px 0', textAlign: 'center' }}>
-        <h2 style={{ margin: 0, fontFamily: FONT_ZH, fontSize: 24, fontWeight: 800, color: TOKENS.ink }}>
-          未获得相机权限
+        <h2 style={{ margin: 0, fontFamily: langFont(lang), fontSize: lang === 'en' ? 23 : 24, fontWeight: 800, color: TOKENS.ink }}>
+          {t(lang, '未获得相机权限', 'Camera access is blocked')}
         </h2>
-        <div style={{ fontFamily: FONT_EN, fontSize: 13.5, color: TOKENS.ink60, marginTop: 6, fontWeight: 500 }}>
-          Camera access is blocked
-        </div>
-        <p style={{ margin: '16px 12px 0', fontFamily: FONT_ZH, fontSize: 13.5, lineHeight: 1.6, color: TOKENS.ink60 }}>
-          要让一毛出现，请在浏览器设置中<br/>开启相机权限。
+        <p style={{ margin: '16px 12px 0', fontFamily: langFont(lang), fontSize: lang === 'en' ? 13 : 13.5, lineHeight: 1.6, color: TOKENS.ink60 }}>
+          {t(lang, '要让一毛出现，请在浏览器设置中\n开启相机权限。', 'To let EMO appear, enable camera access in your browser settings.')}
         </p>
       </div>
 
@@ -457,12 +540,13 @@ function ScreenDenied() {
           padding: '10px 16px', background: TOKENS.pinkSoft,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontFamily: FONT_ZH, fontSize: 12, fontWeight: 700, color: TOKENS.ink }}>如何开启相机</div>
-          <div style={{ fontFamily: FONT_EN, fontSize: 10, color: TOKENS.ink60 }}>How to enable</div>
+          <div style={{ fontFamily: langFont(lang), fontSize: 12, fontWeight: 700, color: TOKENS.ink }}>
+            {t(lang, '如何开启相机', 'How to enable')}
+          </div>
         </div>
         {[
           { zh: '点击浏览器地址栏的锁图标', en: 'Tap the lock icon in the address bar' },
-          { zh: '在「相机」一项选择「允许」', en: 'Set Camera to "Allow"' },
+          { zh: '在「相机」一项选择「允许」', en: 'Set Camera to Allow' },
           { zh: '返回此页面，点击重试', en: 'Come back and tap Try again' },
         ].map((s, i) => (
           <div key={i} style={{
@@ -475,15 +559,16 @@ function ScreenDenied() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>{i+1}</div>
             <div>
-              <div style={{ fontFamily: FONT_ZH, fontSize: 12, fontWeight: 500, color: TOKENS.ink }}>{s.zh}</div>
-              <div style={{ fontFamily: FONT_EN, fontSize: 10, color: TOKENS.ink60, marginTop: 1 }}>{s.en}</div>
+              <div style={{ fontFamily: langFont(lang), fontSize: lang === 'en' ? 11.5 : 12, fontWeight: 500, color: TOKENS.ink }}>
+                {t(lang, s.zh, s.en)}
+              </div>
             </div>
           </div>
         ))}
       </div>
 
       <div style={{ position: 'absolute', left: 16, right: 16, bottom: 28, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <PillBtn zh="重新尝试" en="Try again" icon={
+        <PillBtn lang={lang} zh="重新尝试" en="Try again" onClick={() => window.__setProtoState?.('permission')} icon={
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M2 7a5 5 0 1 0 1.5-3.5M2 2v3h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none"/>
           </svg>
@@ -494,7 +579,7 @@ function ScreenDenied() {
 }
 
 // ─── SCREEN 6: Loading / Error (two states in one card) ───────
-function ScreenLoading() {
+function ScreenLoading({ lang = 'zh' }) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#0d0f13' }}>
       <IOSStatusBar dark />
@@ -515,18 +600,27 @@ function ScreenLoading() {
         </div>
 
         {/* progress */}
-        <div style={{ width: 220, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+        <div style={{ width: 220, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden', position: 'relative' }}>
           <div style={{
-            width: '64%', height: '100%',
+            position: 'absolute', inset: 0,
             background: `linear-gradient(90deg, ${TOKENS.pink} 0%, ${TOKENS.pinkDeep} 100%)`,
             borderRadius: 999,
             boxShadow: `0 0 10px ${TOKENS.pink}`,
+            animation: 'loading-bar-fill 1.8s ease-in-out infinite',
+          }}/>
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)',
+            width: '40%',
+            animation: 'loading-bar-shimmer 1.6s ease-in-out infinite',
+            mixBlendMode: 'screen',
           }}/>
         </div>
 
         <div style={{ marginTop: 18, textAlign: 'center' }}>
-          <div style={{ fontFamily: FONT_ZH, fontSize: 18, fontWeight: 700, color: '#fff' }}>正在准备一毛…</div>
-          <div style={{ fontFamily: FONT_EN, fontSize: 12, color: 'rgba(255,255,255,0.55)', marginTop: 4 }}>Waking up EMO…</div>
+          <div style={{ fontFamily: langFont(lang), fontSize: 18, fontWeight: 700, color: '#fff' }}>
+            {t(lang, '正在准备一毛…', 'Waking up EMO…')}
+          </div>
         </div>
 
         {/* meta chips */}
@@ -551,25 +645,28 @@ function ScreenLoading() {
         position: 'absolute', left: 0, right: 0, bottom: 34, textAlign: 'center',
         fontFamily: FONT_MONO, fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.18em',
       }}>
-        首次加载约需 3–5 秒 · FIRST LOAD
+        {t(lang, '首次加载约需 3–5 秒', 'FIRST LOAD · 3–5 SECONDS')}
       </div>
     </div>
   );
 }
 
-function ScreenError() {
+function ScreenError({ lang = 'zh', setLang }) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: TOKENS.cream }}>
       <IOSStatusBar />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px 0' }}>
-        <button style={{
+        <button
+          type="button"
+          onClick={() => window.__setProtoState?.('landing')}
+          style={{
           width: 36, height: 36, borderRadius: 999, border: 'none',
           background: 'rgba(31,26,31,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
         }}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke={TOKENS.ink} strokeWidth="1.8" fill="none" strokeLinecap="round"/></svg>
         </button>
-        <LangChip />
+        <LangChip lang={lang} onToggle={setLang} />
       </div>
 
       {/* illustration: mascot with question */}
@@ -599,17 +696,11 @@ function ScreenError() {
       </div>
 
       <div style={{ padding: '34px 28px 0', textAlign: 'center' }}>
-        <h2 style={{ margin: 0, fontFamily: FONT_ZH, fontSize: 24, fontWeight: 800, color: TOKENS.ink }}>
-          出了点小状况
+        <h2 style={{ margin: 0, fontFamily: langFont(lang), fontSize: lang === 'en' ? 23 : 24, fontWeight: 800, color: TOKENS.ink }}>
+          {t(lang, '出了点小状况', 'Something went sideways')}
         </h2>
-        <div style={{ fontFamily: FONT_EN, fontSize: 13.5, color: TOKENS.ink60, marginTop: 6, fontWeight: 500 }}>
-          Something went sideways
-        </div>
-        <p style={{ margin: '14px 16px 0', fontFamily: FONT_ZH, fontSize: 13.5, lineHeight: 1.6, color: TOKENS.ink60 }}>
-          无法加载 AR 内容，请检查网络后重试。
-        </p>
-        <p style={{ margin: '6px 16px 0', fontFamily: FONT_EN, fontSize: 11.5, lineHeight: 1.5, color: TOKENS.ink30, fontStyle: 'italic' }}>
-          Couldn't load the AR scene. Check your connection and try again.
+        <p style={{ margin: '14px 16px 0', fontFamily: langFont(lang), fontSize: lang === 'en' ? 13 : 13.5, lineHeight: 1.6, color: TOKENS.ink60 }}>
+          {t(lang, '无法加载 AR 内容，请检查网络后重试。', "Couldn't load the AR scene. Check your connection and try again.")}
         </p>
       </div>
 
@@ -628,12 +719,12 @@ function ScreenError() {
       */}
 
       <div style={{ position: 'absolute', left: 16, right: 16, bottom: 28, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <PillBtn zh="重新加载" en="Reload" icon={
+        <PillBtn lang={lang} zh="重新加载" en="Reload" onClick={() => window.__setProtoState?.('loading')} icon={
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M2 7a5 5 0 1 0 1.5-3.5M2 2v3h3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none"/>
           </svg>
         }/>
-        <PillBtn zh="联系客服" en="Contact support" variant="ghost" />
+        <PillBtn lang={lang} zh="联系客服" en="Contact support" variant="ghost" onClick={() => window.__setProtoState?.('landing')} />
       </div>
     </div>
   );
