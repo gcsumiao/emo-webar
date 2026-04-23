@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>EMO AR · Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Gantari:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    html, body { margin: 0; padding: 0; background: #1F1A1F; font-family: 'Gantari', system-ui; color: #FAF6F1; overflow: hidden; }
+    * { box-sizing: border-box; }
+    button { font-family: inherit; }
+
+    @keyframes mascot-bob { 0%,100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-8px) rotate(1deg); } }
+    .mascot-bob { animation: mascot-bob 3.6s ease-in-out infinite; transform-origin: 50% 100%; }
+    @keyframes mascot-pop { 0% { transform: scale(0.2) translateY(30px); opacity: 0; } 60% { transform: scale(1.08) translateY(-4px); opacity: 1; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+    @keyframes mascot-appear { 0% { transform: translateX(-50%) scale(0.3) translateY(40px); opacity: 0; } 60% { transform: translateX(-50%) scale(1.08) translateY(-6px); opacity: 1; } 100% { transform: translateX(-50%) scale(1) translateY(0); opacity: 1; } }
+    @keyframes scan-sweep { 0% { top: 10%; opacity: 0; } 10%,90% { opacity: 1; } 50% { top: 90%; } 100% { top: 10%; opacity: 0; } }
+    @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.85); } }
+    @keyframes twinkle { 0%,100% { opacity: 0.3; transform: scale(0.7) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(180deg); } }
+    .sprout-sprite { animation: sprout-grow 3.8s steps(23, end) infinite; }
+    @keyframes sprout-grow { 0% { background-position-x: 0; } 55% { background-position-x: var(--frameShift); } 100% { background-position-x: var(--frameShift); } }
+    @keyframes sprout-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    .sprout-sprite-wrap { animation: sprout-bob 3.2s ease-in-out infinite; }
+    @keyframes orbit-spin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+    @keyframes face-bob { 0%,100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-10px) rotate(1.5deg); } }
+
+    /* screen transitions */
+    .screen-container { position: absolute; inset: 0; }
+    .screen-enter { animation: screenFade 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+    @keyframes screenFade {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* tap targets — invisible hotspots overlaid on static screens */
+    .hotspot { cursor: pointer; position: absolute; background: transparent; }
+    .hotspot.debug { outline: 1px dashed rgba(229,109,137,0.6); background: rgba(229,109,137,0.08); }
+    .hotspot:active { background: rgba(255,255,255,0.08); }
+
+    /* stage */
+    .stage {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 18px;
+      background:
+        radial-gradient(800px 500px at 30% 20%, rgba(229,109,137,0.12), transparent 60%),
+        radial-gradient(600px 400px at 70% 80%, rgba(110,95,210,0.08), transparent 60%),
+        #1F1A1F;
+    }
+    .phone-wrap { position: relative; }
+
+    /* topbar (switcher + progress) */
+    .topbar {
+      position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 10px; padding: 6px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 999px; backdrop-filter: blur(10px); z-index: 50;
+      font-family: 'Gantari'; font-size: 12px;
+    }
+    .topbar a, .topbar button {
+      padding: 7px 14px; border-radius: 999px; border: none; cursor: pointer;
+      background: transparent; color: rgba(250,246,241,0.65); text-decoration: none;
+      font-size: 12px; font-weight: 500; letter-spacing: 0.02em;
+    }
+    .topbar .active { background: #FAF6F1; color: #1F1A1F; font-weight: 600; }
+    .topbar .divider { width: 1px; height: 16px; background: rgba(255,255,255,0.12); margin: 0 2px; }
+
+    /* dev jump strip */
+    .devstrip {
+      position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 4px; padding: 6px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; backdrop-filter: blur(10px); z-index: 50;
+      font-family: 'JetBrains Mono'; font-size: 10px;
+    }
+    .devstrip button {
+      padding: 6px 10px; border-radius: 8px; border: none; cursor: pointer;
+      background: transparent; color: rgba(250,246,241,0.55); font-family: inherit;
+      font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    .devstrip button:hover { background: rgba(255,255,255,0.06); color: rgba(250,246,241,0.9); }
+    .devstrip button.cur { background: #E56D89; color: #fff; }
+    .devstrip .sep { width: 1px; background: rgba(255,255,255,0.08); margin: 2px 4px; }
+
+    /* sidebar "now on:" label */
+    .state-badge {
+      position: fixed; top: 14px; right: 14px; z-index: 50;
+      padding: 8px 12px; border-radius: 10px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+      font-family: 'JetBrains Mono'; font-size: 10px; color: rgba(250,246,241,0.7);
+      letter-spacing: 0.08em; text-transform: uppercase; backdrop-filter: blur(10px);
+    }
+    .state-badge b { color: #E56D89; margin-left: 6px; font-weight: 600; }
+  </style>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <script type="text/babel" src="mascot.jsx"></script>
+  <script type="text/babel" src="screens-a.jsx"></script>
+  <script type="text/babel" src="screens-b.jsx"></script>
+
+  <script type="text/babel">
+    const FRAME_W = 390;
+    const FRAME_H = 820;
+
+    // Flow definition: each state maps to a screen component + ordered list of click hotspots.
+    // Hotspots are positioned over the rendered iOS frame (which is FRAME_W x FRAME_H).
+    // Coordinates are in the coordinate system of the screen (0..FRAME_W horizontally).
+    // A hotspot with `action: 'go'` navigates to another state.
+    const STATES = [
+      { key: 'qr',         label: '01 QR',        desc: 'QR entry' },
+      { key: 'landing',    label: '02 Landing',   desc: 'Landing' },
+      { key: 'permission', label: '03 Permission',desc: 'Permission' },
+      { key: 'loading',    label: '04 Loading',   desc: 'Loading (auto → scan)' },
+      { key: 'scan',       label: '05 Scan',      desc: 'Scanning' },
+      { key: 'ar',         label: '06 AR',        desc: 'AR active' },
+      { key: 'denied',     label: '07 Denied',    desc: 'Denied' },
+      { key: 'error',      label: '08 Error',     desc: 'Error' },
+    ];
+
+    // Hotspots per screen. Each one: { id, top, left, width, height, go, label }.
+    // Positions target buttons visible in the existing screen components.
+    const HOTSPOTS = {
+      qr: [
+        // QR code in center → simulates scan and opens landing
+        { top: 240, left: 95, width: 200, height: 200, go: 'landing', label: 'Scan QR' },
+        // "Open in browser" pill near bottom
+        { top: 700, left: 60, width: 270, height: 48, go: 'landing', label: 'Open link' },
+      ],
+      landing: [
+        // Primary CTA: "开启 AR 体验" button (bottom area)
+        { top: 700, left: 24, width: FRAME_W - 48, height: 54, go: 'permission', label: 'Start AR' },
+      ],
+      permission: [
+        // "允许" allow button — top of the two stacked buttons near bottom
+        { top: 640, left: 24, width: FRAME_W - 48, height: 54, go: 'loading', label: 'Allow' },
+        // "不允许" deny button — bottom button
+        { top: 705, left: 24, width: FRAME_W - 48, height: 54, go: 'denied', label: 'Deny' },
+      ],
+      loading: [
+        // No hotspots — auto-advances after 2.2s
+      ],
+      scan: [
+        // Whole screen → tap to "find" → AR active (simulates detecting the poster)
+        { top: 100, left: 24, width: FRAME_W - 48, height: 500, go: 'ar', label: 'Tap to detect' },
+      ],
+      ar: [
+        // Close (X) in top right corner
+        { top: 60, left: FRAME_W - 68, width: 48, height: 48, go: 'landing', label: 'Close' },
+      ],
+      denied: [
+        // Primary action: open settings (fake) → goes back to permission
+        { top: 640, left: 24, width: FRAME_W - 48, height: 54, go: 'permission', label: 'Retry' },
+        // Secondary: dismiss → landing
+        { top: 705, left: 24, width: FRAME_W - 48, height: 54, go: 'landing', label: 'Dismiss' },
+      ],
+      error: [
+        // Reload → loading
+        { top: 660, left: 16, width: FRAME_W - 32, height: 46, go: 'loading', label: 'Reload' },
+        // Contact → landing
+        { top: 712, left: 16, width: FRAME_W - 32, height: 46, go: 'landing', label: 'Contact' },
+      ],
+    };
+
+    function Phone({ children }) {
+      return (
+        <IOSDevice width={FRAME_W} height={FRAME_H}>
+          {children}
+        </IOSDevice>
+      );
+    }
+
+    function ScreenFor({ state }) {
+      switch (state) {
+        case 'qr':         return <ScreenQR/>;
+        case 'landing':    return <ScreenLanding/>;
+        case 'permission': return <ScreenPermission/>;
+        case 'loading':    return <ScreenLoading/>;
+        case 'scan':       return <ScreenScan/>;
+        case 'ar':         return <ScreenARActive/>;
+        case 'denied':     return <ScreenDenied/>;
+        case 'error':      return <ScreenError/>;
+        default:           return <ScreenQR/>;
+      }
+    }
+
+    function App() {
+      // Persist position so refresh doesn't boot user back to start
+      const [state, setStateRaw] = React.useState(() => {
+        try { return localStorage.getItem('emo_proto_state') || 'qr'; } catch { return 'qr'; }
+      });
+      const [debug, setDebug] = React.useState(false);
+      const [nonce, setNonce] = React.useState(0);  // bump to retrigger enter animation
+
+      const setState = React.useCallback((s) => {
+        setStateRaw(s);
+        setNonce(n => n + 1);
+        try { localStorage.setItem('emo_proto_state', s); } catch {}
+      }, []);
+
+      // Auto-advance on loading state
+      React.useEffect(() => {
+        if (state === 'loading') {
+          window.Step06Assets?.preload({ full: false });
+          const t = setTimeout(() => setState('scan'), 2200);
+          return () => clearTimeout(t);
+        }
+      }, [state, setState]);
+
+      React.useEffect(() => {
+        if (state === 'scan' || state === 'ar') {
+          window.Step06Assets?.preload({ full: true });
+        }
+      }, [state]);
+
+      // Keyboard: arrow keys step through the main happy path for quick review
+      React.useEffect(() => {
+        const HAPPY_PATH = ['qr','landing','permission','loading','scan','ar'];
+        const onKey = (e) => {
+          if (e.key === 'ArrowRight') {
+            const i = HAPPY_PATH.indexOf(state);
+            if (i >= 0 && i < HAPPY_PATH.length - 1) setState(HAPPY_PATH[i + 1]);
+          } else if (e.key === 'ArrowLeft') {
+            const i = HAPPY_PATH.indexOf(state);
+            if (i > 0) setState(HAPPY_PATH[i - 1]);
+          } else if (e.key.toLowerCase() === 'd') {
+            setDebug(d => !d);
+          } else if (e.key.toLowerCase() === 'r') {
+            setState('qr');
+          }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [state, setState]);
+
+      const spots = HOTSPOTS[state] || [];
+
+      return (
+        <div>
+          {/* Top switcher: Canvas ↔ Prototype */}
+          <div className="topbar">
+            <a href="AR Campaign App.html">Canvas</a>
+            <div className="divider"/>
+            <button className="active">Prototype</button>
+          </div>
+
+          {/* Current state badge */}
+          <div className="state-badge">
+            STATE <b>{state.toUpperCase()}</b>
+          </div>
+
+          <div className="stage">
+            <div className="phone-wrap" style={{ position: 'relative' }}>
+              <Phone>
+                {/* Re-key on nonce so entry animation plays on every transition */}
+                <div key={nonce} className="screen-container screen-enter">
+                  <ScreenFor state={state}/>
+                </div>
+              </Phone>
+
+              {/* Hotspot overlay layer — positioned over the phone content area.
+                  IOSDevice frame adds padding/notch, so we align to the inner content box. */}
+              <div style={{
+                position: 'absolute', inset: 0, pointerEvents: 'none',
+              }}>
+                {/* The inner screen sits inside IOSDevice's content box.
+                    IOSDevice renders at FRAME_W x FRAME_H overall; the content area
+                    is roughly the same since screens are designed to fill it.
+                    We position hotspots directly in the phone-wrap coordinate space. */}
+                {spots.map((s, i) => (
+                  <div
+                    key={i}
+                    className={'hotspot' + (debug ? ' debug' : '')}
+                    style={{
+                      pointerEvents: 'auto',
+                      top: s.top, left: s.left, width: s.width, height: s.height,
+                    }}
+                    onClick={() => setState(s.go)}
+                    title={s.label}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Dev strip — jump to any state */}
+          <div className="devstrip">
+            {STATES.map(st => (
+              <button
+                key={st.key}
+                className={state === st.key ? 'cur' : ''}
+                onClick={() => setState(st.key)}
+                title={st.desc}
+              >
+                {st.label}
+              </button>
+            ))}
+            <div className="sep"/>
+            <button onClick={() => setDebug(d => !d)} title="Toggle hotspot overlay (D)">
+              {debug ? 'Hide ◉' : 'Show ◎'}
+            </button>
+            <button onClick={() => setState('qr')} title="Reset (R)">↺</button>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>

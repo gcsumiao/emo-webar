@@ -1,0 +1,10 @@
+{
+  "introImageUrl": "assets/step06/intro/yimao-intro.apng",
+  "introPosterUrl": "assets/step06/intro/yimao-intro-poster.png",
+  "introDurationMs": 10004,
+  "audioUrl": "assets/step06/audio/yimao-intro.m4a",
+  "glbUrl": "assets/step06/models/yimao-sitting.glb",
+  "width": 1024,
+  "height": 1024,
+  "fps": 29.188
+}
