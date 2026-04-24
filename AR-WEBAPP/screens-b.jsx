@@ -271,7 +271,7 @@ function OrbitTextRing({ lang = 'zh', size = 300, frozen = false }) {
     `a ${radius},${radius} 0 1,1 -${radius * 2},0`;
   const phrase = lang === 'en'
     ? 'EMO IS HERE · IFS PLAZA AR LIMITED · '
-    : '一毛来和你玩 · 国金天地 AR 限定 · ';
+    : '国金天地一毛来和你玩 · ';
   return (
     <div
       aria-hidden="true"

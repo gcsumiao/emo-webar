@@ -123,25 +123,18 @@
     // Coordinates are in the coordinate system of the screen (0..FRAME_W horizontally).
     // A hotspot with `action: 'go'` navigates to another state.
     const STATES = [
-      { key: 'qr',         label: '01 QR',        desc: 'QR entry' },
-      { key: 'landing',    label: '02 Landing',   desc: 'Landing' },
-      { key: 'permission', label: '03 Permission',desc: 'Permission' },
-      { key: 'loading',    label: '04 Loading',   desc: 'Loading (auto → scan)' },
-      { key: 'scan',       label: '05 Scan',      desc: 'Scanning' },
-      { key: 'ar',         label: '06 AR',        desc: 'AR active' },
-      { key: 'denied',     label: '07 Denied',    desc: 'Denied' },
-      { key: 'error',      label: '08 Error',     desc: 'Error' },
+      { key: 'landing',    label: '01 Landing',   desc: 'Landing' },
+      { key: 'permission', label: '02 Permission',desc: 'Permission' },
+      { key: 'loading',    label: '03 Loading',   desc: 'Loading (auto → scan)' },
+      { key: 'scan',       label: '04 Scan',      desc: 'Scanning' },
+      { key: 'ar',         label: '05 AR',        desc: 'AR active' },
+      { key: 'denied',     label: '06 Denied',    desc: 'Denied' },
+      { key: 'error',      label: '07 Error',     desc: 'Error' },
     ];
 
     // Hotspots per screen. Each one: { id, top, left, width, height, go, label }.
     // Positions target buttons visible in the existing screen components.
     const HOTSPOTS = {
-      qr: [
-        // QR code in center → simulates scan and opens landing
-        { top: 240, left: 95, width: 200, height: 200, go: 'landing', label: 'Scan QR' },
-        // "Open in browser" pill near bottom
-        { top: 700, left: 60, width: 270, height: 48, go: 'landing', label: 'Open link' },
-      ],
       landing: [],
       permission: [],
       loading: [
@@ -375,14 +368,17 @@
         case 'ar':         return <ScreenARActive lang={lang} setLang={setLang}/>;
         case 'denied':     return <ScreenDenied lang={lang} setLang={setLang}/>;
         case 'error':      return <ScreenError lang={lang} setLang={setLang}/>;
-        default:           return <ScreenQR lang={lang} setLang={setLang}/>;
+        default:           return <ScreenLanding lang={lang} setLang={setLang}/>;
       }
     }
 
     function App() {
       // Persist position so refresh doesn't boot user back to start
       const [state, setStateRaw] = React.useState(() => {
-        try { return localStorage.getItem('emo_proto_state') || 'qr'; } catch { return 'qr'; }
+        try {
+          const savedState = localStorage.getItem('emo_proto_state');
+          return STATES.some((st) => st.key === savedState) ? savedState : 'landing';
+        } catch { return 'landing'; }
       });
       const [lang, setLangRaw] = React.useState(() => {
         try { return localStorage.getItem('emo_proto_lang') || 'zh'; } catch { return 'zh'; }
@@ -430,7 +426,7 @@
 
       // Keyboard: arrow keys step through the main happy path for quick review
       React.useEffect(() => {
-        const HAPPY_PATH = ['qr','landing','permission','loading','scan','ar'];
+        const HAPPY_PATH = ['landing','permission','loading','scan','ar'];
         const onKey = (e) => {
           if (e.key === 'ArrowRight') {
             const i = HAPPY_PATH.indexOf(state);
@@ -441,7 +437,7 @@
           } else if (e.key.toLowerCase() === 'd') {
             setDebug(d => !d);
           } else if (e.key.toLowerCase() === 'r') {
-            setState('qr');
+            setState('landing');
           }
         };
         window.addEventListener('keydown', onKey);
@@ -519,7 +515,7 @@
             <button onClick={() => setDebug(d => !d)} title="Toggle hotspot overlay (D)">
               {debug ? 'Hide ◉' : 'Show ◎'}
             </button>
-            <button onClick={() => setState('qr')} title="Reset (R)">↺</button>
+            <button onClick={() => setState('landing')} title="Reset (R)">↺</button>
           </div>
         </div>
       );
