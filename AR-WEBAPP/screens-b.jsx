@@ -3,7 +3,7 @@
 // Flower-shaped (sakura) viewfinder matches the reference video 10249.MP4.
 // Coordinates are in the 390×820 phone frame.
 const SCAN_FLOWER_FRAME = { cx: 195, cy: 430, size: 270 };
-const INTRO_FRAME_RANGES = [[9, 80], [190, 300]];
+const INTRO_FRAME_RANGES = [[9, 56], [242, 261]];
 const INTRO_FRAME_URLS = INTRO_FRAME_RANGES.flatMap(([start, end]) =>
   Array.from(
     { length: end - start + 1 },
@@ -11,6 +11,7 @@ const INTRO_FRAME_URLS = INTRO_FRAME_RANGES.flatMap(([start, end]) =>
   )
 );
 const INTRO_DURATION_MS = Math.round((INTRO_FRAME_URLS.length / 30) * 1000);
+const INTRO_BGM_URL = 'assets/step06/audio/intro-bgm-10249.m4a';
 
 // Pink 5-lobed sakura viewfinder outline — shape matches 10249.MP4.
 // Five filled circles unioned, then a morphological erosion is composited out
@@ -314,12 +315,36 @@ function OrbitTextRing({ lang = 'zh', size = 300, frozen = false }) {
 // ─── SCREEN 4: AR Active ──────────────────────────────────────
 function ScreenARActive({ lang = 'zh', setLang }) {
   const [arPhase, setArPhase] = React.useState('intro-playing');
+  const audioRef = React.useRef(null);
 
   React.useEffect(() => {
     Step06Assets.preloadUrls(INTRO_FRAME_URLS);
+    const audio = new Audio(INTRO_BGM_URL);
+    audio.preload = 'auto';
+    audio.playsInline = true;
+    audioRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.currentTime = 0;
+      if (audioRef.current === audio) audioRef.current = null;
+    };
   }, []);
 
+  React.useEffect(() => {
+    if (arPhase !== 'intro-playing') return undefined;
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+    return () => audio.pause();
+  }, [arPhase]);
+
   const handleIntroComplete = React.useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
     setArPhase('final-live');
   }, []);
 
