@@ -11,7 +11,59 @@ const INTRO_FRAME_URLS = INTRO_FRAME_RANGES.flatMap(([start, end]) =>
   )
 );
 const INTRO_DURATION_MS = Math.round((INTRO_FRAME_URLS.length / 30) * 1000);
-const INTRO_BGM_URL = 'assets/step06/audio/intro-bgm-10249.m4a';
+const AR_BGM_URL = 'assets/step06/audio/bgm-10249.m4a';
+const AR_SHUTTER_URL = 'assets/step06/audio/shutter-10249.m4a';
+const AR_INTRO_CUE_SECONDS = 4;
+
+const EMOARAudio = (() => {
+  let bgm = null;
+  let shutter = null;
+
+  function makeAudio(url) {
+    const audio = new Audio(url);
+    audio.preload = 'auto';
+    audio.playsInline = true;
+    return audio;
+  }
+
+  function getBgm() {
+    if (!bgm) bgm = makeAudio(AR_BGM_URL);
+    return bgm;
+  }
+
+  function getShutter() {
+    if (!shutter) shutter = makeAudio(AR_SHUTTER_URL);
+    return shutter;
+  }
+
+  function playFrom(seconds) {
+    const audio = getBgm();
+    audio.loop = false;
+    try { audio.currentTime = seconds; } catch {}
+    audio.play().catch(() => {});
+  }
+
+  return {
+    preload: () => {
+      getBgm().load();
+      getShutter().load();
+    },
+    startScan: () => playFrom(0),
+    cueARIntro: () => playFrom(AR_INTRO_CUE_SECONDS),
+    playShutter: () => {
+      const audio = getShutter();
+      try { audio.currentTime = 0; } catch {}
+      audio.play().catch(() => {});
+    },
+    stop: () => {
+      [bgm, shutter].forEach((audio) => {
+        if (!audio) return;
+        audio.pause();
+        try { audio.currentTime = 0; } catch {}
+      });
+    },
+  };
+})();
 
 // Pink 5-lobed sakura viewfinder outline — shape matches 10249.MP4.
 // Five filled circles unioned, then a morphological erosion is composited out
@@ -315,41 +367,21 @@ function OrbitTextRing({ lang = 'zh', size = 300, frozen = false }) {
 // ─── SCREEN 4: AR Active ──────────────────────────────────────
 function ScreenARActive({ lang = 'zh', setLang }) {
   const [arPhase, setArPhase] = React.useState('intro-playing');
-  const audioRef = React.useRef(null);
 
   React.useEffect(() => {
     Step06Assets.preloadUrls(INTRO_FRAME_URLS);
-    const audio = new Audio(INTRO_BGM_URL);
-    audio.preload = 'auto';
-    audio.playsInline = true;
-    audioRef.current = audio;
-    return () => {
-      audio.pause();
-      audio.currentTime = 0;
-      if (audioRef.current === audio) audioRef.current = null;
-    };
   }, []);
 
-  React.useEffect(() => {
-    if (arPhase !== 'intro-playing') return undefined;
-    const audio = audioRef.current;
-    if (!audio) return undefined;
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
-    return () => audio.pause();
-  }, [arPhase]);
-
   const handleIntroComplete = React.useCallback(() => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.pause();
-      audio.currentTime = 0;
-    }
     setArPhase('final-live');
   }, []);
 
   const captureFrame = React.useCallback(() => {
-    setArPhase((current) => current === 'captured-frame' ? 'final-live' : 'captured-frame');
+    setArPhase((current) => {
+      if (current === 'captured-frame') return 'final-live';
+      EMOARAudio.playShutter();
+      return 'captured-frame';
+    });
   }, []);
 
   const shareFrame = React.useCallback(async () => {
@@ -816,5 +848,6 @@ Object.assign(window, {
   ScreenDenied,
   ScreenLoading,
   ScreenError,
+  EMOARAudio,
   EMO_INTRO_FRAME_URLS: INTRO_FRAME_URLS,
 });

@@ -422,6 +422,14 @@
           window.Step06Assets?.preload({ full: false });
           window.Step06Assets?.preloadUrls?.(window.EMO_INTRO_FRAME_URLS || []);
         }
+        window.EMOARAudio?.preload?.();
+        if (state === 'scan') {
+          window.EMOARAudio?.startScan?.();
+        } else if (state === 'ar') {
+          window.EMOARAudio?.cueARIntro?.();
+        } else {
+          window.EMOARAudio?.stop?.();
+        }
       }, [state]);
 
       // Keyboard: arrow keys step through the main happy path for quick review
