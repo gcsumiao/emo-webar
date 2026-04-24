@@ -7,7 +7,7 @@ const INTRO_FRAME_RANGES = [[9, 80], [190, 300]];
 const INTRO_FRAME_URLS = INTRO_FRAME_RANGES.flatMap(([start, end]) =>
   Array.from(
     { length: end - start + 1 },
-    (_, i) => `assets/step06/sequence/1_${String(start + i).padStart(4, '0')}.png`
+    (_, i) => `assets/step06/intro-hq/1_${String(start + i).padStart(4, '0')}.png`
   )
 );
 const INTRO_DURATION_MS = Math.round((INTRO_FRAME_URLS.length / 30) * 1000);
