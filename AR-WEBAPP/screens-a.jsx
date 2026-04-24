@@ -317,6 +317,32 @@ function ScreenLanding({ lang = 'zh', setLang }) {
 }
 
 function ScreenPermission({ lang = 'zh', setLang }) {
+  const [probing, setProbing] = React.useState(false);
+
+  // Ask the browser for camera access up front so we can route the user to
+  // `denied`/`error` before MindAR boots. We immediately release the probe
+  // stream — MindAR's start() will request its own.
+  const requestCamera = React.useCallback(async () => {
+    if (probing) return;
+    setProbing(true);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      window.__setProtoState?.('error');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+      });
+      stream.getTracks().forEach((track) => track.stop());
+      window.__setProtoState?.('loading');
+    } catch (err) {
+      const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+      window.__setProtoState?.(denied ? 'denied' : 'error');
+    } finally {
+      setProbing(false);
+    }
+  }, [probing]);
+
   return (
     <div
       style={{
@@ -442,7 +468,7 @@ function ScreenPermission({ lang = 'zh', setLang }) {
       </div>
 
       <div style={{ position: 'absolute', left: 16, right: 16, bottom: 28, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <PillBtn lang={lang} zh="允许访问" en="Allow camera" onClick={() => window.__setProtoState?.('loading')} />
+        <PillBtn lang={lang} zh="允许访问" en="Allow camera" onClick={requestCamera} />
         <PillBtn lang={lang} zh="暂不使用" en="Not now" variant="ghost" onClick={() => window.__setProtoState?.('denied')} />
       </div>
     </div>

@@ -68,6 +68,49 @@ const Step06Assets = (() => {
     });
   }
 
+  function frameNumberFromUrl(url) {
+    const match = String(url || '').match(/1_(\d+)\.png$/);
+    return match ? Number(match[1]) : null;
+  }
+
+  function getFrameUrlsInRange(startFrame, endFrame) {
+    const hasRange = Number.isFinite(startFrame) && Number.isFinite(endFrame);
+    if (!hasRange) return manifest.frameUrls;
+    return manifest.frameUrls.filter((url) => {
+      const frameNumber = frameNumberFromUrl(url);
+      return frameNumber !== null && frameNumber >= startFrame && frameNumber <= endFrame;
+    });
+  }
+
+  function preloadRange({ startFrame, endFrame } = {}) {
+    loadManifest().then((loaded) => {
+      const urls = loaded.frameUrls.filter((url) => {
+        const frameNumber = frameNumberFromUrl(url);
+        return frameNumber !== null && frameNumber >= startFrame && frameNumber <= endFrame;
+      });
+      urls.forEach(primeImage);
+      if (urls[0]) primeImage(urls[0]);
+      if (urls[urls.length - 1]) primeImage(urls[urls.length - 1]);
+    });
+  }
+
+  function preloadUrls(urls = [], { eagerCount = 24 } = {}) {
+    if (!Array.isArray(urls) || !urls.length) return;
+    const eagerUrls = urls.slice(0, eagerCount);
+    eagerUrls.forEach(primeImage);
+    primeImage(urls[urls.length - 1]);
+
+    const restUrls = urls.slice(eagerCount);
+    const schedule = window.requestIdleCallback || ((cb) => window.setTimeout(cb, 80));
+    let index = 0;
+    const loadBatch = () => {
+      restUrls.slice(index, index + 12).forEach(primeImage);
+      index += 12;
+      if (index < restUrls.length) schedule(loadBatch);
+    };
+    schedule(loadBatch);
+  }
+
   function createAudio() {
     const audio = new Audio(manifest.audioUrl);
     audio.preload = 'auto';
@@ -82,9 +125,12 @@ const Step06Assets = (() => {
   return {
     loadManifest,
     preload,
+    preloadRange,
+    preloadUrls,
     createAudio,
     getManifest: () => manifest,
     getFrameUrl,
+    getFrameUrlsInRange,
   };
 })();
 
@@ -110,6 +156,11 @@ function Step06SequencePlayer({
   size = 260,
   autoplay = false,
   onComplete,
+  holdLastFrame = false,
+  frameStart = null,
+  frameEnd = null,
+  frameUrls = null,
+  durationMs = null,
   className = '',
   style = {},
 }) {
@@ -118,6 +169,7 @@ function Step06SequencePlayer({
   const [frameIndex, setFrameIndex] = React.useState(0);
   const rafRef = React.useRef(null);
   const startRef = React.useRef(0);
+  const completedRef = React.useRef(false);
 
   React.useEffect(() => {
     let off = false;
@@ -125,7 +177,16 @@ function Step06SequencePlayer({
     Step06Assets.loadManifest().then((loaded) => {
       if (off) return;
       setManifest(loaded);
-      const probeUrl = loaded.frameUrls[0] || loaded.finalFrameUrl;
+      const rangeUrls = Array.isArray(frameUrls) && frameUrls.length
+        ? frameUrls
+        : Number.isFinite(frameStart) && Number.isFinite(frameEnd)
+        ? loaded.frameUrls.filter((url) => {
+            const match = String(url || '').match(/1_(\d+)\.png$/);
+            const frameNumber = match ? Number(match[1]) : null;
+            return frameNumber !== null && frameNumber >= frameStart && frameNumber <= frameEnd;
+          })
+        : loaded.frameUrls;
+      const probeUrl = rangeUrls[0] || loaded.frameUrls[0] || loaded.finalFrameUrl;
       Step06Assets.preload({ full: false });
       Step06Assets.loadManifest().then(() => {
         if (!off) {
@@ -143,39 +204,62 @@ function Step06SequencePlayer({
       }
     });
     return () => { off = true; };
-  }, []);
+  }, [frameStart, frameEnd, frameUrls]);
+
+  const playbackFrames = React.useMemo(() => {
+    if (Array.isArray(frameUrls) && frameUrls.length) {
+      return frameUrls;
+    }
+    if (!Number.isFinite(frameStart) || !Number.isFinite(frameEnd)) {
+      return manifest.frameUrls;
+    }
+    return Step06Assets.getFrameUrlsInRange(frameStart, frameEnd);
+  }, [manifest.frameUrls, frameStart, frameEnd, frameUrls]);
+
+  const playbackDurationMs = durationMs || (
+    playbackFrames.length && manifest.frameDurationMs
+      ? Math.max(900, playbackFrames.length * manifest.frameDurationMs)
+      : manifest.introDurationMs
+  );
 
   React.useEffect(() => {
     cancelAnimationFrame(rafRef.current);
-    if (!autoplay || !ready || !manifest.frameUrls.length) {
-      setFrameIndex(0);
+    if (!autoplay || !ready || !playbackFrames.length) {
+      // If the sequence already finished and caller wants the final frame held,
+      // don't reset back to frame 0 when autoplay flips off.
+      if (!(holdLastFrame && completedRef.current)) {
+        setFrameIndex(0);
+      }
       return undefined;
     }
 
-    setFrameIndex(0);
+    if (!(holdLastFrame && completedRef.current)) {
+      setFrameIndex(0);
+    }
     startRef.current = 0;
 
     const tick = (ts) => {
       if (!startRef.current) startRef.current = ts;
       const elapsed = ts - startRef.current;
-      const progress = Math.min(1, elapsed / manifest.introDurationMs);
+      const progress = Math.min(1, elapsed / playbackDurationMs);
       const nextIndex = Math.min(
-        manifest.frameUrls.length - 1,
-        Math.floor(progress * manifest.frameUrls.length)
+        playbackFrames.length - 1,
+        Math.floor(progress * playbackFrames.length)
       );
       setFrameIndex(nextIndex);
       if (progress < 1) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
+        completedRef.current = true;
         onComplete?.();
       }
     };
 
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [autoplay, manifest.frameUrls, manifest.introDurationMs, onComplete, ready]);
+  }, [autoplay, playbackFrames, playbackDurationMs, onComplete, ready, holdLastFrame]);
 
-  const currentSrc = Step06Assets.getFrameUrl(frameIndex) || manifest.finalFrameUrl;
+  const currentSrc = playbackFrames[frameIndex] || playbackFrames[playbackFrames.length - 1] || manifest.finalFrameUrl;
 
   return (
     <div

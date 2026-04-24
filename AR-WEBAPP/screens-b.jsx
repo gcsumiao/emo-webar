@@ -1,114 +1,70 @@
 // Scan, AR active, denied, error, loading screens
 
-const SCAN_SCENE_URL = 'assets/scan/scene-01.jpg';
-const SCAN_OUTLINE_URL = 'assets/scan/yimao-outline.png';
-// Outline aspect (w/h) = 0.961. Frames hug the real inflatable in scene-01.jpg.
-// Photo-mapped inflatable bbox in phone coords: left≈59 top≈484 width≈280 height≈273.
-const SCAN_SEARCHING_FRAME = { left: 74, top: 484, width: 242, height: 252 };
-const SCAN_LOCKED_FRAME = { left: 50, top: 462, width: 290, height: 302 };
+// Flower-shaped (sakura) viewfinder matches the reference video 10249.MP4.
+// Coordinates are in the 390×820 phone frame.
+const SCAN_FLOWER_FRAME = { cx: 195, cy: 430, size: 270 };
+const INTRO_FRAME_RANGES = [[9, 80], [190, 300]];
+const INTRO_FRAME_URLS = INTRO_FRAME_RANGES.flatMap(([start, end]) =>
+  Array.from(
+    { length: end - start + 1 },
+    (_, i) => `assets/step06/sequence/1_${String(start + i).padStart(4, '0')}.png`
+  )
+);
+const INTRO_DURATION_MS = Math.round((INTRO_FRAME_URLS.length / 30) * 1000);
 
-const SCENE_COVER_STYLE = {
-  backgroundImage: `url(${SCAN_SCENE_URL})`,
-  backgroundSize: 'cover',
-  backgroundPosition: 'center center',
-  backgroundRepeat: 'no-repeat',
-};
+// Pink 5-lobed sakura viewfinder outline — shape matches 10249.MP4.
+// Five filled circles unioned, then a morphological erosion is composited out
+// to yield a uniform-width outline of the union silhouette.
+function FlowerViewfinder({ cx, cy, size, color = TOKENS.pink, strokeWidth = 2.4 }) {
+  // Render in raw pixel units so feMorphology radius is interpretable.
+  // r > d ensures the central region is covered by every lobe (no inner hole).
+  const r = 0.30 * size;
+  const d = 0.25 * size;
+  const lobes = [0, 1, 2, 3, 4].map((i) => {
+    const theta = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+    return { x: size / 2 + Math.cos(theta) * d, y: size / 2 + Math.sin(theta) * d };
+  });
+  const filterId = `flower-outline-${size}-${strokeWidth}`;
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      style={{
+        position: 'absolute',
+        left: cx - size / 2,
+        top: cy - size / 2,
+        pointerEvents: 'none',
+        overflow: 'visible',
+        filter: 'drop-shadow(0 0 6px rgba(242,156,176,0.45))',
+      }}
+    >
+      <defs>
+        <filter id={filterId} x="-5%" y="-5%" width="110%" height="110%">
+          <feMorphology in="SourceGraphic" operator="erode" radius={strokeWidth / 2} result="eroded" />
+          <feComposite in="SourceGraphic" in2="eroded" operator="out" />
+        </filter>
+      </defs>
+      <g filter={`url(#${filterId})`}>
+        {lobes.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r={r} fill={color} />
+        ))}
+      </g>
+    </svg>
+  );
+}
 
-function SceneBackdrop({ darkness = 0, blur = 0 }) {
+function ScanSweepOverlay({ active = true }) {
   return (
     <div
+      aria-hidden="true"
       style={{
         position: 'absolute',
         inset: 0,
-        ...SCENE_COVER_STYLE,
-        filter: blur ? `blur(${blur}px)` : 'none',
-        transform: blur ? 'scale(1.04)' : 'none',
-      }}
-    >
-      {darkness > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: `linear-gradient(180deg, rgba(13,16,20,${darkness * 0.78}) 0%, rgba(13,16,20,${darkness}) 100%)`,
-          }}
-        />
-      )}
-    </div>
-  );
-}
-
-function MaskedSilhouette({ frame, color = 'rgba(255,225,234,0.98)', inset = 0, opacity = 1, backgroundClone = false }) {
-  const width = Math.max(8, frame.width - inset * 2);
-  const height = Math.max(8, frame.height - inset * 2);
-  const left = frame.left + inset;
-  const top = frame.top + inset;
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        ...(backgroundClone ? { inset: 0 } : { left, top, width, height }),
-        ...(backgroundClone ? SCENE_COVER_STYLE : { background: color }),
-        opacity,
-        WebkitMaskImage: `url(${SCAN_OUTLINE_URL})`,
-        WebkitMaskRepeat: 'no-repeat',
-        WebkitMaskPosition: backgroundClone ? `${left}px ${top}px` : 'center center',
-        WebkitMaskSize: `${width}px ${height}px`,
-        maskImage: `url(${SCAN_OUTLINE_URL})`,
-        maskRepeat: 'no-repeat',
-        maskPosition: backgroundClone ? `${left}px ${top}px` : 'center center',
-        maskSize: `${width}px ${height}px`,
-        pointerEvents: 'none',
-      }}
-    />
-  );
-}
-
-function ScanTargetFrame({ frame, locked = false }) {
-  return (
-    <>
-      <MaskedSilhouette
-        frame={frame}
-        color={locked ? 'rgba(255,217,229,0.58)' : 'rgba(255,233,240,0.52)'}
-      />
-      <MaskedSilhouette frame={frame} backgroundClone inset={locked ? 5 : 4} />
-      <div
-        style={{
-          position: 'absolute',
-          left: frame.left - 8,
-          top: frame.top - 8,
-          width: frame.width + 16,
-          height: frame.height + 16,
-          filter: locked ? 'drop-shadow(0 0 12px rgba(242,156,176,0.38))' : 'drop-shadow(0 0 8px rgba(242,156,176,0.26))',
-          borderRadius: 28,
-          pointerEvents: 'none',
-        }}
-      />
-    </>
-  );
-}
-
-function ScanSweepLine({ frame }) {
-  const width = Math.max(8, frame.width);
-  const height = Math.max(8, frame.height);
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: frame.left,
-        top: frame.top,
-        width,
-        height,
-        pointerEvents: 'none',
         overflow: 'hidden',
-        WebkitMaskImage: `url(${SCAN_OUTLINE_URL})`,
-        WebkitMaskRepeat: 'no-repeat',
-        WebkitMaskPosition: 'center center',
-        WebkitMaskSize: `${width}px ${height}px`,
-        maskImage: `url(${SCAN_OUTLINE_URL})`,
-        maskRepeat: 'no-repeat',
-        maskPosition: 'center center',
-        maskSize: `${width}px ${height}px`,
+        opacity: active ? 1 : 0,
+        transition: 'opacity 220ms ease',
+        pointerEvents: 'none',
       }}
     >
       <div
@@ -119,44 +75,120 @@ function ScanSweepLine({ frame }) {
           height: 4,
           marginTop: -2,
           borderRadius: 999,
-          background: 'rgba(255,243,247,0.88)',
-          boxShadow: '0 0 14px rgba(255,243,247,0.76)',
-          animation: 'scan-sweep 4.8s ease-in-out infinite',
+          background: 'rgba(255,255,255,0.9)',
+          boxShadow: '0 0 18px rgba(255,255,255,0.86), 0 0 42px rgba(242,156,176,0.58)',
+          animation: 'scan-sweep 2.8s ease-in-out infinite',
         }}
       />
     </div>
   );
 }
 
+function FrostButton({ children, onClick, disabled = false, style = {}, title }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        height: 38,
+        borderRadius: 999,
+        border: 'none',
+        background: 'rgba(255,255,255,0.18)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        color: '#fff',
+        cursor: disabled ? 'default' : 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+        opacity: disabled ? 0.72 : 1,
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ─── SCREEN 3: Scan — looking for target ──────────────────────
+// Drives from the shared MindAR runtime (window.__mindar). Only decoration:
+// a pink flower-shaped viewfinder that fades out on targetFound.
 function ScreenScan({ lang = 'zh', setLang }) {
   const [scanState, setScanState] = React.useState('searching');
-  const frame = scanState === 'searching' ? SCAN_SEARCHING_FRAME : SCAN_LOCKED_FRAME;
-  const showSweep = scanState === 'searching';
+  const [mindarStatus, setMindarStatus] = React.useState(() => window.__mindar?.getStatus?.() || 'idle');
+  const lockTimerRef = React.useRef(null);
   const isLocked = scanState === 'locked';
+  const isFocusing = scanState === 'focusing';
 
-  const lockTarget = React.useCallback(() => {
-    setScanState((current) => current === 'searching' ? 'locked' : current);
+  React.useEffect(() => {
+    const mindar = window.__mindar;
+    if (!mindar) return undefined;
+    const offStatus = mindar.onStatus?.(setMindarStatus) || (() => {});
+    const offFound = mindar.onTargetFound(() => setScanState('locked'));
+    const offLost  = mindar.onTargetLost(() => {
+      setScanState((current) => current === 'locked' ? current : 'searching');
+    });
+    return () => { offStatus(); offFound(); offLost(); };
   }, []);
 
   React.useEffect(() => {
     if (!isLocked) return undefined;
     const t = setTimeout(() => {
       window.__setProtoState?.('ar');
-    }, 900);
+    }, 600);
     return () => clearTimeout(t);
   }, [isLocked]);
 
-  return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#000' }}>
-      <SceneBackdrop darkness={0.14} />
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(8,10,14,0.12) 0%, rgba(8,10,14,0.28) 100%)' }} />
+  React.useEffect(() => () => clearTimeout(lockTimerRef.current), []);
 
-      <div style={{ position: 'absolute', inset: 0, transition: 'all 420ms cubic-bezier(.22,1,.36,1)' }}>
-        <ScanTargetFrame frame={frame} locked={scanState !== 'searching'} />
+  const lockTarget = React.useCallback(() => {
+    if (scanState !== 'searching') return;
+    setScanState('focusing');
+    window.__mindar?.focusCamera?.();
+    clearTimeout(lockTimerRef.current);
+    lockTimerRef.current = setTimeout(() => setScanState('locked'), 780);
+  }, [scanState]);
+
+  const statusLabel = isLocked
+    ? t(lang, '已锁定', 'LOCKED')
+    : isFocusing
+    ? t(lang, '对焦中', 'FOCUS')
+    : mindarStatus === 'loading'
+    ? t(lang, '启动中', 'STARTING')
+    : t(lang, '扫描中', 'SCANNING');
+
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backdropFilter: isFocusing ? 'blur(2.5px)' : 'blur(0px)',
+          WebkitBackdropFilter: isFocusing ? 'blur(2.5px)' : 'blur(0px)',
+          transition: 'backdrop-filter 220ms ease, -webkit-backdrop-filter 220ms ease',
+          pointerEvents: 'none',
+        }}
+      />
+
+      <div style={{
+        position: 'absolute', inset: 0,
+        opacity: isLocked ? 0 : 1,
+        transition: 'opacity 320ms ease-out',
+        pointerEvents: 'none',
+        transform: isFocusing ? 'scale(1.035)' : 'scale(1)',
+        transformOrigin: `${SCAN_FLOWER_FRAME.cx}px ${SCAN_FLOWER_FRAME.cy}px`,
+      }}>
+        <FlowerViewfinder
+          cx={SCAN_FLOWER_FRAME.cx}
+          cy={SCAN_FLOWER_FRAME.cy}
+          size={SCAN_FLOWER_FRAME.size}
+        />
       </div>
 
-      {showSweep && <ScanSweepLine frame={frame} />}
+      <ScanSweepOverlay active={!isLocked} />
 
       <IOSStatusBar dark />
 
@@ -164,64 +196,75 @@ function ScreenScan({ lang = 'zh', setLang }) {
         position: 'absolute', top: 58, left: 16, right: 16,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button
-          type="button"
-          onClick={() => window.__setProtoState?.('landing')}
-          style={{
-          width: 38, height: 38, borderRadius: 999, border: 'none',
-          background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)', color: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-        }}>
+        <FrostButton onClick={() => window.__setProtoState?.('landing')} style={{ width: 38, padding: 0 }}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round"/></svg>
-        </button>
+        </FrostButton>
 
         <div style={{
-          padding: '8px 14px', borderRadius: 999,
-          background: isLocked ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.16)',
+          padding: '8px 14px',
+          borderRadius: 999,
+          background: 'rgba(255,255,255,0.16)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          display: 'flex', alignItems: 'center', gap: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
           border: isLocked ? `0.5px solid rgba(169,212,90,0.5)` : 'none',
-          transition: 'background 220ms ease, border-color 220ms ease',
         }}>
           <div style={{
-            width: 8, height: 8, borderRadius: 999,
+            width: 8,
+            height: 8,
+            borderRadius: 999,
             background: isLocked ? TOKENS.green : TOKENS.pink,
             boxShadow: `0 0 8px ${isLocked ? TOKENS.green : TOKENS.pink}`,
             animation: isLocked ? 'none' : 'pulse 1.4s infinite',
           }}/>
           <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: '#fff', letterSpacing: '0.16em' }}>
-            {isLocked ? t(lang, '已锁定', 'LOCKED') : t(lang, '扫描中', 'SCANNING')}
+            {statusLabel}
           </div>
         </div>
 
-        <button
-          type="button"
+        <FrostButton
           onClick={lockTarget}
-          style={{
-          minWidth: 78, height: 38, borderRadius: 999, border: 'none',
-          background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          gap: 8, color: '#fff', padding: '0 12px',
-        }}>
+          disabled={scanState !== 'searching'}
+          title="Lock target"
+          style={{ minWidth: 78, gap: 8, padding: '0 12px' }}
+        >
           <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14M1 8h14" stroke="#fff" strokeWidth="1.5"/><circle cx="8" cy="8" r="6.5" stroke="#fff" strokeWidth="1.2" fill="none"/></svg>
           <span style={{ fontFamily: lang === 'en' ? FONT_MONO : FONT_ZH, fontSize: 11, fontWeight: 700 }}>
-            {scanState === 'searching' ? t(lang, '锁定', 'TARGET') : t(lang, '已锁定', 'LOCKED')}
+            {isLocked ? t(lang, '已锁定', 'LOCKED') : t(lang, '锁定', 'TARGET')}
           </span>
-        </button>
+        </FrostButton>
       </div>
 
+      <div style={{
+        position: 'absolute',
+        left: '50%',
+        bottom: 138,
+        transform: 'translateX(-50%)',
+        padding: '9px 16px',
+        borderRadius: 999,
+        background: 'rgba(0,0,0,0.26)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        color: 'rgba(255,255,255,0.86)',
+        fontFamily: langFont(lang),
+        fontSize: 11,
+        whiteSpace: 'nowrap',
+      }}>
+        {isFocusing
+          ? t(lang, '正在对焦，自动锁定…', 'Focusing · locking target…')
+          : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning')}
+      </div>
     </div>
   );
 }
 
-function OrbitTextRing({ lang = 'zh', size = 360, frozen = false }) {
+function OrbitTextRing({ lang = 'zh', size = 300, frozen = false }) {
   const radius = size / 2 - 18;
   const cx = size / 2;
   const cy = size / 2;
-  const pathId = 'orbit-ring-path';
+  const pathId = `orbit-ring-path-${lang}-${size}`;
   const pathD =
     `M ${cx - radius},${cy} ` +
     `a ${radius},${radius} 0 1,1 ${radius * 2},0 ` +
@@ -229,7 +272,6 @@ function OrbitTextRing({ lang = 'zh', size = 360, frozen = false }) {
   const phrase = lang === 'en'
     ? 'EMO IS HERE · IFS PLAZA AR LIMITED · '
     : '一毛来和你玩 · 国金天地 AR 限定 · ';
-  const ringText = phrase.repeat(3);
   return (
     <div
       aria-hidden="true"
@@ -258,11 +300,10 @@ function OrbitTextRing({ lang = 'zh', size = 360, frozen = false }) {
             fontWeight: 600,
             letterSpacing: lang === 'en' ? '0.28em' : '0.22em',
             fill: 'rgba(255,255,255,0.82)',
-            textTransform: lang === 'en' ? 'uppercase' : 'none',
           }}
         >
           <textPath href={`#${pathId}`} startOffset="0">
-            {ringText}
+            {phrase.repeat(3)}
           </textPath>
         </text>
       </svg>
@@ -273,108 +314,64 @@ function OrbitTextRing({ lang = 'zh', size = 360, frozen = false }) {
 // ─── SCREEN 4: AR Active ──────────────────────────────────────
 function ScreenARActive({ lang = 'zh', setLang }) {
   const [arPhase, setArPhase] = React.useState('intro-playing');
-  const audioRef = React.useRef(null);
 
   React.useEffect(() => {
-    Step06Assets.preload({ full: true });
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-    };
+    Step06Assets.preloadUrls(INTRO_FRAME_URLS);
   }, []);
 
-  React.useEffect(() => {
-    if (arPhase !== 'intro-playing') return undefined;
-    const audio = Step06Assets.createAudio();
-    audioRef.current = audio;
-    audio.currentTime = 0;
-    audio.play().catch(() => {});
-  }, [arPhase]);
-
   const handleIntroComplete = React.useCallback(() => {
-    setArPhase('final-live-3d');
+    setArPhase('final-live');
   }, []);
 
   const captureFrame = React.useCallback(() => {
-    setArPhase((current) => current === 'captured-frame' ? 'final-live-3d' : 'captured-frame');
+    setArPhase((current) => current === 'captured-frame' ? 'final-live' : 'captured-frame');
   }, []);
 
-  const isLive3D = arPhase === 'final-live-3d' || arPhase === 'captured-frame';
+  const shareFrame = React.useCallback(async () => {
+    const shareData = {
+      title: 'EMO AR',
+      text: lang === 'en' ? 'I found EMO in AR.' : '我在 AR 里遇见了一毛。',
+      url: window.location.href,
+    };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch {}
+      return;
+    }
+    try { await navigator.clipboard?.writeText?.(shareData.url); } catch {}
+  }, [lang]);
+
+  const isCaptured = arPhase === 'captured-frame';
+  const isLive = arPhase === 'final-live' || isCaptured;
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#000' }}>
-      <SceneBackdrop darkness={0.48} />
-
+    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
       <div style={{
         position: 'absolute',
-        inset: 0,
-        background: 'linear-gradient(180deg, rgba(6,8,12,0.08) 0%, rgba(6,8,12,0.22) 30%, rgba(6,8,12,0.55) 100%)',
-      }}/>
-
-      <div style={{
-        position: 'absolute', left: '50%', bottom: '22%', transform: 'translateX(-50%)',
-        width: 360, height: 460,
-        animation: 'mascot-appear 820ms cubic-bezier(.22,1,.36,1) both',
+        left: '50%',
+        top: isLive ? '47%' : '49%',
+        transform: 'translate(-50%, -50%)',
+        width: 600,
+        height: 600,
+        pointerEvents: 'none',
+        transition: 'top 420ms ease-out, transform 420ms ease-out',
       }}>
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          opacity: isLive3D ? 0 : 1,
-          transition: 'opacity 420ms ease-out',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'visible',
-        }}>
-          {/* PNG mascot occupies ~35% of its 768×768 frame (bbox y≈[350,620], center≈63%).
-              Container 740 → visible mascot ≈ 258px, matches GLB at size 280.
-              translateY shifts off-center mascot onto wrapper's vertical middle. */}
-          <Step06SequencePlayer
-            size={740}
-            autoplay={arPhase === 'intro-playing'}
-            onComplete={handleIntroComplete}
-            style={{ transform: 'translateY(-98px)' }}
-          />
-        </div>
-
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          opacity: isLive3D ? 1 : 0,
-          transition: 'opacity 460ms ease-out',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          animation: isLive3D ? 'mascot-settle 520ms ease-out both' : 'none',
-        }}>
-          <ModelViewerIdle
-            size={280}
-            src={step06GlbUrl}
-            active={isLive3D}
-            style={{ position: 'relative', zIndex: 2, pointerEvents: arPhase === 'captured-frame' ? 'none' : 'auto' }}
-          />
-        </div>
-
-        {isLive3D && (
+        <Step06SequencePlayer
+          size={600}
+          autoplay={arPhase === 'intro-playing'}
+          holdLastFrame
+          frameUrls={INTRO_FRAME_URLS}
+          durationMs={INTRO_DURATION_MS}
+          onComplete={handleIntroComplete}
+          style={{ transform: 'translateY(-54px)', filter: 'none' }}
+        />
+        {isLive && (
           <OrbitTextRing
             lang={lang}
-            size={280}
-            frozen={arPhase === 'captured-frame'}
+            size={250}
+            frozen={isCaptured}
           />
         )}
       </div>
-
-      {isLive3D && (
-        <div style={{
-          position: 'absolute', left: '50%', bottom: '26%', transform: 'translateX(-50%)',
-          width: 220, height: 40, borderRadius: '50%',
-          background: 'radial-gradient(closest-side, rgba(242,156,176,0.48), rgba(242,156,176,0))',
-          animation: 'glow-pulse 3.2s ease-in-out infinite',
-          animationPlayState: arPhase === 'captured-frame' ? 'paused' : 'running',
-        }}/>
-      )}
 
       <IOSStatusBar dark />
 
@@ -382,28 +379,24 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         position: 'absolute', top: 58, left: 16, right: 16,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <button
-          type="button"
-          onClick={() => window.__setProtoState?.('landing')}
-          style={{
-          width: 38, height: 38, borderRadius: 999, border: 'none',
-          background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
+        <FrostButton onClick={() => window.__setProtoState?.('landing')} style={{ width: 38, padding: 0 }}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
-        </button>
+        </FrostButton>
 
         <div style={{
-          padding: '8px 14px', borderRadius: 999,
-          background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(12px)',
+          padding: '8px 14px',
+          borderRadius: 999,
+          background: 'rgba(255,255,255,0.2)',
+          backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          display: 'flex', alignItems: 'center', gap: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
           border: `0.5px solid rgba(169,212,90,0.5)`,
         }}>
           <div style={{ width: 7, height: 7, borderRadius: 999, background: TOKENS.green, boxShadow: `0 0 8px ${TOKENS.green}` }}/>
           <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: '#fff', letterSpacing: '0.16em' }}>
-            {arPhase === 'captured-frame' ? t(lang, '已拍照', 'CAPTURED') : t(lang, '实景已锁定', 'LOCKED')}
+            {isCaptured ? t(lang, '已拍照', 'CAPTURED') : t(lang, '实景已锁定', 'LOCKED')}
           </div>
         </div>
 
@@ -411,46 +404,108 @@ function ScreenARActive({ lang = 'zh', setLang }) {
       </div>
 
       <div style={{
-        position: 'absolute', left: 0, right: 0, bottom: 80,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14,
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 80,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 14,
         pointerEvents: 'none',
       }}>
         <div style={{
-          padding: '10px 16px', borderRadius: 999,
-          background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)',
-          fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)',
-          maxWidth: 320, textAlign: 'center',
+          padding: '10px 16px',
+          borderRadius: 999,
+          background: 'rgba(0,0,0,0.32)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          border: '0.5px solid rgba(255,255,255,0.15)',
+          fontFamily: langFont(lang),
+          fontSize: 11,
+          color: 'rgba(255,255,255,0.92)',
+          maxWidth: 320,
+          textAlign: 'center',
         }}>
           {arPhase === 'intro-playing'
             ? t(lang, '一毛出现中…', 'EMO is appearing…')
-            : arPhase === 'captured-frame'
+            : isCaptured
             ? t(lang, '已定格，可再次按下返回实时画面', 'Captured · tap shutter again for live view')
             : t(lang, '拍下一毛并分享', 'Capture & share EMO')}
         </div>
-        <button
-          type="button"
-          onClick={captureFrame}
-          disabled={!isLive3D}
-          style={{
-            pointerEvents: 'auto',
-            width: 68, height: 68, borderRadius: 999, border: '3px solid #fff',
-            background: TOKENS.pink, cursor: isLive3D ? 'pointer' : 'default',
-            boxShadow: '0 0 0 2px rgba(255,255,255,0.3), 0 10px 28px rgba(0,0,0,0.42)',
-            opacity: isLive3D ? 1 : 0.55,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 0,
-          }}>
-          <div style={{
-            width: 20,
-            height: 20,
-            borderRadius: arPhase === 'captured-frame' ? 4 : 999,
-            background: '#fff',
-          }}/>
-        </button>
+        {isCaptured ? (
+          <div style={{ display: 'flex', gap: 12, pointerEvents: 'auto' }}>
+            <button
+              type="button"
+              onClick={captureFrame}
+              style={{
+                minWidth: 112,
+                height: 42,
+                borderRadius: 999,
+                border: 'none',
+                background: '#1F1A1F',
+                color: '#FAF6F1',
+                fontFamily: langFont(lang),
+                fontSize: 13,
+                fontWeight: 800,
+                boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+                cursor: 'pointer',
+              }}
+            >
+              {t(lang, '重新拍照', 'Retake')}
+            </button>
+            <button
+              type="button"
+              onClick={shareFrame}
+              style={{
+                minWidth: 112,
+                height: 42,
+                borderRadius: 999,
+                border: 'none',
+                background: '#1F1A1F',
+                color: '#FAF6F1',
+                fontFamily: langFont(lang),
+                fontSize: 13,
+                fontWeight: 800,
+                boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+                cursor: 'pointer',
+              }}
+            >
+              {t(lang, '分享好友', 'Share')}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={captureFrame}
+            disabled={!isLive}
+            style={{
+              pointerEvents: 'auto',
+              width: 68,
+              height: 68,
+              borderRadius: 999,
+              border: '3px solid #fff',
+              background: TOKENS.pink,
+              cursor: isLive ? 'pointer' : 'default',
+              boxShadow: '0 0 0 2px rgba(255,255,255,0.3), 0 10px 28px rgba(0,0,0,0.42)',
+              opacity: isLive ? 1 : 0.55,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+            }}
+          >
+            <div style={{
+              width: 20,
+              height: 20,
+              borderRadius: 999,
+              background: '#fff',
+            }}/>
+          </button>
+        )}
       </div>
 
-      {arPhase === 'captured-frame' && (
+      {isCaptured && (
         <div style={{
           position: 'absolute',
           left: 38,
@@ -730,4 +785,11 @@ function ScreenError({ lang = 'zh', setLang }) {
   );
 }
 
-Object.assign(window, { ScreenScan, ScreenARActive, ScreenDenied, ScreenLoading, ScreenError });
+Object.assign(window, {
+  ScreenScan,
+  ScreenARActive,
+  ScreenDenied,
+  ScreenLoading,
+  ScreenError,
+  EMO_INTRO_FRAME_URLS: INTRO_FRAME_URLS,
+});

@@ -102,6 +102,9 @@
   <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <!-- A-Frame + MindAR image tracking runtime (CDN, no local build). -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 </head>
 <body>
   <div id="root"></div>
@@ -155,6 +158,210 @@
         <IOSDevice width={FRAME_W} height={FRAME_H}>
           {children}
         </IOSDevice>
+      );
+    }
+
+    // ─── MindAR shared runtime ────────────────────────────────
+    // A single <a-scene> lives under the phone frame for the whole session.
+    // It powers both the "scan" and "ar" screens — we never restart the
+    // camera on scan↔ar transitions, which would be jarring.
+    //
+    // window.__mindar exposes:
+    //   start() / stop()                  — camera + tracking lifecycle
+    //   getStatus() / onStatus(cb)        — idle/loading/ready/running/found/lost/error
+    //   onTargetFound(cb) / onTargetLost  — optional 2D target subscribers
+    //   focusCamera()                     — best-effort focus kick for mobile cameras
+    //   isReady()                         — true once a-scene has loaded
+    function MindARStage({ active, visible }) {
+      const containerRef = React.useRef(null);
+      const sceneRef = React.useRef(null);
+      const anchorRef = React.useRef(null);
+      const startedRef = React.useRef(false);
+      const statusRef = React.useRef('idle');
+
+      // Mount the <a-scene> exactly once on mount.
+      React.useEffect(() => {
+        const container = containerRef.current;
+        if (!container || sceneRef.current) return;
+
+        // Build the scene via innerHTML so React never diffs A-Frame's DOM.
+        container.innerHTML = `
+          <a-scene embedded
+            mindar-image="imageTargetSrc: assets/mindar/targets.mind; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
+            vr-mode-ui="enabled: false"
+            device-orientation-permission-ui="enabled: false"
+            renderer="colorManagement: true; physicallyCorrectLights: true"
+            style="position:absolute; inset:0; width:100%; height:100%;">
+            <a-assets></a-assets>
+            <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+            <a-entity mindar-image-target="targetIndex: 0" id="emo-anchor"></a-entity>
+          </a-scene>
+        `;
+
+        const scene = container.querySelector('a-scene');
+        const anchor = container.querySelector('#emo-anchor');
+        sceneRef.current = scene;
+        anchorRef.current = anchor;
+
+        const foundCbs = new Set();
+        const lostCbs = new Set();
+        const statusCbs = new Set();
+
+        const setStatus = (nextStatus) => {
+          statusRef.current = nextStatus;
+          statusCbs.forEach(cb => { try { cb(nextStatus); } catch (e) { console.error(e); } });
+        };
+
+        const onFound = () => {
+          setStatus('found');
+          foundCbs.forEach(cb => { try { cb(); } catch (e) { console.error(e); } });
+        };
+        const onLost  = () => {
+          setStatus(startedRef.current ? 'lost' : 'ready');
+          lostCbs.forEach(cb  => { try { cb(); } catch (e) { console.error(e); } });
+        };
+        anchor.addEventListener('targetFound', onFound);
+        anchor.addEventListener('targetLost', onLost);
+
+        scene.addEventListener('loaded', () => {
+          if (!startedRef.current && statusRef.current === 'idle') setStatus('ready');
+        }, { once: true });
+
+        const getCameraTrack = () => {
+          const videos = Array.from(container.querySelectorAll('video'));
+          const video = videos.find((v) => v.srcObject && v.srcObject.getVideoTracks);
+          return video?.srcObject?.getVideoTracks?.()[0] || null;
+        };
+
+        window.__mindar = {
+          scene,
+          anchor,
+          getStatus: () => statusRef.current,
+          isReady: () => scene.hasLoaded === true,
+          onStatus: (cb) => {
+            statusCbs.add(cb);
+            cb(statusRef.current);
+            return () => statusCbs.delete(cb);
+          },
+          start: async () => {
+            const sys = scene.systems && scene.systems['mindar-image-system'];
+            if (!sys) throw new Error('mindar-image-system not ready');
+            setStatus('loading');
+            if (navigator.mediaDevices?.getUserMedia) {
+              let probeStream = null;
+              try {
+                probeStream = await navigator.mediaDevices.getUserMedia({
+                  video: { facingMode: { ideal: 'environment' } },
+                  audio: false,
+                });
+              } catch (err) {
+                setStatus('camera-denied');
+                throw err;
+              } finally {
+                probeStream?.getTracks?.().forEach((track) => track.stop());
+              }
+            }
+            await sys.start();
+            startedRef.current = true;
+            setStatus('running');
+          },
+          stop: () => {
+            const sys = scene.systems && scene.systems['mindar-image-system'];
+            if (sys) sys.stop();
+            startedRef.current = false;
+            setStatus(scene.hasLoaded ? 'ready' : 'idle');
+          },
+          onTargetFound: (cb) => { foundCbs.add(cb); return () => foundCbs.delete(cb); },
+          onTargetLost:  (cb) => { lostCbs.add(cb);  return () => lostCbs.delete(cb); },
+          focusCamera: async () => {
+            const track = getCameraTrack();
+            if (!track?.applyConstraints) return false;
+            try {
+              await track.applyConstraints({
+                advanced: [
+                  { focusMode: 'continuous' },
+                  { exposureMode: 'continuous' },
+                  { whiteBalanceMode: 'continuous' },
+                ],
+              });
+              return true;
+            } catch {
+              try {
+                const zoom = track.getSettings?.().zoom;
+                if (Number.isFinite(zoom)) {
+                  await track.applyConstraints({ advanced: [{ zoom }] });
+                  return true;
+                }
+              } catch {}
+              return false;
+            }
+          },
+        };
+
+        return () => {
+          try {
+            const sys = scene.systems && scene.systems['mindar-image-system'];
+            if (sys && startedRef.current) sys.stop();
+          } catch {}
+          anchor.removeEventListener('targetFound', onFound);
+          anchor.removeEventListener('targetLost', onLost);
+          setStatus('idle');
+          if (window.__mindar && window.__mindar.scene === scene) delete window.__mindar;
+          container.innerHTML = '';
+          sceneRef.current = null;
+          anchorRef.current = null;
+          startedRef.current = false;
+        };
+      }, []);
+
+      // Start/stop the camera session as the app flows through scan/ar vs. other screens.
+      React.useEffect(() => {
+        const scene = sceneRef.current;
+        if (!scene) return;
+
+        const startIfNeeded = async () => {
+          if (startedRef.current) return;
+          try {
+            // A-Frame may still be bootstrapping; wait for scene load if needed.
+            if (!scene.hasLoaded) {
+              await new Promise((resolve) => scene.addEventListener('loaded', resolve, { once: true }));
+            }
+            const sys = scene.systems && scene.systems['mindar-image-system'];
+            if (!sys) throw new Error('mindar-image-system missing');
+            await window.__mindar.start();
+          } catch (err) {
+            console.error('[MindAR] start failed', err);
+            const message = String(err?.name || err?.message || err);
+            if (/NotAllowed|Permission|denied/i.test(message)) {
+              window.__setProtoState?.('denied');
+            } else {
+              window.__setProtoState?.('error');
+            }
+          }
+        };
+
+        const stopIfNeeded = () => {
+          if (!startedRef.current) return;
+          window.__mindar?.stop();
+        };
+
+        if (active) startIfNeeded();
+        else stopIfNeeded();
+      }, [active]);
+
+      return (
+        <div
+          ref={containerRef}
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            overflow: 'hidden',
+            // MindAR video fills the scene; we clip to the phone frame.
+            visibility: visible ? 'visible' : 'hidden',
+            zIndex: 0,
+          }}
+        />
       );
     }
 
@@ -216,7 +423,8 @@
 
       React.useEffect(() => {
         if (state === 'scan' || state === 'ar') {
-          window.Step06Assets?.preload({ full: true });
+          window.Step06Assets?.preload({ full: false });
+          window.Step06Assets?.preloadUrls?.(window.EMO_INTRO_FRAME_URLS || []);
         }
       }, [state]);
 
@@ -259,8 +467,13 @@
           <div className="stage">
             <div className="phone-wrap" style={{ position: 'relative' }}>
               <Phone>
+                {/* Persistent MindAR camera + anchor. Mounted once, survives screen switches. */}
+                <MindARStage
+                  active={state === 'scan' || state === 'ar'}
+                  visible={state === 'scan' || state === 'ar'}
+                />
                 {/* Re-key on nonce so entry animation plays on every transition */}
-                <div key={nonce} className="screen-container screen-enter">
+                <div key={nonce} className="screen-container screen-enter" style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
                   <ScreenFor state={state} lang={lang} setLang={setLang}/>
                 </div>
               </Phone>
