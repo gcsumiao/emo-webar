@@ -1,0 +1,22 @@
+import { IOSStatusBar, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { Mascot3D } from '../components/Mascot.jsx';
+
+export function Loading({ lang = 'zh' }) {
+  return (
+    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#0d0f13' }}>
+      <IOSStatusBar dark />
+      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(80% 50% at 50% 40%, #2a2028 0%, #0d0f13 70%)' }} />
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
+        <div style={{ marginBottom: 28 }}><Mascot3D state="sprout" size={160} animate="bob" /></div>
+        <div style={{ width: 220, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden', position: 'relative' }}>
+          <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, ${TOKENS.pink} 0%, ${TOKENS.pinkDeep} 100%)`, borderRadius: 999, boxShadow: `0 0 10px ${TOKENS.pink}`, animation: 'loading-bar-fill 1.8s ease-in-out infinite' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)', width: '40%', animation: 'loading-bar-shimmer 1.6s ease-in-out infinite', mixBlendMode: 'screen' }} />
+        </div>
+        <div style={{ marginTop: 18, textAlign: 'center', fontFamily: langFont(lang), fontSize: 18, fontWeight: 700, color: '#fff' }}>{t(lang, '正在准备一毛…', 'Waking up EMO…')}</div>
+      </div>
+      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(var(--safe-bottom) + 34px)', textAlign: 'center', fontFamily: FONT_MONO, fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.18em' }}>
+        {t(lang, '首次加载约需 3-5 秒', 'FIRST LOAD · 3-5 SECONDS')}
+      </div>
+    </div>
+  );
+}
