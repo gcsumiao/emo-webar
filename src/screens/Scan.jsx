@@ -1,5 +1,5 @@
 import React from 'react';
-import { IOSStatusBar, LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
+import { LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
 import { useScanGeometry } from '../lib/viewport.js';
 
 function FlowerViewfinder({ cx, cy, size, color = TOKENS.pink, strokeWidth = 2.4 }) {
@@ -76,7 +76,6 @@ export function Scan({ lang = 'zh', setLang }) {
         <FlowerViewfinder cx={geometry.scanCenterX} cy={geometry.scanCenterY} size={geometry.scanSize} />
       </div>
       <ScanSweepOverlay active={!isLocked} />
-      <IOSStatusBar dark />
       <div className="top-controls">
         <FrostButton onClick={() => window.__setProtoState?.('landing')}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" /></svg>

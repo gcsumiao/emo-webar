@@ -1,10 +1,12 @@
+export const LIVE_ANCHORED_GLB_SCALE = 0.075;
+
 export const defaultAnchoredAr = {
   type: 'model',
   assetId: 'emo-model',
   position: [0, 0, 0.08],
   rotation: [0, 0, 0],
-  scale: [0.18, 0.18, 0.18],
-  floatTo: [0, 0, 0.13],
+  scale: [LIVE_ANCHORED_GLB_SCALE, LIVE_ANCHORED_GLB_SCALE, LIVE_ANCHORED_GLB_SCALE],
+  floatTo: [0, 0, 0.12],
 };
 
 export const arTargets = [
