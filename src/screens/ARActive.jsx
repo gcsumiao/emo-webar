@@ -30,8 +30,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     window.__mindar?.setLiveContentVisible?.(false);
     return () => {
       window.clearTimeout(handoffTimerRef.current);
-      window.__mindar?.setLiveContentVisible?.(true);
-      window.__mindar?.unfreezeCurrentTarget?.();
+      window.__mindar?.hideFinalObject?.();
     };
   }, []);
 
@@ -41,22 +40,15 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   const captureFrame = React.useCallback(() => {
     setArPhase((current) => {
-      if (current === 'captured-frame') {
-        const nextFrozenState = window.__mindar?.unfreezeCurrentTarget?.() || null;
-        setFrozenState(nextFrozenState);
-        console.info('[EMO-AR] unfreeze', nextFrozenState);
-        return 'final-live';
-      }
+      if (current === 'captured-frame') return 'final-live';
       arAudio.playShutter();
-      const nextFrozenState = window.__mindar?.freezeCurrentTarget?.() || null;
-      setFrozenState(nextFrozenState);
-      console.info('[EMO-AR] freeze', nextFrozenState);
       return 'captured-frame';
     });
   }, []);
 
   const handleIntroComplete = React.useCallback(() => {
-    window.__mindar?.setLiveContentVisible?.(true);
+    const nextFrozenState = window.__mindar?.showFinalObject?.() || null;
+    setFrozenState(nextFrozenState);
     setArPhase('intro-handoff');
     window.clearTimeout(handoffTimerRef.current);
     handoffTimerRef.current = window.setTimeout(() => {
@@ -65,8 +57,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, []);
 
   const exitAR = React.useCallback(() => {
-    window.__mindar?.unfreezeCurrentTarget?.();
-    window.__setProtoState?.('landing');
+    window.clearTimeout(handoffTimerRef.current);
+    const nextFrozenState = window.__mindar?.hideFinalObject?.() || null;
+    setFrozenState(nextFrozenState);
+    window.__setProtoState?.('scan');
   }, []);
 
   const shareFrame = React.useCallback(async () => {
@@ -115,27 +109,23 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const distance = pointerDistance(points[0], points[1]);
       if (gestureRef.current.lastAngle != null) {
         const yawDelta = -normalizeAngleDelta(angle - gestureRef.current.lastAngle);
-        if (isCaptured) {
-          const nextFrozenState = window.__mindar?.rotateFrozenBy?.({ yawDelta });
-          if (nextFrozenState) setFrozenState(nextFrozenState);
-        } else {
-          window.__mindar?.rotateLiveBy?.({ yawDelta });
-        }
+        const nextFrozenState = window.__mindar?.rotateFrozenBy?.({ yawDelta });
+        if (nextFrozenState) setFrozenState(nextFrozenState);
       }
-      if (isCaptured && gestureRef.current.lastDistance) {
+      if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
         const nextFrozenState = window.__mindar?.scaleFrozenBy?.({ scaleFactor });
         if (nextFrozenState) setFrozenState(nextFrozenState);
       }
       gestureRef.current.lastAngle = angle;
       gestureRef.current.lastDistance = distance;
-    } else if (points.length === 1 && isCaptured) {
+    } else if (points.length === 1) {
       const dx = next.x - prev.x;
       const dy = next.y - prev.y;
       const nextFrozenState = window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
       if (nextFrozenState) setFrozenState(nextFrozenState);
     }
-  }, [isCaptured, isLive]);
+  }, [isLive]);
 
   const handlePointerUp = React.useCallback((event) => {
     pointersRef.current.delete(event.pointerId);
@@ -174,8 +164,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       </div>
 
       <div className="top-controls">
-        <FrostButton onClick={exitAR}>
-          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" /></svg>
+        <FrostButton onClick={exitAR} title={t(lang, '返回扫描', 'Back to scan')}>
+          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" /></svg>
         </FrostButton>
         <LangChip lang={lang} onToggle={setLang} light />
       </div>
