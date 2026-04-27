@@ -75,8 +75,7 @@ function buildAnchoredContentMarkup(target) {
         position="${position}"
         rotation="${rotation}"
         scale="${scale}"
-        animation__float="property: position; dir: alternate; dur: 1800; easing: easeInOutSine; loop: true; to: ${floatTo}"
-        animation__spin="property: rotation; to: 0 360 0; loop: true; dur: 7600; easing: linear">
+        animation__float="property: position; dir: alternate; dur: 1800; easing: easeInOutSine; loop: true; to: ${floatTo}">
       </a-gltf-model>
     </a-entity>
   `;
