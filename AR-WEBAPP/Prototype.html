@@ -393,44 +393,73 @@
           return anchor?.element?.querySelector('.anchored-content') || anchor?.element || null;
         };
 
+        // Live yaw — manual rotation applied to anchored GLBs in final-live mode.
+        // Auto-spin is removed on first manual rotation so the user takes over.
+        let liveYawOffset = 0;
+        const liveAnimatedNodes = [];
+        const collectLiveAnimatedNodes = () => {
+          liveAnimatedNodes.length = 0;
+          anchors.forEach(({ element }) => {
+            const node = element?.querySelector?.('a-gltf-model, a-plane');
+            if (node) liveAnimatedNodes.push(node);
+          });
+        };
+        const applyLiveYaw = () => {
+          liveAnimatedNodes.forEach((node) => {
+            node.setAttribute('rotation', `0 ${liveYawOffset} 0`);
+            if (node.object3D) {
+              node.object3D.rotation.y = THREE.MathUtils.degToRad(liveYawOffset);
+            }
+          });
+        };
+        const stopLiveSpin = () => {
+          liveAnimatedNodes.forEach((node) => {
+            if (node.hasAttribute('animation__spin')) node.removeAttribute('animation__spin');
+          });
+        };
+        const rotateLiveBy = ({ yawDelta = 0 } = {}) => {
+          if (!liveAnimatedNodes.length) collectLiveAnimatedNodes();
+          stopLiveSpin();
+          liveYawOffset = ((liveYawOffset + Number(yawDelta || 0)) % 360 + 360) % 360;
+          applyLiveYaw();
+          return { yaw: liveYawOffset, targetsActive: activeTargets.size };
+        };
+        const getLiveYaw = () => liveYawOffset;
+
         const freezeCurrentTarget = () => {
-          const sourceTarget = lastTarget || activeTargets.values().next().value || MINDAR_TARGETS[0];
-          const sourceContent = findSourceContent(sourceTarget);
-          const sourceVisual = sourceContent?.querySelector?.('a-gltf-model, a-plane') || sourceContent;
           if (!frozenObject || !frozenModel) return null;
 
-          const position = new THREE.Vector3();
-          const quaternion = new THREE.Quaternion();
-          const scale = new THREE.Vector3();
-          sourceVisual?.object3D?.updateWorldMatrix?.(true, false);
-
-          if (sourceVisual?.object3D) {
-            sourceVisual.object3D.getWorldPosition(position);
-            sourceVisual.object3D.getWorldQuaternion(quaternion);
-            sourceVisual.object3D.getWorldScale(scale);
+          // Position the frozen GLB directly in front of the camera at freeze
+          // time — guarantees visibility regardless of whether MindAR currently
+          // has a target locked. The user can then drag/twist to recompose.
+          const cameraObj = camera?.object3D;
+          const camPos = new THREE.Vector3();
+          const camQuat = new THREE.Quaternion();
+          if (cameraObj) {
+            cameraObj.updateWorldMatrix(true, false);
+            cameraObj.getWorldPosition(camPos);
+            cameraObj.getWorldQuaternion(camQuat);
           } else {
-            const fallbackScale = parseVector(sourceTarget?.ar?.scale || DEFAULT_ANCHORED_AR.scale, frozenState.scale);
-            position.set(0, 0, -1.1);
-            scale.set(fallbackScale.x, fallbackScale.y, fallbackScale.z);
+            camQuat.identity();
           }
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
+          const targetPos = camPos.clone().add(forward.multiplyScalar(1.1));
 
-          const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
+          const sourceTarget = lastTarget || activeTargets.values().next().value || MINDAR_TARGETS[0];
+          const fallbackScale = parseVector(sourceTarget?.ar?.scale || DEFAULT_ANCHORED_AR.scale, frozenState.scale);
+
           frozenState.active = true;
           frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
           frozenState.position = {
-            x: Number.isFinite(position.x) ? position.x : 0,
-            y: Number.isFinite(position.y) ? position.y : 0,
-            z: Number.isFinite(position.z) ? position.z : -1.1,
+            x: Number.isFinite(targetPos.x) ? targetPos.x : 0,
+            y: Number.isFinite(targetPos.y) ? targetPos.y : 0,
+            z: Number.isFinite(targetPos.z) ? targetPos.z : -1.1,
           };
-          frozenState.rotation = {
-            x: finiteNumber(THREE.MathUtils.radToDeg(euler.x), 0),
-            y: finiteNumber(THREE.MathUtils.radToDeg(euler.y), 0),
-            z: finiteNumber(THREE.MathUtils.radToDeg(euler.z), 0),
-          };
+          frozenState.rotation = { x: 0, y: liveYawOffset, z: 0 };
           frozenState.scale = {
-            x: Number.isFinite(scale.x) && scale.x > 0 ? scale.x : frozenState.scale.x,
-            y: Number.isFinite(scale.y) && scale.y > 0 ? scale.y : frozenState.scale.y,
-            z: Number.isFinite(scale.z) && scale.z > 0 ? scale.z : frozenState.scale.z,
+            x: fallbackScale.x > 0 ? fallbackScale.x : frozenState.scale.x,
+            y: fallbackScale.y > 0 ? fallbackScale.y : frozenState.scale.y,
+            z: fallbackScale.z > 0 ? fallbackScale.z : frozenState.scale.z,
           };
           setLiveContentVisible(false);
           applyFrozenState();
@@ -552,6 +581,8 @@
           getFrozenState: cloneFrozenState,
           moveFrozenByScreenDelta,
           rotateFrozenBy,
+          rotateLiveBy,
+          getLiveYaw,
           isReady: () => scene.hasLoaded === true,
           onStatus: (cb) => {
             statusCbs.add(cb);

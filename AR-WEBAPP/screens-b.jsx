@@ -336,7 +336,7 @@ function ScreenARActive({ lang = 'zh', setLang }) {
   const capturedHint = t(lang, '单指拖动 · 双指旋转一毛', 'Drag to move · Twist with two fingers to rotate');
 
   const handleFrozenPointerDown = React.useCallback((event) => {
-    if (!isCaptured) return;
+    if (!isLive) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -346,10 +346,10 @@ function ScreenARActive({ lang = 'zh', setLang }) {
     } else {
       gestureRef.current.lastAngle = null;
     }
-  }, [isCaptured]);
+  }, [isLive]);
 
   const handleFrozenPointerMove = React.useCallback((event) => {
-    if (!isCaptured) return;
+    if (!isLive) return;
     const prev = pointersRef.current.get(event.pointerId);
     if (!prev) return;
     event.preventDefault();
@@ -363,14 +363,20 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         let delta = angle - gestureRef.current.lastAngle;
         if (delta > 180) delta -= 360;
         if (delta < -180) delta += 360;
-        const nextFrozenState = window.__mindar?.rotateFrozenBy?.({ yawDelta: -delta });
-        if (nextFrozenState) {
-          setFrozenState(nextFrozenState);
-          console.log('[EMO-AR] rotate', { yawDelta: -delta, yaw: nextFrozenState.rotation?.y });
+        const yawDelta = -delta;
+        if (isCaptured) {
+          const nextFrozenState = window.__mindar?.rotateFrozenBy?.({ yawDelta });
+          if (nextFrozenState) {
+            setFrozenState(nextFrozenState);
+            console.log('[EMO-AR] rotate frozen', { yawDelta, yaw: nextFrozenState.rotation?.y });
+          }
+        } else {
+          const liveResult = window.__mindar?.rotateLiveBy?.({ yawDelta });
+          if (liveResult) console.log('[EMO-AR] rotate live', { yawDelta, yaw: liveResult.yaw });
         }
       }
       gestureRef.current.lastAngle = angle;
-    } else if (pointersRef.current.size === 1) {
+    } else if (pointersRef.current.size === 1 && isCaptured) {
       const dx = next.x - prev.x;
       const dy = next.y - prev.y;
       const nextFrozenState = window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
@@ -379,7 +385,7 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         console.log('[EMO-AR] move', { dx, dy, position: nextFrozenState.position });
       }
     }
-  }, [isCaptured]);
+  }, [isCaptured, isLive]);
 
   const handleFrozenPointerUp = React.useCallback((event) => {
     pointersRef.current.delete(event.pointerId);
@@ -397,8 +403,8 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         width: 600,
         height: 600,
         pointerEvents: 'none',
-        opacity: isCaptured ? 0 : 1,
-        transition: 'top 420ms ease-out, transform 420ms ease-out, opacity 240ms ease-out',
+        opacity: arPhase === 'intro-playing' ? 1 : 0,
+        transition: 'top 420ms ease-out, transform 420ms ease-out, opacity 320ms ease-out',
       }}>
         <Step06SequencePlayer
           size={600}
@@ -424,9 +430,11 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         <LangChip lang={lang} onToggle={setLang} />
       </div>
 
-      {isCaptured && (
+      {isLive && (
         <div
-          aria-label="Drag to move EMO; twist with two fingers to rotate"
+          aria-label={isCaptured
+            ? 'Drag to move EMO; twist with two fingers to rotate'
+            : 'Twist with two fingers to rotate EMO'}
           onPointerDown={handleFrozenPointerDown}
           onPointerMove={handleFrozenPointerMove}
           onPointerUp={handleFrozenPointerUp}
@@ -473,7 +481,7 @@ function ScreenARActive({ lang = 'zh', setLang }) {
             ? t(lang, '一毛出现中…', 'EMO is appearing…')
             : isCaptured
             ? capturedHint
-            : t(lang, '拍下一毛并分享', 'Capture & share EMO')}
+            : t(lang, '双指旋转一毛 · 拍下并分享', 'Twist with two fingers · Capture & share')}
         </div>
         {isCaptured ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, pointerEvents: 'auto' }}>
