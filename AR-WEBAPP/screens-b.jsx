@@ -331,57 +331,6 @@ function ScreenScan({ lang = 'zh', setLang }) {
   );
 }
 
-function OrbitTextRing({ lang = 'zh', size = 300, frozen = false }) {
-  const radius = size / 2 - 18;
-  const cx = size / 2;
-  const cy = size / 2;
-  const pathId = `orbit-ring-path-${lang}-${size}`;
-  const pathD =
-    `M ${cx - radius},${cy} ` +
-    `a ${radius},${radius} 0 1,1 ${radius * 2},0 ` +
-    `a ${radius},${radius} 0 1,1 -${radius * 2},0`;
-  const phrase = lang === 'en'
-    ? 'EMO IS HERE · IFS PLAZA AR LIMITED · '
-    : '国金天地一毛来和你玩 · ';
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'absolute',
-        left: '50%',
-        top: '50%',
-        width: size,
-        height: size,
-        transform: 'translate(-50%, -50%)',
-        pointerEvents: 'none',
-        animation: 'orbit-spin 22s linear infinite',
-        animationPlayState: frozen ? 'paused' : 'running',
-        filter: 'drop-shadow(0 0 6px rgba(242,156,176,0.55))',
-        zIndex: 3,
-      }}
-    >
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ display: 'block' }}>
-        <defs>
-          <path id={pathId} d={pathD} fill="none" />
-        </defs>
-        <text
-          style={{
-            fontFamily: lang === 'en' ? FONT_MONO : FONT_ZH,
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: lang === 'en' ? '0.28em' : '0.22em',
-            fill: 'rgba(255,255,255,0.82)',
-          }}
-        >
-          <textPath href={`#${pathId}`} startOffset="0">
-            {phrase.repeat(3)}
-          </textPath>
-        </text>
-      </svg>
-    </div>
-  );
-}
-
 // ─── SCREEN 4: AR Active ──────────────────────────────────────
 function ScreenARActive({ lang = 'zh', setLang }) {
   const [arPhase, setArPhase] = React.useState('intro-playing');
@@ -439,13 +388,6 @@ function ScreenARActive({ lang = 'zh', setLang }) {
           onComplete={handleIntroComplete}
           style={{ transform: 'translateY(-54px)', filter: 'none' }}
         />
-        {isLive && (
-          <OrbitTextRing
-            lang={lang}
-            size={250}
-            frozen={isCaptured}
-          />
-        )}
       </div>
 
       <IOSStatusBar dark />
