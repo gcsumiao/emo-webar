@@ -189,20 +189,17 @@ function FrostButton({ children, onClick, disabled = false, style = {}, title })
 // a pink flower-shaped viewfinder that fades out on targetFound.
 function ScreenScan({ lang = 'zh', setLang }) {
   const [scanState, setScanState] = React.useState('searching');
-  const [mindarStatus, setMindarStatus] = React.useState(() => window.__mindar?.getStatus?.() || 'idle');
-  const lockTimerRef = React.useRef(null);
   const isLocked = scanState === 'locked';
   const isFocusing = scanState === 'focusing';
 
   React.useEffect(() => {
     const mindar = window.__mindar;
     if (!mindar) return undefined;
-    const offStatus = mindar.onStatus?.(setMindarStatus) || (() => {});
     const offFound = mindar.onTargetFound(() => setScanState('locked'));
     const offLost  = mindar.onTargetLost(() => {
       setScanState((current) => current === 'locked' ? current : 'searching');
     });
-    return () => { offStatus(); offFound(); offLost(); };
+    return () => { offFound(); offLost(); };
   }, []);
 
   React.useEffect(() => {
@@ -212,24 +209,6 @@ function ScreenScan({ lang = 'zh', setLang }) {
     }, 600);
     return () => clearTimeout(t);
   }, [isLocked]);
-
-  React.useEffect(() => () => clearTimeout(lockTimerRef.current), []);
-
-  const lockTarget = React.useCallback(() => {
-    if (scanState !== 'searching') return;
-    setScanState('focusing');
-    window.__mindar?.focusCamera?.();
-    clearTimeout(lockTimerRef.current);
-    lockTimerRef.current = setTimeout(() => setScanState('locked'), 780);
-  }, [scanState]);
-
-  const statusLabel = isLocked
-    ? t(lang, '已锁定', 'LOCKED')
-    : isFocusing
-    ? t(lang, '对焦中', 'FOCUS')
-    : mindarStatus === 'loading'
-    ? t(lang, '启动中', 'STARTING')
-    : t(lang, '扫描中', 'SCANNING');
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -271,41 +250,9 @@ function ScreenScan({ lang = 'zh', setLang }) {
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round"/></svg>
         </FrostButton>
 
-        <div style={{
-          padding: '8px 14px',
-          borderRadius: 999,
-          background: 'rgba(255,255,255,0.16)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          border: isLocked ? `0.5px solid rgba(169,212,90,0.5)` : 'none',
-        }}>
-          <div style={{
-            width: 8,
-            height: 8,
-            borderRadius: 999,
-            background: isLocked ? TOKENS.green : TOKENS.pink,
-            boxShadow: `0 0 8px ${isLocked ? TOKENS.green : TOKENS.pink}`,
-            animation: isLocked ? 'none' : 'pulse 1.4s infinite',
-          }}/>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: '#fff', letterSpacing: '0.16em' }}>
-            {statusLabel}
-          </div>
-        </div>
+        <div style={{ flex: 1 }} />
 
-        <FrostButton
-          onClick={lockTarget}
-          disabled={scanState !== 'searching'}
-          title="Lock target"
-          style={{ minWidth: 78, gap: 8, padding: '0 12px' }}
-        >
-          <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1v14M1 8h14" stroke="#fff" strokeWidth="1.5"/><circle cx="8" cy="8" r="6.5" stroke="#fff" strokeWidth="1.2" fill="none"/></svg>
-          <span style={{ fontFamily: lang === 'en' ? FONT_MONO : FONT_ZH, fontSize: 11, fontWeight: 700 }}>
-            {isLocked ? t(lang, '已锁定', 'LOCKED') : t(lang, '锁定', 'TARGET')}
-          </span>
-        </FrostButton>
+        <LangChip lang={lang} onToggle={setLang} />
       </div>
 
       <div style={{
@@ -334,9 +281,9 @@ function ScreenScan({ lang = 'zh', setLang }) {
 // ─── SCREEN 4: AR Active ──────────────────────────────────────
 function ScreenARActive({ lang = 'zh', setLang }) {
   const [arPhase, setArPhase] = React.useState('intro-playing');
-  const [editMode, setEditMode] = React.useState('move');
   const [frozenState, setFrozenState] = React.useState(() => window.__mindar?.getFrozenState?.() || null);
-  const dragRef = React.useRef({ active: false, x: 0, y: 0 });
+  const pointersRef = React.useRef(new Map());
+  const gestureRef = React.useRef({ lastAngle: null });
 
   React.useEffect(() => {
     Step06Assets.preloadUrls(INTRO_FRAME_URLS);
@@ -355,13 +302,11 @@ function ScreenARActive({ lang = 'zh', setLang }) {
       if (current === 'captured-frame') {
         const nextFrozenState = window.__mindar?.unfreezeCurrentTarget?.() || null;
         setFrozenState(nextFrozenState);
-        setEditMode('move');
         return 'final-live';
       }
       EMOARAudio.playShutter();
       const nextFrozenState = window.__mindar?.freezeCurrentTarget?.() || null;
       setFrozenState(nextFrozenState);
-      setEditMode('move');
       return 'captured-frame';
     });
   }, []);
@@ -386,32 +331,52 @@ function ScreenARActive({ lang = 'zh', setLang }) {
 
   const isCaptured = arPhase === 'captured-frame';
   const isLive = arPhase === 'final-live' || isCaptured;
-  const capturedHint = editMode === 'rotate'
-    ? t(lang, '左右拖动，360° 旋转一毛', 'Drag left/right to rotate EMO 360°')
-    : t(lang, '拖动一毛，调整定格位置', 'Drag EMO to adjust the frozen position');
+  const capturedHint = t(lang, '单指拖动 · 双指旋转一毛', 'Drag to move · Twist with two fingers to rotate');
 
   const handleFrozenPointerDown = React.useCallback((event) => {
     if (!isCaptured) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    dragRef.current = { active: true, x: event.clientX, y: event.clientY };
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pointersRef.current.size === 2) {
+      const [a, b] = Array.from(pointersRef.current.values());
+      gestureRef.current.lastAngle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    } else {
+      gestureRef.current.lastAngle = null;
+    }
   }, [isCaptured]);
 
   const handleFrozenPointerMove = React.useCallback((event) => {
-    if (!isCaptured || !dragRef.current.active) return;
+    if (!isCaptured) return;
+    const prev = pointersRef.current.get(event.pointerId);
+    if (!prev) return;
     event.preventDefault();
-    const dx = event.clientX - dragRef.current.x;
-    const dy = event.clientY - dragRef.current.y;
-    dragRef.current = { active: true, x: event.clientX, y: event.clientY };
-    const nextFrozenState = editMode === 'rotate'
-      ? window.__mindar?.rotateFrozenBy?.({ yawDelta: dx * 0.75 })
-      : window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
-    if (nextFrozenState) setFrozenState(nextFrozenState);
-  }, [editMode, isCaptured]);
+    const next = { x: event.clientX, y: event.clientY };
+    pointersRef.current.set(event.pointerId, next);
+
+    if (pointersRef.current.size >= 2) {
+      const [a, b] = Array.from(pointersRef.current.values()).slice(0, 2);
+      const angle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      if (gestureRef.current.lastAngle != null) {
+        let delta = angle - gestureRef.current.lastAngle;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+        const nextFrozenState = window.__mindar?.rotateFrozenBy?.({ yawDelta: -delta });
+        if (nextFrozenState) setFrozenState(nextFrozenState);
+      }
+      gestureRef.current.lastAngle = angle;
+    } else if (pointersRef.current.size === 1) {
+      const dx = next.x - prev.x;
+      const dy = next.y - prev.y;
+      const nextFrozenState = window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
+      if (nextFrozenState) setFrozenState(nextFrozenState);
+    }
+  }, [isCaptured]);
 
   const handleFrozenPointerUp = React.useCallback((event) => {
-    dragRef.current.active = false;
+    pointersRef.current.delete(event.pointerId);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (pointersRef.current.size < 2) gestureRef.current.lastAngle = null;
   }, []);
 
   return (
@@ -447,29 +412,12 @@ function ScreenARActive({ lang = 'zh', setLang }) {
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
         </FrostButton>
 
-        <div style={{
-          padding: '8px 14px',
-          borderRadius: 999,
-          background: 'rgba(255,255,255,0.2)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          border: `0.5px solid rgba(169,212,90,0.5)`,
-        }}>
-          <div style={{ width: 7, height: 7, borderRadius: 999, background: TOKENS.green, boxShadow: `0 0 8px ${TOKENS.green}` }}/>
-          <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: '#fff', letterSpacing: '0.16em' }}>
-            {isCaptured ? t(lang, '已拍照', 'CAPTURED') : t(lang, '实景已锁定', 'LOCKED')}
-          </div>
-        </div>
-
         <LangChip lang={lang} onToggle={setLang} />
       </div>
 
       {isCaptured && (
         <div
-          aria-label={editMode === 'rotate' ? 'Rotate frozen AR object' : 'Move frozen AR object'}
+          aria-label="Drag to move EMO; twist with two fingers to rotate"
           onPointerDown={handleFrozenPointerDown}
           onPointerMove={handleFrozenPointerMove}
           onPointerUp={handleFrozenPointerUp}
@@ -478,12 +426,12 @@ function ScreenARActive({ lang = 'zh', setLang }) {
             position: 'absolute',
             left: 0,
             right: 0,
-            top: 126,
-            bottom: 184,
+            top: 96,
+            bottom: 220,
             zIndex: 4,
             pointerEvents: 'auto',
             touchAction: 'none',
-            cursor: editMode === 'rotate' ? 'ew-resize' : 'grab',
+            cursor: 'grab',
           }}
         />
       )}
@@ -520,45 +468,6 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         </div>
         {isCaptured ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, pointerEvents: 'auto' }}>
-            <div style={{
-              height: 34,
-              padding: 3,
-              borderRadius: 999,
-              background: 'rgba(0,0,0,0.34)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: '0.5px solid rgba(255,255,255,0.16)',
-              display: 'flex',
-              gap: 3,
-            }}>
-              {[
-                { key: 'move', zh: '移动', en: 'Move' },
-                { key: 'rotate', zh: '旋转', en: 'Rotate' },
-              ].map((mode) => {
-                const selected = editMode === mode.key;
-                return (
-                  <button
-                    key={mode.key}
-                    type="button"
-                    onClick={() => setEditMode(mode.key)}
-                    style={{
-                      minWidth: 62,
-                      height: 28,
-                      borderRadius: 999,
-                      border: 'none',
-                      background: selected ? '#FAF6F1' : 'transparent',
-                      color: selected ? TOKENS.ink : '#FAF6F1',
-                      fontFamily: langFont(lang),
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {t(lang, mode.zh, mode.en)}
-                  </button>
-                );
-              })}
-            </div>
             <div style={{ display: 'flex', gap: 12 }}>
               <button
                 type="button"
@@ -802,22 +711,6 @@ function ScreenLoading({ lang = 'zh' }) {
           <div style={{ fontFamily: langFont(lang), fontSize: 18, fontWeight: 700, color: '#fff' }}>
             {t(lang, '正在准备一毛…', 'Waking up EMO…')}
           </div>
-        </div>
-
-        {/* meta chips */}
-        <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
-          {[
-            { k: 'model', v: '3.2 MB' },
-            { k: 'scene', v: 'ok' },
-            { k: 'ar', v: 'init' },
-          ].map((m) => (
-            <div key={m.k} style={{
-              padding: '4px 10px', borderRadius: 999,
-              background: 'rgba(255,255,255,0.08)', border: '0.5px solid rgba(255,255,255,0.12)',
-              fontFamily: FONT_MONO, fontSize: 10, color: 'rgba(255,255,255,0.7)',
-              letterSpacing: '0.08em',
-            }}>{m.k} · {m.v}</div>
-          ))}
         </div>
       </div>
 
