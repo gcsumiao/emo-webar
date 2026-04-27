@@ -4,7 +4,7 @@ import { arTargets, defaultAnchoredAr } from './arTargets.js';
 
 const MIND_TARGET_URL = '/assets/mindar/targets.mind';
 const FROZEN_GLB_POSITION = { x: 0, y: -0.04, z: -1.18 };
-const FROZEN_GLB_SCALE = { x: 0.075, y: 0.075, z: 0.075 };
+const FROZEN_GLB_SCALE = { x: 0.48, y: 0.48, z: 0.48 };
 
 function vectorToAttr(value, fallback = [0, 0, 0]) {
   const source = Array.isArray(value) ? value : fallback;
@@ -286,6 +286,31 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       return cloneFrozenState();
     };
 
+    const showFinalObject = (transform = {}) => {
+      if (!frozenObject || !frozenModel) return null;
+      frozenState.active = true;
+      frozenState.sourceTarget = lastTarget ? cloneTarget(lastTarget) : null;
+      frozenState.position = transform.position
+        ? parseVector(transform.position, FROZEN_GLB_POSITION)
+        : { ...FROZEN_GLB_POSITION };
+      frozenState.rotation = transform.rotation
+        ? parseVector(transform.rotation, { x: 0, y: 0, z: 0 })
+        : { x: 0, y: 0, z: 0 };
+      frozenState.scale = transform.scale
+        ? parseVector(transform.scale, FROZEN_GLB_SCALE)
+        : { ...FROZEN_GLB_SCALE };
+      setLiveContentVisible(false);
+      applyFrozenState();
+      return cloneFrozenState();
+    };
+
+    const hideFinalObject = () => {
+      frozenState.active = false;
+      frozenState.sourceTarget = null;
+      applyFrozenState();
+      return cloneFrozenState();
+    };
+
     const setFrozenTransform = (transform = {}) => {
       if (!frozenState.active) return cloneFrozenState();
       if (transform.position) frozenState.position = parseVector(transform.position, frozenState.position);
@@ -396,6 +421,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       getLastTarget: () => lastTarget ? cloneTarget(lastTarget) : null,
       freezeCurrentTarget,
       unfreezeCurrentTarget,
+      showFinalObject,
+      hideFinalObject,
       setFrozenTransform,
       getFrozenState: cloneFrozenState,
       moveFrozenByScreenDelta,
