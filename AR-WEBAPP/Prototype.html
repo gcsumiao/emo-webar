@@ -111,7 +111,7 @@
   <script type="text/babel" src="ios-frame.jsx"></script>
   <script type="text/babel" src="mascot.jsx"></script>
   <script type="text/babel" src="screens-a.jsx"></script>
-  <script type="text/babel" src="screens-b.jsx"></script>
+  <script type="text/babel" src="screens-b.jsx?v=frozen-edit-20260427"></script>
 
   <script type="text/babel">
     const FRAME_W = 390;
@@ -255,6 +255,22 @@
       `;
     }
 
+    function buildFrozenContentMarkup() {
+      const assetId = escapeAttr(DEFAULT_ANCHORED_AR.assetId);
+      const scale = escapeAttr(DEFAULT_ANCHORED_AR.scale);
+      return `
+        <a-entity id="frozen-ar-object" visible="false">
+          <a-gltf-model
+            id="frozen-ar-model"
+            src="#${assetId}"
+            position="0 0 0"
+            rotation="0 0 0"
+            scale="${scale}">
+          </a-gltf-model>
+        </a-entity>
+      `;
+    }
+
     // Placeholder contract for the future browser-local EMO classifier.
     // MindAR remains authoritative for known physical targets; this detector
     // can later report open-scene EMO presence without controlling AR anchors.
@@ -309,6 +325,8 @@
     //   getStatus() / onStatus(cb)        — idle/loading/ready/running/found/lost/error
     //   onTargetFound(cb) / onTargetLost  — optional 2D target subscribers, receives target metadata
     //   getActiveTargets() / getLastTarget() — current and most recent target metadata
+    //   freezeCurrentTarget() / unfreezeCurrentTarget() — enter/exit editable captured AR mode
+    //   setFrozenTransform(transform) / getFrozenState() — update/read editable captured AR transform
     //   focusCamera()                     — best-effort focus kick for mobile cameras
     //   isReady()                         — true once a-scene has loaded
     function MindARStage({ active, visible }) {
@@ -343,10 +361,14 @@
             <a-entity light="type: directional; color: #ffffff; intensity: 0.65" position="1 2 1"></a-entity>
             <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
             ${anchorMarkup}
+            ${buildFrozenContentMarkup()}
           </a-scene>
         `;
 
         const scene = container.querySelector('a-scene');
+        const camera = container.querySelector('a-camera');
+        const frozenObject = container.querySelector('#frozen-ar-object');
+        const frozenModel = container.querySelector('#frozen-ar-model');
         const anchors = MINDAR_TARGETS.map((target) => ({
           target,
           element: container.querySelector(`#emo-anchor-${target.targetIndex}`),
@@ -361,10 +383,175 @@
         const statusCbs = new Set();
         const activeTargets = new Map();
         let lastTarget = null;
+        const frozenState = {
+          active: false,
+          sourceTarget: null,
+          position: { x: 0, y: 0, z: -1.1 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 0.18, y: 0.18, z: 0.18 },
+        };
 
         const setStatus = (nextStatus) => {
           statusRef.current = nextStatus;
           statusCbs.forEach(cb => { try { cb(nextStatus); } catch (e) { console.error(e); } });
+        };
+
+        const parseVector = (value, fallback) => {
+          if (value && typeof value === 'object') {
+            return {
+              x: Number.isFinite(Number(value.x)) ? Number(value.x) : fallback.x,
+              y: Number.isFinite(Number(value.y)) ? Number(value.y) : fallback.y,
+              z: Number.isFinite(Number(value.z)) ? Number(value.z) : fallback.z,
+            };
+          }
+          const parts = String(value || '').trim().split(/\s+/).map(Number);
+          return {
+            x: Number.isFinite(parts[0]) ? parts[0] : fallback.x,
+            y: Number.isFinite(parts[1]) ? parts[1] : fallback.y,
+            z: Number.isFinite(parts[2]) ? parts[2] : fallback.z,
+          };
+        };
+
+        const finiteNumber = (value, fallback = 0) => (
+          Number.isFinite(Number(value)) ? Number(value) : fallback
+        );
+
+        const cloneFrozenState = () => ({
+          active: frozenState.active,
+          sourceTarget: frozenState.sourceTarget ? cloneTarget(frozenState.sourceTarget) : null,
+          position: { ...frozenState.position },
+          rotation: { ...frozenState.rotation },
+          scale: { ...frozenState.scale },
+        });
+
+        const applyFrozenState = () => {
+          if (!frozenObject?.object3D || !frozenModel?.object3D) return false;
+          frozenObject.object3D.position.set(
+            frozenState.position.x,
+            frozenState.position.y,
+            frozenState.position.z
+          );
+          frozenObject.object3D.rotation.set(
+            THREE.MathUtils.degToRad(frozenState.rotation.x),
+            THREE.MathUtils.degToRad(frozenState.rotation.y),
+            THREE.MathUtils.degToRad(frozenState.rotation.z)
+          );
+          frozenModel.object3D.scale.set(
+            frozenState.scale.x,
+            frozenState.scale.y,
+            frozenState.scale.z
+          );
+          frozenObject.setAttribute('visible', frozenState.active ? 'true' : 'false');
+          return true;
+        };
+
+        const setLiveContentVisible = (visibleLive) => {
+          anchors.forEach((anchor) => {
+            anchor.element.querySelectorAll('.anchored-content').forEach((node) => {
+              node.setAttribute('visible', visibleLive ? 'true' : 'false');
+            });
+          });
+        };
+
+        const findSourceContent = (target) => {
+          const source = target || lastTarget || activeTargets.values().next().value || MINDAR_TARGETS[0];
+          const anchor = anchors.find((item) => item.target.targetIndex === source?.targetIndex);
+          return anchor?.element?.querySelector('.anchored-content') || anchor?.element || null;
+        };
+
+        const freezeCurrentTarget = () => {
+          const sourceTarget = lastTarget || activeTargets.values().next().value || MINDAR_TARGETS[0];
+          const sourceContent = findSourceContent(sourceTarget);
+          const sourceVisual = sourceContent?.querySelector?.('a-gltf-model, a-plane') || sourceContent;
+          if (!frozenObject || !frozenModel) return null;
+
+          const position = new THREE.Vector3();
+          const quaternion = new THREE.Quaternion();
+          const scale = new THREE.Vector3();
+          sourceVisual?.object3D?.updateWorldMatrix?.(true, false);
+
+          if (sourceVisual?.object3D) {
+            sourceVisual.object3D.getWorldPosition(position);
+            sourceVisual.object3D.getWorldQuaternion(quaternion);
+            sourceVisual.object3D.getWorldScale(scale);
+          } else {
+            const fallbackScale = parseVector(sourceTarget?.ar?.scale || DEFAULT_ANCHORED_AR.scale, frozenState.scale);
+            position.set(0, 0, -1.1);
+            scale.set(fallbackScale.x, fallbackScale.y, fallbackScale.z);
+          }
+
+          const euler = new THREE.Euler().setFromQuaternion(quaternion, 'XYZ');
+          frozenState.active = true;
+          frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
+          frozenState.position = {
+            x: Number.isFinite(position.x) ? position.x : 0,
+            y: Number.isFinite(position.y) ? position.y : 0,
+            z: Number.isFinite(position.z) ? position.z : -1.1,
+          };
+          frozenState.rotation = {
+            x: finiteNumber(THREE.MathUtils.radToDeg(euler.x), 0),
+            y: finiteNumber(THREE.MathUtils.radToDeg(euler.y), 0),
+            z: finiteNumber(THREE.MathUtils.radToDeg(euler.z), 0),
+          };
+          frozenState.scale = {
+            x: Number.isFinite(scale.x) && scale.x > 0 ? scale.x : frozenState.scale.x,
+            y: Number.isFinite(scale.y) && scale.y > 0 ? scale.y : frozenState.scale.y,
+            z: Number.isFinite(scale.z) && scale.z > 0 ? scale.z : frozenState.scale.z,
+          };
+          setLiveContentVisible(false);
+          applyFrozenState();
+          return cloneFrozenState();
+        };
+
+        const unfreezeCurrentTarget = () => {
+          frozenState.active = false;
+          frozenState.sourceTarget = null;
+          setLiveContentVisible(true);
+          applyFrozenState();
+          return cloneFrozenState();
+        };
+
+        const setFrozenTransform = (transform = {}) => {
+          if (!frozenState.active) return cloneFrozenState();
+          if (transform.position) {
+            frozenState.position = parseVector(transform.position, frozenState.position);
+          }
+          if (transform.rotation) {
+            frozenState.rotation = parseVector(transform.rotation, frozenState.rotation);
+          }
+          if (transform.scale) {
+            frozenState.scale = parseVector(transform.scale, frozenState.scale);
+          }
+          applyFrozenState();
+          return cloneFrozenState();
+        };
+
+        const moveFrozenByScreenDelta = ({ dx = 0, dy = 0, pixelsPerWorldUnit = 420 } = {}) => {
+          if (!frozenState.active) return cloneFrozenState();
+          const cameraObject = camera?.object3D;
+          const right = new THREE.Vector3(1, 0, 0);
+          const up = new THREE.Vector3(0, 1, 0);
+          if (cameraObject) {
+            right.applyQuaternion(cameraObject.quaternion);
+            up.applyQuaternion(cameraObject.quaternion);
+          }
+          const delta = right.multiplyScalar(dx / pixelsPerWorldUnit)
+            .add(up.multiplyScalar(-dy / pixelsPerWorldUnit));
+          frozenState.position = {
+            x: frozenState.position.x + delta.x,
+            y: frozenState.position.y + delta.y,
+            z: frozenState.position.z + delta.z,
+          };
+          applyFrozenState();
+          return cloneFrozenState();
+        };
+
+        const rotateFrozenBy = ({ yawDelta = 0 } = {}) => {
+          if (!frozenState.active) return cloneFrozenState();
+          const nextYaw = ((frozenState.rotation.y + Number(yawDelta || 0)) % 360 + 360) % 360;
+          frozenState.rotation = { ...frozenState.rotation, y: nextYaw };
+          applyFrozenState();
+          return cloneFrozenState();
         };
 
         const playTargetMedia = (target) => {
@@ -421,6 +608,12 @@
           getStatus: () => statusRef.current,
           getActiveTargets: () => Array.from(activeTargets.values()).map(cloneTarget),
           getLastTarget: () => lastTarget ? cloneTarget(lastTarget) : null,
+          freezeCurrentTarget,
+          unfreezeCurrentTarget,
+          setFrozenTransform,
+          getFrozenState: cloneFrozenState,
+          moveFrozenByScreenDelta,
+          rotateFrozenBy,
           isReady: () => scene.hasLoaded === true,
           onStatus: (cb) => {
             statusCbs.add(cb);
@@ -455,6 +648,7 @@
             startedRef.current = false;
             activeTargets.clear();
             MINDAR_TARGETS.forEach(pauseTargetMedia);
+            unfreezeCurrentTarget();
             setStatus(scene.hasLoaded ? 'ready' : 'idle');
           },
           onTargetFound: (cb) => { foundCbs.add(cb); return () => foundCbs.delete(cb); },

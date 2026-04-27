@@ -334,9 +334,16 @@ function ScreenScan({ lang = 'zh', setLang }) {
 // ─── SCREEN 4: AR Active ──────────────────────────────────────
 function ScreenARActive({ lang = 'zh', setLang }) {
   const [arPhase, setArPhase] = React.useState('intro-playing');
+  const [editMode, setEditMode] = React.useState('move');
+  const [frozenState, setFrozenState] = React.useState(() => window.__mindar?.getFrozenState?.() || null);
+  const dragRef = React.useRef({ active: false, x: 0, y: 0 });
 
   React.useEffect(() => {
     Step06Assets.preloadUrls(INTRO_FRAME_URLS);
+  }, []);
+
+  React.useEffect(() => () => {
+    window.__mindar?.unfreezeCurrentTarget?.();
   }, []);
 
   const handleIntroComplete = React.useCallback(() => {
@@ -345,10 +352,23 @@ function ScreenARActive({ lang = 'zh', setLang }) {
 
   const captureFrame = React.useCallback(() => {
     setArPhase((current) => {
-      if (current === 'captured-frame') return 'final-live';
+      if (current === 'captured-frame') {
+        const nextFrozenState = window.__mindar?.unfreezeCurrentTarget?.() || null;
+        setFrozenState(nextFrozenState);
+        setEditMode('move');
+        return 'final-live';
+      }
       EMOARAudio.playShutter();
+      const nextFrozenState = window.__mindar?.freezeCurrentTarget?.() || null;
+      setFrozenState(nextFrozenState);
+      setEditMode('move');
       return 'captured-frame';
     });
+  }, []);
+
+  const exitAR = React.useCallback(() => {
+    window.__mindar?.unfreezeCurrentTarget?.();
+    window.__setProtoState?.('landing');
   }, []);
 
   const shareFrame = React.useCallback(async () => {
@@ -366,6 +386,33 @@ function ScreenARActive({ lang = 'zh', setLang }) {
 
   const isCaptured = arPhase === 'captured-frame';
   const isLive = arPhase === 'final-live' || isCaptured;
+  const capturedHint = editMode === 'rotate'
+    ? t(lang, '左右拖动，360° 旋转一毛', 'Drag left/right to rotate EMO 360°')
+    : t(lang, '拖动一毛，调整定格位置', 'Drag EMO to adjust the frozen position');
+
+  const handleFrozenPointerDown = React.useCallback((event) => {
+    if (!isCaptured) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dragRef.current = { active: true, x: event.clientX, y: event.clientY };
+  }, [isCaptured]);
+
+  const handleFrozenPointerMove = React.useCallback((event) => {
+    if (!isCaptured || !dragRef.current.active) return;
+    event.preventDefault();
+    const dx = event.clientX - dragRef.current.x;
+    const dy = event.clientY - dragRef.current.y;
+    dragRef.current = { active: true, x: event.clientX, y: event.clientY };
+    const nextFrozenState = editMode === 'rotate'
+      ? window.__mindar?.rotateFrozenBy?.({ yawDelta: dx * 0.75 })
+      : window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
+    if (nextFrozenState) setFrozenState(nextFrozenState);
+  }, [editMode, isCaptured]);
+
+  const handleFrozenPointerUp = React.useCallback((event) => {
+    dragRef.current.active = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }, []);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -396,7 +443,7 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         position: 'absolute', top: 58, left: 16, right: 16,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <FrostButton onClick={() => window.__setProtoState?.('landing')} style={{ width: 38, padding: 0 }}>
+        <FrostButton onClick={exitAR} style={{ width: 38, padding: 0 }}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/></svg>
         </FrostButton>
 
@@ -419,6 +466,27 @@ function ScreenARActive({ lang = 'zh', setLang }) {
 
         <LangChip lang={lang} onToggle={setLang} />
       </div>
+
+      {isCaptured && (
+        <div
+          aria-label={editMode === 'rotate' ? 'Rotate frozen AR object' : 'Move frozen AR object'}
+          onPointerDown={handleFrozenPointerDown}
+          onPointerMove={handleFrozenPointerMove}
+          onPointerUp={handleFrozenPointerUp}
+          onPointerCancel={handleFrozenPointerUp}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 126,
+            bottom: 184,
+            zIndex: 4,
+            pointerEvents: 'auto',
+            touchAction: 'none',
+            cursor: editMode === 'rotate' ? 'ew-resize' : 'grab',
+          }}
+        />
+      )}
 
       <div style={{
         position: 'absolute',
@@ -447,49 +515,90 @@ function ScreenARActive({ lang = 'zh', setLang }) {
           {arPhase === 'intro-playing'
             ? t(lang, '一毛出现中…', 'EMO is appearing…')
             : isCaptured
-            ? t(lang, '已定格，可再次按下返回实时画面', 'Captured · tap shutter again for live view')
+            ? capturedHint
             : t(lang, '拍下一毛并分享', 'Capture & share EMO')}
         </div>
         {isCaptured ? (
-          <div style={{ display: 'flex', gap: 12, pointerEvents: 'auto' }}>
-            <button
-              type="button"
-              onClick={captureFrame}
-              style={{
-                minWidth: 112,
-                height: 42,
-                borderRadius: 999,
-                border: 'none',
-                background: '#1F1A1F',
-                color: '#FAF6F1',
-                fontFamily: langFont(lang),
-                fontSize: 13,
-                fontWeight: 800,
-                boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
-                cursor: 'pointer',
-              }}
-            >
-              {t(lang, '重新拍照', 'Retake')}
-            </button>
-            <button
-              type="button"
-              onClick={shareFrame}
-              style={{
-                minWidth: 112,
-                height: 42,
-                borderRadius: 999,
-                border: 'none',
-                background: '#1F1A1F',
-                color: '#FAF6F1',
-                fontFamily: langFont(lang),
-                fontSize: 13,
-                fontWeight: 800,
-                boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
-                cursor: 'pointer',
-              }}
-            >
-              {t(lang, '分享好友', 'Share')}
-            </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, pointerEvents: 'auto' }}>
+            <div style={{
+              height: 34,
+              padding: 3,
+              borderRadius: 999,
+              background: 'rgba(0,0,0,0.34)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '0.5px solid rgba(255,255,255,0.16)',
+              display: 'flex',
+              gap: 3,
+            }}>
+              {[
+                { key: 'move', zh: '移动', en: 'Move' },
+                { key: 'rotate', zh: '旋转', en: 'Rotate' },
+              ].map((mode) => {
+                const selected = editMode === mode.key;
+                return (
+                  <button
+                    key={mode.key}
+                    type="button"
+                    onClick={() => setEditMode(mode.key)}
+                    style={{
+                      minWidth: 62,
+                      height: 28,
+                      borderRadius: 999,
+                      border: 'none',
+                      background: selected ? '#FAF6F1' : 'transparent',
+                      color: selected ? TOKENS.ink : '#FAF6F1',
+                      fontFamily: langFont(lang),
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t(lang, mode.zh, mode.en)}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                type="button"
+                onClick={captureFrame}
+                style={{
+                  minWidth: 112,
+                  height: 42,
+                  borderRadius: 999,
+                  border: 'none',
+                  background: '#1F1A1F',
+                  color: '#FAF6F1',
+                  fontFamily: langFont(lang),
+                  fontSize: 13,
+                  fontWeight: 800,
+                  boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+                  cursor: 'pointer',
+                }}
+              >
+                {t(lang, '重新拍照', 'Retake')}
+              </button>
+              <button
+                type="button"
+                onClick={shareFrame}
+                style={{
+                  minWidth: 112,
+                  height: 42,
+                  borderRadius: 999,
+                  border: 'none',
+                  background: '#1F1A1F',
+                  color: '#FAF6F1',
+                  fontFamily: langFont(lang),
+                  fontSize: 13,
+                  fontWeight: 800,
+                  boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+                  cursor: 'pointer',
+                }}
+              >
+                {t(lang, '分享好友', 'Share')}
+              </button>
+            </div>
           </div>
         ) : (
           <button

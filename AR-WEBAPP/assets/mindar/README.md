@@ -42,8 +42,24 @@ Runtime state is exposed through `window.__mindar`:
 - `onTargetLost(cb)` receives `{ targetIndex, targetId, label, ar }`.
 - `getActiveTargets()` returns all currently tracked targets.
 - `getLastTarget()` returns the most recent target metadata.
+- `freezeCurrentTarget()` copies the current anchored model into an editable scene-level frozen object.
+- `unfreezeCurrentTarget()` hides the frozen object and restores live anchored content.
+- `moveFrozenByScreenDelta({ dx, dy })` moves the frozen object along the camera-facing plane.
+- `rotateFrozenBy({ yawDelta })` rotates the frozen object around the Y axis.
+- `getFrozenState()` returns the current frozen transform and source target.
 
 The scan and AR screens currently treat any configured target as an EMO hit. Spatial AR content lives under the MindAR anchor, so it follows the detected image's position, rotation, and scale.
+
+## Frozen edit mode
+
+When the user taps the shutter in the AR screen, `ScreenARActive` calls `window.__mindar.freezeCurrentTarget()`. The runtime copies the visible GLB's world transform into `#frozen-ar-object`, hides live anchored content, and keeps the frozen object editable even if the physical target moves out of view.
+
+Captured mode supports two gestures:
+
+- **Move**: drag the middle camera area to reposition the frozen model.
+- **Rotate**: switch to rotate mode, then drag left/right to rotate the model 360 degrees around the Y axis.
+
+Retake calls `unfreezeCurrentTarget()` and returns to live anchored AR.
 
 ## Anchored AR content
 
