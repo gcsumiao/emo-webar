@@ -302,11 +302,13 @@ function ScreenARActive({ lang = 'zh', setLang }) {
       if (current === 'captured-frame') {
         const nextFrozenState = window.__mindar?.unfreezeCurrentTarget?.() || null;
         setFrozenState(nextFrozenState);
+        console.log('[EMO-AR] unfreeze', nextFrozenState);
         return 'final-live';
       }
       EMOARAudio.playShutter();
       const nextFrozenState = window.__mindar?.freezeCurrentTarget?.() || null;
       setFrozenState(nextFrozenState);
+      console.log('[EMO-AR] freeze', nextFrozenState);
       return 'captured-frame';
     });
   }, []);
@@ -362,14 +364,20 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         if (delta > 180) delta -= 360;
         if (delta < -180) delta += 360;
         const nextFrozenState = window.__mindar?.rotateFrozenBy?.({ yawDelta: -delta });
-        if (nextFrozenState) setFrozenState(nextFrozenState);
+        if (nextFrozenState) {
+          setFrozenState(nextFrozenState);
+          console.log('[EMO-AR] rotate', { yawDelta: -delta, yaw: nextFrozenState.rotation?.y });
+        }
       }
       gestureRef.current.lastAngle = angle;
     } else if (pointersRef.current.size === 1) {
       const dx = next.x - prev.x;
       const dy = next.y - prev.y;
       const nextFrozenState = window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
-      if (nextFrozenState) setFrozenState(nextFrozenState);
+      if (nextFrozenState) {
+        setFrozenState(nextFrozenState);
+        console.log('[EMO-AR] move', { dx, dy, position: nextFrozenState.position });
+      }
     }
   }, [isCaptured]);
 
@@ -389,7 +397,8 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         width: 600,
         height: 600,
         pointerEvents: 'none',
-        transition: 'top 420ms ease-out, transform 420ms ease-out',
+        opacity: isCaptured ? 0 : 1,
+        transition: 'top 420ms ease-out, transform 420ms ease-out, opacity 240ms ease-out',
       }}>
         <Step06SequencePlayer
           size={600}
@@ -553,6 +562,34 @@ function ScreenARActive({ lang = 'zh', setLang }) {
           pointerEvents: 'none',
         }}/>
       )}
+
+      {/* TEMP DEBUG OVERLAY — remove once frozen edit is verified on device */}
+      <div style={{
+        position: 'absolute',
+        top: 100,
+        right: 12,
+        zIndex: 10,
+        padding: '8px 10px',
+        borderRadius: 10,
+        background: 'rgba(0,0,0,0.62)',
+        border: '0.5px solid rgba(255,255,255,0.18)',
+        fontFamily: FONT_MONO,
+        fontSize: 9.5,
+        lineHeight: 1.45,
+        color: '#fff',
+        textAlign: 'left',
+        pointerEvents: 'none',
+        maxWidth: 180,
+      }}>
+        <div>phase: <b style={{ color: '#A9D45A' }}>{arPhase}</b></div>
+        <div>frozen: <b style={{ color: frozenState?.active ? '#A9D45A' : '#E56D89' }}>{String(!!frozenState?.active)}</b></div>
+        {frozenState && (
+          <>
+            <div>pos: {frozenState.position ? `${frozenState.position.x.toFixed(2)}, ${frozenState.position.y.toFixed(2)}, ${frozenState.position.z.toFixed(2)}` : '—'}</div>
+            <div>rot: {frozenState.rotation ? `${frozenState.rotation.x.toFixed(0)}, ${frozenState.rotation.y.toFixed(0)}, ${frozenState.rotation.z.toFixed(0)}` : '—'}</div>
+          </>
+        )}
+      </div>
 
       <div style={{
         position: 'absolute', left: '50%', bottom: 8, transform: 'translateX(-50%)',
