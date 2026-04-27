@@ -1,10 +1,9 @@
-import { IOSStatusBar, LangChip, PillBtn, TOKENS, langFont, t } from '../components/ui.jsx';
+import { LangChip, PillBtn, TOKENS, langFont, t } from '../components/ui.jsx';
 import { Mascot3D } from '../components/Mascot.jsx';
 
 export function Denied({ lang = 'zh', setLang }) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: `linear-gradient(180deg, #FFF4F4 0%, ${TOKENS.cream} 100%)` }}>
-      <IOSStatusBar />
       <div className="top-controls">
         <button type="button" data-interactive="true" onClick={() => window.__setProtoState?.('landing')} style={{ width: 38, height: 38, borderRadius: 999, border: 'none', background: 'rgba(31,26,31,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke={TOKENS.ink} strokeWidth="1.8" fill="none" strokeLinecap="round" /></svg>

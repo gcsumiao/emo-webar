@@ -3,6 +3,8 @@ import { aframeAssets } from './aframeAssets.js';
 import { arTargets, defaultAnchoredAr } from './arTargets.js';
 
 const MIND_TARGET_URL = '/assets/mindar/targets.mind';
+const FROZEN_GLB_POSITION = { x: 0, y: -0.04, z: -1.18 };
+const FROZEN_GLB_SCALE = { x: 0.075, y: 0.075, z: 0.075 };
 
 function vectorToAttr(value, fallback = [0, 0, 0]) {
   const source = Array.isArray(value) ? value : fallback;
@@ -82,15 +84,14 @@ function buildAnchoredContentMarkup(target) {
 
 function buildFrozenContentMarkup() {
   const assetId = escapeAttr(defaultAnchoredAr.assetId);
-  const scale = escapeAttr(vectorToAttr(defaultAnchoredAr.scale));
   return `
-    <a-entity id="frozen-ar-object" visible="false" position="0 0 -1.15" rotation="0 0 0">
+    <a-entity id="frozen-ar-object" visible="false" position="${FROZEN_GLB_POSITION.x} ${FROZEN_GLB_POSITION.y} ${FROZEN_GLB_POSITION.z}" rotation="0 0 0">
       <a-gltf-model
         id="frozen-ar-model"
         src="#${assetId}"
         position="0 0 0"
         rotation="0 0 0"
-        scale="${scale}">
+        scale="${FROZEN_GLB_SCALE.x} ${FROZEN_GLB_SCALE.y} ${FROZEN_GLB_SCALE.z}">
       </a-gltf-model>
       <a-box
         id="frozen-debug-cube"
@@ -189,9 +190,9 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     const frozenState = {
       active: false,
       sourceTarget: null,
-      position: { x: 0, y: 0, z: -1.15 },
+      position: { ...FROZEN_GLB_POSITION },
       rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 0.18, y: 0.18, z: 0.18 },
+      scale: { ...FROZEN_GLB_SCALE },
     };
 
     const cloneFrozenState = () => ({
@@ -242,6 +243,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           node.setAttribute('visible', visibleLive ? 'true' : 'false');
         });
       });
+      pushDiagnostics({ lastEvent: visibleLive ? 'live-content-visible' : 'live-content-hidden' });
     };
 
     const applyLiveYaw = () => {
@@ -265,12 +267,12 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const fallbackScale = parseVector(sourceTarget?.scale || defaultAnchoredAr.scale, frozenState.scale);
       frozenState.active = true;
       frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
-      frozenState.position = { x: 0, y: 0, z: -1.15 };
+      frozenState.position = { ...FROZEN_GLB_POSITION };
       frozenState.rotation = { x: 0, y: liveYawOffset, z: 0 };
       frozenState.scale = {
-        x: fallbackScale.x > 0 ? fallbackScale.x : 0.18,
-        y: fallbackScale.y > 0 ? fallbackScale.y : 0.18,
-        z: fallbackScale.z > 0 ? fallbackScale.z : 0.18,
+        x: fallbackScale.x > 0 ? fallbackScale.x : FROZEN_GLB_SCALE.x,
+        y: fallbackScale.y > 0 ? fallbackScale.y : FROZEN_GLB_SCALE.y,
+        z: fallbackScale.z > 0 ? fallbackScale.z : FROZEN_GLB_SCALE.z,
       };
       setLiveContentVisible(false);
       applyFrozenState();
@@ -400,6 +402,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       moveFrozenByScreenDelta,
       rotateFrozenBy,
       scaleFrozenBy,
+      setLiveContentVisible,
       rotateLiveBy,
       getLiveYaw: () => liveYawOffset,
       isReady: () => scene.hasLoaded === true,

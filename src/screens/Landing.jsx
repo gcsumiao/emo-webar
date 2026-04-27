@@ -1,9 +1,8 @@
-import { IOSStatusBar, LangChip, PillBtn, SectionLabel, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { LangChip, PillBtn, SectionLabel, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 
 export function Landing({ lang = 'zh', setLang }) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'linear-gradient(180deg, #FFE4EA 0%, #FCD5DE 40%, #F8BCCB 100%)' }}>
-      <IOSStatusBar />
       <div className="top-controls">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/assets/mascot/m_sprout.png" alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} />

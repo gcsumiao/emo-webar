@@ -1,10 +1,13 @@
 import React from 'react';
-import { IOSStatusBar, LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 import { Step06SequencePlayer } from '../components/SequencePlayer.jsx';
 import { arAudio } from '../lib/arAudio.js';
 import { introDurationMs, introFrameUrls, preloadUrls } from '../lib/step06Assets.js';
 import { useViewport } from '../lib/viewport.js';
 import { clampScaleFactor, normalizeAngleDelta, pointerAngle, pointerDistance } from '../ar/frozenControls.js';
+
+const INTRO_HANDOFF_MS = 560;
+const INTRO_VISUAL_SIZE = 'min(154vw, 680px)';
 
 function formatVector(value, digits = 2) {
   if (!value) return '-';
@@ -16,14 +19,20 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [frozenState, setFrozenState] = React.useState(() => window.__mindar?.getFrozenState?.() || null);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({ lastAngle: null, lastDistance: null });
+  const handoffTimerRef = React.useRef(null);
   const viewport = useViewport();
 
   React.useEffect(() => {
     preloadUrls(introFrameUrls);
   }, []);
 
-  React.useEffect(() => () => {
-    window.__mindar?.unfreezeCurrentTarget?.();
+  React.useEffect(() => {
+    window.__mindar?.setLiveContentVisible?.(false);
+    return () => {
+      window.clearTimeout(handoffTimerRef.current);
+      window.__mindar?.setLiveContentVisible?.(true);
+      window.__mindar?.unfreezeCurrentTarget?.();
+    };
   }, []);
 
   const isCaptured = arPhase === 'captured-frame';
@@ -44,6 +53,15 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       console.info('[EMO-AR] freeze', nextFrozenState);
       return 'captured-frame';
     });
+  }, []);
+
+  const handleIntroComplete = React.useCallback(() => {
+    window.__mindar?.setLiveContentVisible?.(true);
+    setArPhase('intro-handoff');
+    window.clearTimeout(handoffTimerRef.current);
+    handoffTimerRef.current = window.setTimeout(() => {
+      setArPhase('final-live');
+    }, INTRO_HANDOFF_MS);
   }, []);
 
   const exitAR = React.useCallback(() => {
@@ -143,19 +161,18 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
-      <div style={{ position: 'absolute', left: '50%', top: isLive ? '47%' : '49%', transform: 'translate(-50%, -50%)', width: 'min(154vw, 680px)', height: 'min(154vw, 680px)', pointerEvents: 'none', opacity: arPhase === 'intro-playing' ? 1 : 0, transition: 'top 420ms ease-out, opacity 320ms ease-out' }}>
+      <div style={{ position: 'absolute', left: '50%', top: isLive ? '47%' : '49%', transform: 'translate(-50%, -50%)', width: INTRO_VISUAL_SIZE, height: INTRO_VISUAL_SIZE, pointerEvents: 'none', opacity: arPhase === 'final-live' || arPhase === 'captured-frame' ? 0 : 1, transition: `top 420ms ease-out, opacity ${INTRO_HANDOFF_MS}ms ease-out` }}>
         <Step06SequencePlayer
           size="100%"
           autoplay={arPhase === 'intro-playing'}
           holdLastFrame
           frameUrls={introFrameUrls}
           durationMs={introDurationMs}
-          onComplete={() => setArPhase('final-live')}
+          onComplete={handleIntroComplete}
           style={{ transform: 'translateY(-9%)', filter: 'none' }}
         />
       </div>
 
-      <IOSStatusBar dark />
       <div className="top-controls">
         <FrostButton onClick={exitAR}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" /></svg>
@@ -187,7 +204,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLandscapePhone ? 8 : 14, pointerEvents: 'none', zIndex: 12 }}>
         <div style={{ padding: '10px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)', fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)', maxWidth: 'min(84vw, 360px)', textAlign: 'center' }}>
-          {arPhase === 'intro-playing'
+          {arPhase === 'intro-playing' || arPhase === 'intro-handoff'
             ? t(lang, '一毛出现中…', 'EMO is appearing…')
             : isCaptured
               ? t(lang, '单指拖动 · 双指旋转 / 缩放一毛', 'Drag · twist / pinch EMO')
@@ -241,7 +258,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         {diagnostics?.modelError && <div style={{ color: '#ffbac8' }}>model-error</div>}
       </div>
 
-      <div style={{ position: 'absolute', left: '50%', bottom: 'calc(var(--safe-bottom) + 8px)', transform: 'translateX(-50%)', width: 140, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.7)' }} />
     </div>
   );
 }
