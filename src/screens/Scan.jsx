@@ -52,15 +52,30 @@ export function Scan({ lang = 'zh', setLang }) {
   const isLandscapePhone = geometry.orientation === 'landscape' && !geometry.isTablet && geometry.height < 520;
 
   React.useEffect(() => {
-    const mindar = window.__mindar;
-    if (!mindar) return undefined;
-    const offFound = mindar.onTargetFound(() => setScanState('locked'));
-    const offLost = mindar.onTargetLost(() => {
-      setScanState((current) => current === 'locked' ? current : 'searching');
-    });
+    let cancelled = false;
+    let retryTimer = null;
+    let offFound = null;
+    let offLost = null;
+
+    const bindMindAR = () => {
+      if (cancelled) return;
+      const mindar = window.__mindar;
+      if (!mindar?.onTargetFound || !mindar?.onTargetLost) {
+        retryTimer = window.setTimeout(bindMindAR, 80);
+        return;
+      }
+      offFound = mindar.onTargetFound(() => setScanState('locked'));
+      offLost = mindar.onTargetLost(() => {
+        setScanState((current) => current === 'locked' ? current : 'searching');
+      });
+    };
+
+    bindMindAR();
     return () => {
-      offFound();
-      offLost();
+      cancelled = true;
+      window.clearTimeout(retryTimer);
+      offFound?.();
+      offLost?.();
     };
   }, []);
 

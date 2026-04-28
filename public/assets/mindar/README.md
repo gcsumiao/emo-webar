@@ -52,15 +52,14 @@ The scan and AR screens currently treat any configured target as an EMO hit. Spa
 
 ## Frozen edit mode
 
-When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()`. The runtime swaps from the live target-anchored sprite to `#frozen-ar-object`, keeps the final `1_0261.png` sprite visible in camera space, and lets the user edit it even if the physical target moves out of view.
+After the drop finishes, the runtime swaps from the live target-anchored sprite to `#frozen-ar-object`, keeps the final `1_0261.png` sprite visible in camera space, and lets the user edit it even if the physical target moves out of view.
 
-Captured mode supports these gestures:
+Live final mode supports these gestures:
 
-- **Move**: drag the middle camera area to reposition the frozen sprite.
-- **Rotate**: twist with two fingers to rotate the sprite around the Y axis.
-- **Scale**: pinch with two fingers while captured to scale the frozen sprite.
+- **Move / rotate**: drag the middle camera area with one finger to reposition the frozen sprite and rotate it around the Y axis.
+- **Scale**: pinch with two fingers to scale the frozen sprite.
 
-Retake calls `unfreezeCurrentTarget()` and returns to live anchored AR.
+When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 
 ## Anchored AR content
 

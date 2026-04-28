@@ -3,7 +3,7 @@ import { LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../compon
 import { arAudio } from '../lib/arAudio.js';
 import { introFps, introFrameUrls, preloadUrls } from '../lib/step06Assets.js';
 import { useViewport } from '../lib/viewport.js';
-import { clampScaleFactor, normalizeAngleDelta, pointerAngle, pointerDistance } from '../ar/frozenControls.js';
+import { clampScaleFactor, pointerDistance } from '../ar/frozenControls.js';
 
 const FLASH_MS = 240;
 
@@ -27,7 +27,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [visualFrameIndex, setVisualFrameIndex] = React.useState(0);
   const [visualTransform, setVisualTransform] = React.useState({ x: 0, y: 0, scale: 1, rotation: 0 });
   const pointersRef = React.useRef(new Map());
-  const gestureRef = React.useRef({ lastAngle: null, lastDistance: null });
+  const gestureRef = React.useRef({ lastDistance: null });
   const flashTimerRef = React.useRef(null);
   const visualRafRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
@@ -114,6 +114,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   const isCaptured = arPhase === 'captured-frame';
   const isLive = arPhase === 'final-live' || isCaptured;
+  const canEdit = arPhase === 'final-live';
   const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
 
   const captureFrame = React.useCallback(() => {
@@ -132,7 +133,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   const exitAR = React.useCallback(() => {
     window.clearTimeout(flashTimerRef.current);
-    const next = window.__mindar?.hideFinalObject?.() || null;
+    const next = window.__mindar?.restartScan?.() || window.__mindar?.hideFinalObject?.() || null;
     setFrozenState(next);
     window.__setProtoState?.('scan');
   }, []);
@@ -151,22 +152,20 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, [lang]);
 
   const handlePointerDown = React.useCallback((event) => {
-    if (!isLive) return;
+    if (!canEdit) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const points = Array.from(pointersRef.current.values());
     if (points.length >= 2) {
-      gestureRef.current.lastAngle = pointerAngle(points[0], points[1]);
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
     } else {
-      gestureRef.current.lastAngle = null;
       gestureRef.current.lastDistance = null;
     }
-  }, [isLive]);
+  }, [canEdit]);
 
   const handlePointerMove = React.useCallback((event) => {
-    if (!isLive) return;
+    if (!canEdit) return;
     const prev = pointersRef.current.get(event.pointerId);
     if (!prev) return;
     event.preventDefault();
@@ -175,36 +174,35 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     const points = Array.from(pointersRef.current.values());
 
     if (points.length >= 2) {
-      const angle = pointerAngle(points[0], points[1]);
       const distance = pointerDistance(points[0], points[1]);
-      if (gestureRef.current.lastAngle != null) {
-        const yawDelta = -normalizeAngleDelta(angle - gestureRef.current.lastAngle);
-        setVisualTransform((current) => ({ ...current, rotation: current.rotation + yawDelta }));
-        const r = window.__mindar?.rotateFrozenBy?.({ yawDelta });
-        if (r) setFrozenState(r);
-      }
       if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
         setVisualTransform((current) => ({ ...current, scale: Math.max(0.35, Math.min(2.4, current.scale * scaleFactor)) }));
         const r = window.__mindar?.scaleFrozenBy?.({ scaleFactor });
         if (r) setFrozenState(r);
       }
-      gestureRef.current.lastAngle = angle;
       gestureRef.current.lastDistance = distance;
     } else if (points.length === 1) {
       const dx = next.x - prev.x;
       const dy = next.y - prev.y;
-      setVisualTransform((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
+      const yawDelta = dx * 0.35;
+      setVisualTransform((current) => ({
+        ...current,
+        x: current.x + dx,
+        y: current.y + dy,
+        rotation: current.rotation + yawDelta,
+      }));
       const r = window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
       if (r) setFrozenState(r);
+      const rr = window.__mindar?.rotateFrozenBy?.({ yawDelta });
+      if (rr) setFrozenState(rr);
     }
-  }, [isLive]);
+  }, [canEdit]);
 
   const handlePointerUp = React.useCallback((event) => {
     pointersRef.current.delete(event.pointerId);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     if (pointersRef.current.size < 2) {
-      gestureRef.current.lastAngle = null;
       gestureRef.current.lastDistance = null;
     }
   }, []);
@@ -268,7 +266,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             pointerEvents: 'none',
             userSelect: 'none',
             WebkitUserSelect: 'none',
-            filter: 'drop-shadow(0 18px 24px rgba(0,0,0,0.22))',
+            imageRendering: 'pixelated',
+            filter: 'none',
+            opacity: 1,
           }}
         />
       )}
@@ -280,20 +280,21 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         <LangChip lang={lang} onToggle={setLang} light />
       </div>
 
-      {(isLive || arPhase === 'sprite-entering') && (
+      {canEdit && (
         <div
           data-interactive="true"
-          aria-label="Drag to move EMO; pinch to scale; twist with two fingers to rotate"
+          data-ar-edit-surface="true"
+          aria-label="Drag with one finger to move and rotate EMO; pinch with two fingers to scale"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           style={{
             position: 'absolute',
-            left: isCaptured ? '11vw' : 0,
-            right: isCaptured ? '11vw' : 0,
-            top: isCaptured ? capturedFrameStyle.top : 'calc(var(--safe-top) + 96px)',
-            bottom: isCaptured ? capturedFrameStyle.bottom : 'calc(var(--safe-bottom) + 220px)',
+            left: 0,
+            right: 0,
+            top: 'calc(var(--safe-top) + 96px)',
+            bottom: 'calc(var(--safe-bottom) + 220px)',
             zIndex: 4,
             pointerEvents: 'auto',
             touchAction: 'none',
@@ -307,8 +308,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           {arPhase === 'scanning-success' || arPhase === 'sprite-entering'
             ? t(lang, '一毛出现中…', 'EMO is appearing…')
             : isCaptured
-              ? t(lang, '单指拖动 · 双指旋转 / 缩放一毛', 'Drag · twist / pinch EMO')
-              : t(lang, '单指拖动 · 双指旋转 / 缩放一毛 · 拍下并分享', 'Drag · twist / pinch EMO · Capture & share')}
+              ? t(lang, '已固定 · 可重新拍照或分享', 'Fixed · Retake or share')
+              : t(lang, '单指拖动 / 旋转 · 双指缩放 · 拍下并固定', 'One finger moves / rotates · two fingers scale · capture to lock')}
         </div>
         {isCaptured ? (
           <div style={{ display: 'flex', gap: 12, pointerEvents: 'auto' }}>

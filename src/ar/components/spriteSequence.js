@@ -23,8 +23,8 @@ function loadTexture(url) {
   loader.crossOrigin = 'anonymous';
   const tex = loader.load(url);
   if ('SRGBColorSpace' in THREE) tex.colorSpace = THREE.SRGBColorSpace;
-  tex.minFilter = THREE.LinearFilter;
-  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
   registry.textureCache.set(url, tex);
   return tex;

@@ -470,6 +470,57 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       return cloneFrozenState();
     };
 
+    const resetSceneForScan = () => {
+      activeTargets.clear();
+      lastTarget = null;
+      liveYawOffset = 0;
+      lostTimers.forEach(({ dim, hide }) => { window.clearTimeout(dim); window.clearTimeout(hide); });
+      lostTimers.clear();
+      anchors.forEach((anchor) => {
+        getIntroAnim(anchor)?.reset?.();
+        getSpriteSeq(anchor)?.stop?.();
+      });
+      hideFinalObject();
+      setLiveContentVisible(true);
+      applyLiveYaw();
+      pushDiagnostics({
+        activeTargetId: '',
+        spritePhase: 'idle',
+        frameIndex: 0,
+        lastEvent: 'scan-reset',
+      });
+      return cloneFrozenState();
+    };
+
+    const restartScan = () => {
+      const snapshot = resetSceneForScan();
+      const sys = scene.systems && scene.systems['mindar-image-system'];
+      if (!sys || !startedRef.current) {
+        setStatus(scene.hasLoaded ? 'ready' : 'idle');
+        return snapshot;
+      }
+
+      setStatus('restarting');
+      Promise.resolve()
+        .then(() => {
+          try { sys.stop(); } catch {}
+          startedRef.current = false;
+        })
+        .then(() => new Promise((resolve) => window.setTimeout(resolve, 80)))
+        .then(() => sys.start())
+        .then(() => {
+          startedRef.current = true;
+          setStatus('running');
+        })
+        .catch((error) => {
+          console.error('[MindAR] restart failed', error);
+          startedRef.current = false;
+          pushDiagnostics({ modelError: String(error?.message || error), lastEvent: 'restart-failed' });
+          setStatus('error');
+        });
+      return snapshot;
+    };
+
     const setFrozenTransform = (transform = {}) => {
       if (!frozenState.active) return cloneFrozenState();
       if (transform.position) frozenState.position = parseVector(transform.position, frozenState.position);
@@ -564,6 +615,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       unfreezeCurrentTarget,
       showFinalObject,
       hideFinalObject,
+      restartScan,
       setFrozenTransform,
       getFrozenState: cloneFrozenState,
       moveFrozenByScreenDelta,
