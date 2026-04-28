@@ -1,5 +1,6 @@
 import React from 'react';
 import { LangChip, PillBtn, SectionLabel, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { asset } from '../lib/assetUrl.js';
 
 export function Permission({ lang = 'zh', setLang }) {
   const [probing, setProbing] = React.useState(false);
@@ -41,7 +42,7 @@ export function Permission({ lang = 'zh', setLang }) {
             <circle cx="35" cy="33" r="13" stroke={TOKENS.ink} strokeWidth="2.5" fill="#fff" />
             <circle cx="35" cy="33" r="6" fill={TOKENS.pinkDeep} />
           </svg>
-          <img src="/assets/mascot/m_sprout.png" alt="" style={{ position: 'absolute', right: -24, bottom: -18, width: 86, height: 86, objectFit: 'contain', filter: 'drop-shadow(0 8px 10px rgba(229,109,137,0.3))' }} />
+          <img src={asset('/assets/mascot/m_sprout.png')} alt="" style={{ position: 'absolute', right: -24, bottom: -18, width: 86, height: 86, objectFit: 'contain', filter: 'drop-shadow(0 8px 10px rgba(229,109,137,0.3))' }} />
         </div>
       </div>
 

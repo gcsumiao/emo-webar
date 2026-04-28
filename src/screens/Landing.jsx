@@ -1,11 +1,12 @@
 import { LangChip, PillBtn, SectionLabel, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { asset } from '../lib/assetUrl.js';
 
 export function Landing({ lang = 'zh', setLang }) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'linear-gradient(180deg, #FFE4EA 0%, #FCD5DE 40%, #F8BCCB 100%)' }}>
       <div className="top-controls">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img src="/assets/mascot/m_sprout.png" alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} />
+          <img src={asset('/assets/mascot/m_sprout.png')} alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} />
           <div style={{ fontFamily: langFont(lang), fontWeight: 800, fontSize: 16, color: TOKENS.ink }}>{t(lang, '一毛', 'EMO')}</div>
         </div>
         <LangChip lang={lang} onToggle={setLang} />
@@ -13,7 +14,7 @@ export function Landing({ lang = 'zh', setLang }) {
 
       <div style={{ position: 'absolute', top: '10dvh', left: 0, right: 0, height: '44dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         <img
-          src="/assets/mascot-face-emoji.png"
+          src={asset('/assets/mascot-face-emoji.png')}
           alt=""
           style={{ width: 'min(112vw, 620px)', height: 'auto', animation: 'face-bob 5s ease-in-out infinite', filter: 'drop-shadow(0 30px 40px rgba(229,109,137,0.2))' }}
         />

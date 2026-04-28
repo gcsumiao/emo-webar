@@ -1,5 +1,7 @@
-const AR_BGM_URL = '/assets/step06/audio/bgm-10249.m4a';
-const AR_SHUTTER_URL = '/assets/step06/audio/shutter-10249.m4a';
+import { asset } from './assetUrl.js';
+
+const AR_BGM_URL = asset('/assets/step06/audio/bgm-10249.m4a');
+const AR_SHUTTER_URL = asset('/assets/step06/audio/shutter-10249.m4a');
 const AR_INTRO_CUE_SECONDS = 4;
 
 let bgm = null;

@@ -1,10 +1,12 @@
+import { asset } from '../lib/assetUrl.js';
+
 export function Mascot3D({ size = 220, state = 'idle', animate = 'bob', style = {}, shadow = true }) {
   const src = {
-    small: '/assets/mascot/m_small.png',
-    idle: '/assets/mascot/m_idle.png',
-    mid: '/assets/mascot/m_mid.png',
-    sprout: '/assets/mascot/m_sprout.png',
-  }[state] || '/assets/mascot/m_sprout.png';
+    small: asset('/assets/mascot/m_small.png'),
+    idle: asset('/assets/mascot/m_idle.png'),
+    mid: asset('/assets/mascot/m_mid.png'),
+    sprout: asset('/assets/mascot/m_sprout.png'),
+  }[state] || asset('/assets/mascot/m_sprout.png');
 
   return (
     <div

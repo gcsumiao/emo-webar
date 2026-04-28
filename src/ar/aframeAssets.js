@@ -1,8 +1,10 @@
+import { asset } from '../lib/assetUrl.js';
+
 const debugMode = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('debug') === '1';
 
 const debugAssets = [
-  { id: 'emo-model', type: 'model', src: '/assets/step06/models/yimao-final.glb' },
+  { id: 'emo-model', type: 'model', src: asset('/assets/step06/models/yimao-final.glb') },
 ];
 
 export const aframeAssets = debugMode ? debugAssets : [];

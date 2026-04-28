@@ -2,9 +2,10 @@ import React from 'react';
 import { aframeAssets, isDebugMode, debugGlbAssetId } from './aframeAssets.js';
 import { arTargets } from './arTargets.js';
 import { spriteConfigFor, FROZEN_SPRITE_DEFAULTS } from './arSpriteConfig.js';
+import { asset } from '../lib/assetUrl.js';
 import './components/index.js';
 
-const MIND_TARGET_URL = '/assets/mindar/targets.mind';
+const MIND_TARGET_URL = asset('/assets/mindar/targets.mind');
 const FROZEN_SPRITE_POSITION = { x: 0, y: -0.04, z: -1.18 };
 const FROZEN_SPRITE_SCALE = { x: 1, y: 1, z: 1 };
 const FROZEN_SPRITE_SCALE_MIN = 0.25;

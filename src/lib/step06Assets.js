@@ -1,13 +1,15 @@
-const STEP06_MANIFEST_URL = '/assets/step06/manifest.json';
+import { ASSET_BASE, asset } from './assetUrl.js';
+
+const STEP06_MANIFEST_URL = asset('/assets/step06/manifest.json');
 
 const manifestDefaults = {
   frameUrls: [],
   frameCount: 292,
   introDurationMs: 10004,
   frameDurationMs: 34,
-  audioUrl: '/assets/step06/audio/yimao-intro.m4a',
-  glbUrl: '/assets/step06/models/yimao-final.glb',
-  finalFrameUrl: '/assets/step06/sequence/1_0300.png',
+  audioUrl: asset('/assets/step06/audio/yimao-intro.m4a'),
+  glbUrl: asset('/assets/step06/models/yimao-final.glb'),
+  finalFrameUrl: asset('/assets/step06/sequence/1_0300.png'),
   width: 768,
   height: 768,
   fps: 29.188,
@@ -20,8 +22,9 @@ let warmAudio = null;
 
 function normalizeAssetUrl(url) {
   if (!url) return url;
-  if (/^(https?:)?\/\//.test(url) || url.startsWith('/')) return url;
-  return `/${url}`;
+  if (/^(https?:)?\/\//.test(url)) return url;
+  // Use the BASE_URL-aware helper so paths work under GitHub Pages subpaths.
+  return asset(url);
 }
 
 function normalizeManifest(loaded) {
@@ -123,6 +126,6 @@ export function getStep06FrameUrl(index) {
 
 export const introFrameRanges = [[9, 56], [242, 261]];
 export const introFrameUrls = introFrameRanges.flatMap(([start, end]) =>
-  Array.from({ length: end - start + 1 }, (_, i) => `/assets/step06/intro-hq/1_${String(start + i).padStart(4, '0')}.png`)
+  Array.from({ length: end - start + 1 }, (_, i) => asset(`/assets/step06/intro-hq/1_${String(start + i).padStart(4, '0')}.png`))
 );
 export const introDurationMs = Math.round((introFrameUrls.length / 30) * 1000);
