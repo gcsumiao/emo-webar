@@ -253,7 +253,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     };
 
     const applyFrozenState = () => {
-      if (!frozenObject?.object3D || !frozenCharacter?.object3D) return false;
+      if (!frozenObject?.object3D) return false;
       const THREE = getThree();
       if (!THREE) return false;
       frozenObject.object3D.position.set(frozenState.position.x, frozenState.position.y, frozenState.position.z);
@@ -273,6 +273,28 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       });
       return true;
     };
+
+    const waitForPersistentSpriteReady = () => new Promise((resolve) => {
+      const ready = () => getPersistentIntroAnim() && getPersistentSeq() && frozenCharacter?.getObject3D('mesh');
+      if (ready()) {
+        resolve(true);
+        return;
+      }
+      let attempts = 0;
+      const check = () => {
+        attempts += 1;
+        if (ready()) {
+          resolve(true);
+          return;
+        }
+        if (attempts >= 90) {
+          resolve(false);
+          return;
+        }
+        window.requestAnimationFrame(check);
+      };
+      window.requestAnimationFrame(check);
+    });
 
     const setLiveContentVisible = (visibleLive) => {
       anchors.forEach((anchor) => {
@@ -301,12 +323,24 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       lostTimers.delete(targetIndex);
     };
 
-    const playSpriteIntro = (targetIndex) => {
+    const playSpriteIntro = async (targetIndex) => {
       const idx = targetIndex ?? lastTarget?.targetIndex ?? activeTargets.keys().next().value ?? 0;
       const sourceTarget = findAnchorByIndex(idx)?.target || lastTarget || arTargets[0];
+      frozenState.active = true;
+      frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
+      frozenState.position = { ...FROZEN_SPRITE_POSITION };
+      frozenState.rotation = { x: 0, y: liveYawOffset, z: 0 };
+      frozenState.scale = { ...FROZEN_SPRITE_SCALE };
+      setLiveContentVisible(false);
+      applyFrozenState();
+
+      const ready = await waitForPersistentSpriteReady();
       const introAnim = getPersistentIntroAnim();
-      if (!introAnim) return Promise.resolve();
       const seq = getPersistentSeq();
+      if (!ready || !introAnim || !seq) {
+        pushDiagnostics({ modelError: 'persistent sprite not ready', lastEvent: `sprite-intro-missing:${idx}` });
+        return cloneFrozenState();
+      }
       const characterEl = frozenCharacter;
       const sequenceDone = seq?.frames?.length && characterEl
         ? new Promise((resolve) => {
@@ -324,12 +358,6 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           characterEl.addEventListener('sprite-sequence-end', finish, { once: true });
         })
         : Promise.resolve();
-      frozenState.active = true;
-      frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
-      frozenState.position = { ...FROZEN_SPRITE_POSITION };
-      frozenState.rotation = { x: 0, y: liveYawOffset, z: 0 };
-      frozenState.scale = { ...FROZEN_SPRITE_SCALE };
-      setLiveContentVisible(false);
       applyFrozenState();
       introAnim.reset?.();
       pushDiagnostics({ lastEvent: `sprite-intro-play:${idx}` });
