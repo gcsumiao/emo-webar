@@ -1,3 +1,4 @@
+import React from 'react';
 import { TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 import { Mascot3D } from '../components/Mascot.jsx';
 

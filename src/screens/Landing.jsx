@@ -1,3 +1,4 @@
+import React from 'react';
 import { LangChip, PillBtn, SectionLabel, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 import { asset } from '../lib/assetUrl.js';
 

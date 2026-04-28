@@ -1,3 +1,5 @@
+import React from 'react';
+
 export const TOKENS = {
   pink: '#F29CB0',
   pinkDeep: '#E56D89',

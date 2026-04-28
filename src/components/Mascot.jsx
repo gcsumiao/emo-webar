@@ -1,3 +1,4 @@
+import React from 'react';
 import { asset } from '../lib/assetUrl.js';
 
 export function Mascot3D({ size = 220, state = 'idle', animate = 'bob', style = {}, shadow = true }) {
