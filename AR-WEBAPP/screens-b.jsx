@@ -754,7 +754,7 @@ function ScreenLoading({ lang = 'zh' }) {
 
         <div style={{ marginTop: 18, textAlign: 'center' }}>
           <div style={{ fontFamily: langFont(lang), fontSize: 18, fontWeight: 700, color: '#fff' }}>
-            {t(lang, '正在准备一毛…', 'Waking up EMO…')}
+            {t(lang, '唤醒一毛中…', 'Waking up EMO…')}
           </div>
         </div>
       </div>
