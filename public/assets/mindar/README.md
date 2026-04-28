@@ -52,41 +52,28 @@ The scan and AR screens currently treat any configured target as an EMO hit. Spa
 
 ## Frozen edit mode
 
-When the user taps the shutter in the AR screen, `ScreenARActive` calls `window.__mindar.freezeCurrentTarget()`. The runtime copies the visible GLB's world transform into `#frozen-ar-object`, hides live anchored content, and keeps the frozen object editable even if the physical target moves out of view.
+When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()`. The runtime swaps from the live target-anchored sprite to `#frozen-ar-object`, keeps the final `1_0261.png` sprite visible in camera space, and lets the user edit it even if the physical target moves out of view.
 
-Captured mode supports two gestures:
+Captured mode supports these gestures:
 
-- **Move**: drag the middle camera area to reposition the frozen model.
-- **Rotate**: switch to rotate mode, then drag left/right to rotate the model 360 degrees around the Y axis.
+- **Move**: drag the middle camera area to reposition the frozen sprite.
+- **Rotate**: twist with two fingers to rotate the sprite around the Y axis.
+- **Scale**: pinch with two fingers while captured to scale the frozen sprite.
 
 Retake calls `unfreezeCurrentTarget()` and returns to live anchored AR.
 
 ## Anchored AR content
 
-Current A-Frame asset mapping in `Prototype.html`:
+The main Vite WebAR experience uses high-quality transparent PNG frames as the primary AR character, not `10249.MP4` and not the sitting GLB. The reference flow is Kivicube-like:
 
-- `emo-model`: `../step06/models/yimao-sitting.glb`
+1. MindAR recognizes one of the 6 image targets.
+2. The target anchor receives the live sprite plane.
+3. The intro sequence plays exactly `1_0009.png` through `1_0065.png`, then `1_0242.png` through `1_0261.png`.
+4. The live and captured final states both hold on `assets/step06/intro-hq/1_0261.png`.
 
-All 6 targets currently use the same anchored GLB model with conservative default transforms:
+`10249.MP4` is only a visual reference for timing and final composition. `yimao-sitting.glb` remains a static fallback/debug asset because it has no baked animation and does not match the desired landing sequence as closely as the PNG frames.
 
-```js
-{
-  type: 'model',
-  assetId: 'emo-model',
-  position: '0 0 0.08',
-  rotation: '0 0 0',
-  scale: '0.18 0.18 0.18'
-}
-```
-
-To add richer Kivicube-style content later:
-
-- Put GLB models in `AR-WEBAPP/assets/models/` or keep campaign-specific models under `AR-WEBAPP/assets/step06/models/`.
-- Put video textures in `AR-WEBAPP/assets/videos/`.
-- Add an A-Frame asset entry in `AFRAME_ASSETS`.
-- Change the matching `MINDAR_TARGETS[n].ar` config to `type: 'model'`, `type: 'image'`, or `type: 'video'`.
-
-Video assets should be muted, looped, and `playsinline`; `MindARStage` pauses video targets on `targetLost`.
+For a future Kivicube upload package, export separate platform-friendly images/video/GLB as needed. Do not reduce the Vite WebAR `intro-hq` sprite quality unless mobile performance testing shows a real problem.
 
 ## AI hybrid placeholder
 

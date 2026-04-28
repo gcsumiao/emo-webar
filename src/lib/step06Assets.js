@@ -124,7 +124,7 @@ export function getStep06FrameUrl(index) {
   return manifest.frameUrls[index] || manifest.finalFrameUrl || manifest.frameUrls[manifest.frameUrls.length - 1] || null;
 }
 
-export const introFrameRanges = [[9, 56], [242, 261]];
+export const introFrameRanges = [[9, 65], [242, 261]];
 export const introFrameUrls = introFrameRanges.flatMap(([start, end]) =>
   Array.from({ length: end - start + 1 }, (_, i) => asset(`/assets/step06/intro-hq/1_${String(start + i).padStart(4, '0')}.png`))
 );

@@ -319,8 +319,28 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       if (!anchor) return Promise.resolve();
       const introAnim = getIntroAnim(anchor);
       if (!introAnim) return Promise.resolve();
+      const seq = getSpriteSeq(anchor);
+      const characterEl = getCharacterEl(anchor);
+      const sequenceDone = seq?.frames?.length && characterEl
+        ? new Promise((resolve) => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeoutId);
+            characterEl.removeEventListener('sprite-sequence-end', finish);
+            resolve();
+          };
+          const frameCount = seq.frames.length;
+          const fps = seq.fps || 30;
+          const timeoutId = window.setTimeout(finish, Math.ceil((frameCount / fps) * 1000) + 750);
+          characterEl.addEventListener('sprite-sequence-end', finish, { once: true });
+        })
+        : Promise.resolve();
       pushDiagnostics({ lastEvent: `sprite-intro-play:${idx}` });
-      return introAnim.playIntro().then(() => {
+      const transformDone = introAnim.playIntro();
+      return Promise.all([transformDone, sequenceDone]).then(() => {
+        introAnim.enterFinalIdle?.();
         pushDiagnostics({ spritePhase: 'final', lastEvent: `sprite-intro-end:${idx}` });
       });
     };

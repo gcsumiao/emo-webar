@@ -3,7 +3,7 @@
 // Flower-shaped (sakura) viewfinder matches the reference video 10249.MP4.
 // Coordinates are in the 390×820 phone frame.
 const SCAN_FLOWER_FRAME = { cx: 195, cy: 430, size: 270 };
-const INTRO_FRAME_RANGES = [[9, 56], [242, 261]];
+const INTRO_FRAME_RANGES = [[9, 65], [242, 261]];
 const INTRO_FRAME_URLS = INTRO_FRAME_RANGES.flatMap(([start, end]) =>
   Array.from(
     { length: end - start + 1 },
