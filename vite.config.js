@@ -1,10 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// GitHub Pages serves project sites under /<repo-name>/ so we need the
-// configured base path to match. Override with VITE_BASE if you deploy
-// somewhere else (custom domain, gh-pages root, etc).
-const base = process.env.VITE_BASE || '/emo-webar/';
+// Vercel serves this app at the domain root. GitHub Pages overrides this in
+// .github/workflows/pages.yml with VITE_BASE=/emo-webar/.
+const base = process.env.VITE_BASE || '/';
 
 export default defineConfig({
   base,
