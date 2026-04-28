@@ -1,7 +1,7 @@
 import React from 'react';
 import { LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 import { arAudio } from '../lib/arAudio.js';
-import { introFrameUrls, preloadUrls } from '../lib/step06Assets.js';
+import { introFps, introFrameUrls, preloadUrls } from '../lib/step06Assets.js';
 import { useViewport } from '../lib/viewport.js';
 import { clampScaleFactor, normalizeAngleDelta, pointerAngle, pointerDistance } from '../ar/frozenControls.js';
 
@@ -24,38 +24,78 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [arPhase, setArPhase] = React.useState('scanning-success');
   const [frozenState, setFrozenState] = React.useState(() => window.__mindar?.getFrozenState?.() || null);
   const [spriteState, setSpriteState] = React.useState(() => window.__mindar?.getSpriteState?.() || null);
+  const [visualFrameIndex, setVisualFrameIndex] = React.useState(0);
+  const [visualTransform, setVisualTransform] = React.useState({ x: 0, y: 0, scale: 1, rotation: 0 });
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({ lastAngle: null, lastDistance: null });
   const flashTimerRef = React.useRef(null);
+  const visualRafRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
 
   React.useEffect(() => {
-    preloadUrls(introFrameUrls);
+    preloadUrls(introFrameUrls, { eagerCount: 48 });
   }, []);
 
   // Drive the scanning-success → sprite-entering → final-live transition on mount.
   React.useEffect(() => {
-    const mindar = window.__mindar;
-    if (!mindar) return undefined;
     let cancelled = false;
-    const target = mindar.getLastTarget?.() || mindar.getActiveTargets?.()?.[0] || null;
-    const targetIndex = target?.targetIndex;
-    setArPhase('scanning-success');
-    flashTimerRef.current = window.setTimeout(() => {
-      if (cancelled) return;
-      setArPhase('sprite-entering');
-      arAudio.cueARIntro();
-      mindar.playSpriteIntro?.(targetIndex).then(() => {
+    let retryTimer = null;
+
+    const playVisualIntro = () => new Promise((resolve) => {
+      window.cancelAnimationFrame(visualRafRef.current);
+      setVisualTransform({ x: 0, y: 0, scale: 1, rotation: 0 });
+      setVisualFrameIndex(0);
+      const startedAt = performance.now();
+      const frameMs = 1000 / introFps;
+      const tick = (now) => {
+        if (cancelled) {
+          resolve();
+          return;
+        }
+        const idx = Math.min(introFrameUrls.length - 1, Math.floor((now - startedAt) / frameMs));
+        setVisualFrameIndex(idx);
+        if (idx >= introFrameUrls.length - 1) {
+          resolve();
+          return;
+        }
+        visualRafRef.current = window.requestAnimationFrame(tick);
+      };
+      visualRafRef.current = window.requestAnimationFrame(tick);
+    });
+
+    const startIntro = () => {
+      const mindar = window.__mindar;
+      if (!mindar?.playSpriteIntro) {
+        retryTimer = window.setTimeout(startIntro, 80);
+        return;
+      }
+      const target = mindar.getLastTarget?.() || mindar.getActiveTargets?.()?.[0] || null;
+      const targetIndex = target?.targetIndex;
+      setArPhase('scanning-success');
+      flashTimerRef.current = window.setTimeout(() => {
         if (cancelled) return;
-        setArPhase('final-live');
-        setFrozenState(mindar.getFrozenState?.() || null);
-        setSpriteState(mindar.getSpriteState?.() || null);
-      });
-    }, FLASH_MS);
+        setArPhase('sprite-entering');
+        arAudio.cueARIntro();
+        const arPromise = mindar.playSpriteIntro?.(targetIndex).catch?.(() => null) || Promise.resolve();
+        const visualPromise = playVisualIntro();
+        Promise.all([arPromise, visualPromise]).then(() => {
+          if (cancelled) return;
+          setArPhase('final-live');
+          setVisualFrameIndex(introFrameUrls.length - 1);
+          setFrozenState(mindar.getFrozenState?.() || null);
+          setSpriteState(mindar.getSpriteState?.() || null);
+        });
+      }, FLASH_MS);
+    };
+
+    startIntro();
+
     return () => {
       cancelled = true;
+      window.clearTimeout(retryTimer);
       window.clearTimeout(flashTimerRef.current);
+      window.cancelAnimationFrame(visualRafRef.current);
     };
   }, []);
 
@@ -139,11 +179,13 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const distance = pointerDistance(points[0], points[1]);
       if (gestureRef.current.lastAngle != null) {
         const yawDelta = -normalizeAngleDelta(angle - gestureRef.current.lastAngle);
+        setVisualTransform((current) => ({ ...current, rotation: current.rotation + yawDelta }));
         const r = window.__mindar?.rotateFrozenBy?.({ yawDelta });
         if (r) setFrozenState(r);
       }
       if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
+        setVisualTransform((current) => ({ ...current, scale: Math.max(0.35, Math.min(2.4, current.scale * scaleFactor)) }));
         const r = window.__mindar?.scaleFrozenBy?.({ scaleFactor });
         if (r) setFrozenState(r);
       }
@@ -152,6 +194,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     } else if (points.length === 1) {
       const dx = next.x - prev.x;
       const dy = next.y - prev.y;
+      setVisualTransform((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
       const r = window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
       if (r) setFrozenState(r);
     }
@@ -189,6 +232,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   };
 
   const flashOpacity = arPhase === 'scanning-success' ? 0.85 : 0;
+  const showVisualSprite = arPhase === 'sprite-entering' || arPhase === 'final-live' || arPhase === 'captured-frame';
+  const visualSpriteSrc = introFrameUrls[visualFrameIndex] || introFrameUrls[introFrameUrls.length - 1];
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -204,6 +249,29 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           zIndex: 6,
         }}
       />
+
+      {showVisualSprite && (
+        <img
+          aria-hidden="true"
+          src={visualSpriteSrc}
+          alt=""
+          draggable={false}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: isLandscapePhone ? '47%' : '44%',
+            width: 'min(72vw, 420px)',
+            height: 'auto',
+            transform: `translate(-50%, -50%) translate(${visualTransform.x}px, ${visualTransform.y}px) rotate(${visualTransform.rotation}deg) scale(${visualTransform.scale})`,
+            transformOrigin: '50% 58%',
+            zIndex: 3,
+            pointerEvents: 'none',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            filter: 'drop-shadow(0 18px 24px rgba(0,0,0,0.22))',
+          }}
+        />
+      )}
 
       <div className="top-controls">
         <FrostButton onClick={exitAR} title={t(lang, '返回扫描', 'Back to scan')}>
@@ -280,6 +348,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>phase: <b style={{ color: TOKENS.green }}>{arPhase}</b></div>
           <div>mindar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
           <div>sprite: <b style={{ color: TOKENS.green }}>{spriteState?.phase || '-'}</b> · frame {spriteState?.frameIndex ?? 0}</div>
+          <div>visual: frame {visualFrameIndex}</div>
           <div>activeTarget: {spriteState?.activeTargetIndex ?? '-'}</div>
           <div>edit: <b style={{ color: frozenState?.active ? TOKENS.green : TOKENS.pinkDeep }}>{String(!!frozenState?.active)}</b></div>
           {frozenState && (
