@@ -1,7 +1,7 @@
 import { introFps, introFrameUrls } from '../lib/step06Assets.js';
 import { asset } from '../lib/assetUrl.js';
 
-const FINAL_IDLE_FRAME = asset('/assets/step06/sequence/1_0261.png');
+const FINAL_IDLE_FRAME = asset('/assets/step06/intro-hq/1_0261.png');
 const CHARACTER_PLANE_SIZE = [0.95, 0.95];
 
 export const spriteDefaults = {

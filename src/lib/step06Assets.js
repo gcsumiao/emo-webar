@@ -9,7 +9,7 @@ const manifestDefaults = {
   frameDurationMs: 34,
   audioUrl: asset('/assets/step06/audio/yimao-intro.m4a'),
   glbUrl: asset('/assets/step06/models/yimao-final.glb'),
-  finalFrameUrl: asset('/assets/step06/sequence/1_0261.png'),
+  finalFrameUrl: asset('/assets/step06/intro-hq/1_0261.png'),
   width: 768,
   height: 768,
   fps: 29.188,
@@ -127,7 +127,7 @@ export function getStep06FrameUrl(index) {
 export const introFrameRanges = [[9, 65], [242, 261]];
 export const introFrameUrls = introFrameRanges.flatMap(([start, end]) =>
   Array.from({ length: end - start + 1 }, (_, i) =>
-    asset(`/assets/step06/sequence/1_${String(start + i).padStart(4, '0')}.png`)
+    asset(`/assets/step06/intro-hq/1_${String(start + i).padStart(4, '0')}.png`)
   )
 );
 export const introFps = manifestDefaults.fps;

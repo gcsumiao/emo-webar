@@ -187,7 +187,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         mindar-image="imageTargetSrc: ${MIND_TARGET_URL}; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
-        renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true"
+        renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true; preserveDrawingBuffer: true"
         style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;">
         <a-assets timeout="15000">${buildAFrameAssetsMarkup()}</a-assets>
         <a-entity light="type: ambient; color: #ffffff; intensity: 1.15"></a-entity>
