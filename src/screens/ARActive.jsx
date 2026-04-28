@@ -49,6 +49,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       mindar.playSpriteIntro?.(targetIndex).then(() => {
         if (cancelled) return;
         setArPhase('final-live');
+        setFrozenState(mindar.getFrozenState?.() || null);
         setSpriteState(mindar.getSpriteState?.() || null);
       });
     }, FLASH_MS);
@@ -63,22 +64,16 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     window.__mindar?.hideFinalObject?.();
   }, []);
 
-  // Subscribe to MindAR status changes for the lost-grace UI ("losing", "lost").
+  // Keep the AR scene alive after image tracking is lost; the recognized image is only the trigger.
   React.useEffect(() => {
     const mindar = window.__mindar;
     if (!mindar?.onStatus) return undefined;
-    const off = mindar.onStatus((status) => {
-      if (status === 'lost') {
-        // Long loss → bounce back to scanner.
-        window.__setProtoState?.('scan');
-      }
-    });
+    const off = mindar.onStatus(() => {});
     return () => { off?.(); };
   }, []);
 
   const isCaptured = arPhase === 'captured-frame';
   const isLive = arPhase === 'final-live' || isCaptured;
-  const isLosing = diagnostics?.status === 'losing' && isLive && !isCaptured;
   const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
 
   const captureFrame = React.useCallback(() => {
@@ -144,27 +139,23 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const distance = pointerDistance(points[0], points[1]);
       if (gestureRef.current.lastAngle != null) {
         const yawDelta = -normalizeAngleDelta(angle - gestureRef.current.lastAngle);
-        if (isCaptured) {
-          const r = window.__mindar?.rotateFrozenBy?.({ yawDelta });
-          if (r) setFrozenState(r);
-        } else {
-          window.__mindar?.rotateLiveBy?.({ yawDelta });
-        }
+        const r = window.__mindar?.rotateFrozenBy?.({ yawDelta });
+        if (r) setFrozenState(r);
       }
-      if (gestureRef.current.lastDistance && isCaptured) {
+      if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
         const r = window.__mindar?.scaleFrozenBy?.({ scaleFactor });
         if (r) setFrozenState(r);
       }
       gestureRef.current.lastAngle = angle;
       gestureRef.current.lastDistance = distance;
-    } else if (points.length === 1 && isCaptured) {
+    } else if (points.length === 1) {
       const dx = next.x - prev.x;
       const dy = next.y - prev.y;
       const r = window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
       if (r) setFrozenState(r);
     }
-  }, [isLive, isCaptured]);
+  }, [isLive]);
 
   const handlePointerUp = React.useCallback((event) => {
     pointersRef.current.delete(event.pointerId);
@@ -224,7 +215,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       {(isLive || arPhase === 'sprite-entering') && (
         <div
           data-interactive="true"
-          aria-label={isCaptured ? 'Drag to move EMO; pinch to scale; twist with two fingers to rotate' : 'Twist with two fingers to rotate EMO'}
+          aria-label="Drag to move EMO; pinch to scale; twist with two fingers to rotate"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -245,13 +236,11 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLandscapePhone ? 8 : 14, pointerEvents: 'none', zIndex: 12 }}>
         <div style={{ padding: '10px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)', fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)', maxWidth: 'min(84vw, 360px)', textAlign: 'center' }}>
-          {isLosing
-            ? t(lang, '请移回目标…', 'Move back to the target…')
-            : arPhase === 'scanning-success' || arPhase === 'sprite-entering'
-              ? t(lang, '一毛出现中…', 'EMO is appearing…')
-              : isCaptured
-                ? t(lang, '单指拖动 · 双指旋转 / 缩放一毛', 'Drag · twist / pinch EMO')
-                : t(lang, '双指旋转一毛 · 拍下并分享', 'Twist with two fingers · Capture & share')}
+          {arPhase === 'scanning-success' || arPhase === 'sprite-entering'
+            ? t(lang, '一毛出现中…', 'EMO is appearing…')
+            : isCaptured
+              ? t(lang, '单指拖动 · 双指旋转 / 缩放一毛', 'Drag · twist / pinch EMO')
+              : t(lang, '单指拖动 · 双指旋转 / 缩放一毛 · 拍下并分享', 'Drag · twist / pinch EMO · Capture & share')}
         </div>
         {isCaptured ? (
           <div style={{ display: 'flex', gap: 12, pointerEvents: 'auto' }}>

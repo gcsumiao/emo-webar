@@ -6,12 +6,11 @@ import { asset } from '../lib/assetUrl.js';
 import './components/index.js';
 
 const MIND_TARGET_URL = asset('/assets/mindar/targets.mind');
-const FROZEN_SPRITE_POSITION = { x: 0, y: -0.04, z: -1.18 };
+const PERSISTENT_SPRITE_CONFIG_KEY = 'persistent-sprite';
+const FROZEN_SPRITE_POSITION = { x: 0, y: -0.02, z: -1.18 };
 const FROZEN_SPRITE_SCALE = { x: 1, y: 1, z: 1 };
 const FROZEN_SPRITE_SCALE_MIN = 0.25;
 const FROZEN_SPRITE_SCALE_MAX = 2.4;
-const LOST_DIM_MS = 800;
-const LOST_HIDE_MS = 1500;
 
 function ensureSpriteRegistry() {
   if (!window.__spriteRegistry) {
@@ -97,7 +96,7 @@ function buildSpriteGroupMarkup(target, config) {
         sprite-intro-anim="configKey: ${configKey}">
         <a-plane class="sprite-character" ${billboardAttr}
           width="${charW}" height="${charH}"
-          material="shader: flat; transparent: true; opacity: 0; alphaTest: 0.02; side: double"
+          material="shader: flat; transparent: true; opacity: 0; alphaTest: 0.02; side: double; depthWrite: false; color: #ffffff"
           sprite-sequence="configKey: ${configKey}; autoplay: false"></a-plane>
       </a-entity>
       ${debugGlbMarkup}
@@ -114,14 +113,18 @@ function buildFrozenSpriteMarkup() {
   return `
     <a-entity id="frozen-ar-object" visible="false" position="${FROZEN_SPRITE_POSITION.x} ${FROZEN_SPRITE_POSITION.y} ${FROZEN_SPRITE_POSITION.z}" rotation="0 0 0">
       <a-plane class="sprite-shadow frozen-shadow"
-        position="0 -0.18 -0.02"
+        position="0 -0.36 -0.02"
         rotation="-70 0 0"
         width="${shadowW}" height="${shadowH}"
-        material="shader: flat; transparent: true; opacity: ${FROZEN_SPRITE_DEFAULTS.shadowOpacity}; color: #1a0a14"></a-plane>
-      <a-plane id="frozen-sprite-character"
-        width="${charW}" height="${charH}"
-        scale="${FROZEN_SPRITE_SCALE.x} ${FROZEN_SPRITE_SCALE.y} ${FROZEN_SPRITE_SCALE.z}"
-        material="shader: flat; transparent: true; alphaTest: 0.02; side: double; src: ${idleSrc}"></a-plane>
+        material="shader: flat; transparent: true; opacity: 0; color: #1a0a14; depthWrite: false"></a-plane>
+      <a-entity id="persistent-sprite-content" class="sprite-content"
+        position="0 0 0"
+        sprite-intro-anim="configKey: ${PERSISTENT_SPRITE_CONFIG_KEY}">
+        <a-plane id="frozen-sprite-character" class="sprite-character"
+          width="${charW}" height="${charH}"
+          material="shader: flat; transparent: true; opacity: 0; alphaTest: 0.02; side: double; depthWrite: false; color: #ffffff; src: ${idleSrc}"
+          sprite-sequence="configKey: ${PERSISTENT_SPRITE_CONFIG_KEY}; autoplay: false"></a-plane>
+      </a-entity>
     </a-entity>
   `;
 }
@@ -162,6 +165,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     arTargets.forEach((target) => {
       registry.configs.set(spriteConfigKey(target.targetIndex), spriteConfigFor(target.targetIndex));
     });
+    registry.configs.set(PERSISTENT_SPRITE_CONFIG_KEY, spriteConfigFor(0));
 
     const pushDiagnostics = (patch = {}) => {
       diagnosticsRef.current = { ...diagnosticsRef.current, ...patch };
@@ -199,6 +203,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     const assets = container.querySelector('a-assets');
     const frozenObject = container.querySelector('#frozen-ar-object');
     const frozenCharacter = container.querySelector('#frozen-sprite-character');
+    const persistentSpriteContent = container.querySelector('#persistent-sprite-content');
     const anchors = arTargets.map((target) => ({
       target,
       element: container.querySelector(`#emo-anchor-${target.targetIndex}`),
@@ -211,6 +216,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     const getIntroAnim = (anchor) => getSpriteContent(anchor)?.components?.['sprite-intro-anim'] || null;
     const getSpriteSeq = (anchor) => getCharacterEl(anchor)?.components?.['sprite-sequence'] || null;
     const findAnchorByIndex = (idx) => anchors.find((a) => a.target.targetIndex === idx) || null;
+    const getPersistentIntroAnim = () => persistentSpriteContent?.components?.['sprite-intro-anim'] || null;
+    const getPersistentSeq = () => frozenCharacter?.components?.['sprite-sequence'] || null;
 
     sceneRef.current = scene;
 
@@ -255,7 +262,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         THREE.MathUtils.degToRad(frozenState.rotation.y),
         THREE.MathUtils.degToRad(frozenState.rotation.z)
       );
-      frozenCharacter.object3D.scale.set(frozenState.scale.x, frozenState.scale.y, frozenState.scale.z);
+      frozenObject.object3D.scale.set(frozenState.scale.x, frozenState.scale.y, frozenState.scale.z);
       frozenObject.setAttribute('visible', frozenState.active ? 'true' : 'false');
       pushDiagnostics({
         frozen: frozenState.active,
@@ -294,33 +301,13 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       lostTimers.delete(targetIndex);
     };
 
-    const scheduleLostGrace = (targetIndex) => {
-      cancelLostGrace(targetIndex);
-      const dim = window.setTimeout(() => {
-        if (activeTargets.size > 0) return;
-        const anchor = findAnchorByIndex(targetIndex);
-        const introAnim = getIntroAnim(anchor);
-        if (introAnim?.state === 'final') introAnim.setLossDim(1);
-        setStatus('losing');
-      }, LOST_DIM_MS);
-      const hide = window.setTimeout(() => {
-        if (activeTargets.size > 0) return;
-        const anchor = findAnchorByIndex(targetIndex);
-        const introAnim = getIntroAnim(anchor);
-        if (introAnim) introAnim.hide();
-        setStatus('lost');
-      }, LOST_HIDE_MS);
-      lostTimers.set(targetIndex, { dim, hide });
-    };
-
     const playSpriteIntro = (targetIndex) => {
       const idx = targetIndex ?? lastTarget?.targetIndex ?? activeTargets.keys().next().value ?? 0;
-      const anchor = findAnchorByIndex(idx);
-      if (!anchor) return Promise.resolve();
-      const introAnim = getIntroAnim(anchor);
+      const sourceTarget = findAnchorByIndex(idx)?.target || lastTarget || arTargets[0];
+      const introAnim = getPersistentIntroAnim();
       if (!introAnim) return Promise.resolve();
-      const seq = getSpriteSeq(anchor);
-      const characterEl = getCharacterEl(anchor);
+      const seq = getPersistentSeq();
+      const characterEl = frozenCharacter;
       const sequenceDone = seq?.frames?.length && characterEl
         ? new Promise((resolve) => {
           let settled = false;
@@ -337,11 +324,21 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           characterEl.addEventListener('sprite-sequence-end', finish, { once: true });
         })
         : Promise.resolve();
+      frozenState.active = true;
+      frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
+      frozenState.position = { ...FROZEN_SPRITE_POSITION };
+      frozenState.rotation = { x: 0, y: liveYawOffset, z: 0 };
+      frozenState.scale = { ...FROZEN_SPRITE_SCALE };
+      setLiveContentVisible(false);
+      applyFrozenState();
+      introAnim.reset?.();
       pushDiagnostics({ lastEvent: `sprite-intro-play:${idx}` });
       const transformDone = introAnim.playIntro();
       return Promise.all([transformDone, sequenceDone]).then(() => {
         introAnim.enterFinalIdle?.();
-        pushDiagnostics({ spritePhase: 'final', lastEvent: `sprite-intro-end:${idx}` });
+        setLiveContentVisible(false);
+        applyFrozenState();
+        pushDiagnostics({ spritePhase: 'final', frameIndex: seq?.frameIdx || 0, lastEvent: `sprite-intro-end:${idx}` });
       });
     };
 
@@ -376,6 +373,15 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     };
 
     const getSpriteState = () => {
+      const persistentIntro = getPersistentIntroAnim();
+      const persistentSeq = getPersistentSeq();
+      if (frozenState.active || persistentIntro?.state === 'entering' || persistentIntro?.state === 'final') {
+        return {
+          phase: persistentIntro?.state || 'idle',
+          activeTargetIndex: lastTarget?.targetIndex ?? null,
+          frameIndex: persistentSeq?.frameIdx || 0,
+        };
+      }
       const idx = lastTarget?.targetIndex ?? activeTargets.keys().next().value;
       if (idx == null) return { phase: 'hidden', activeTargetIndex: null, frameIndex: 0 };
       const anchor = findAnchorByIndex(idx);
@@ -390,6 +396,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
 
     const freezeCurrentTarget = () => {
       if (!frozenObject || !frozenCharacter) return null;
+      if (frozenState.active) return cloneFrozenState();
       const sourceTarget = lastTarget || activeTargets.values().next().value || arTargets[0];
       frozenState.active = true;
       frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
@@ -402,9 +409,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     };
 
     const unfreezeCurrentTarget = () => {
-      frozenState.active = false;
-      frozenState.sourceTarget = null;
-      setLiveContentVisible(true);
+      if (!frozenState.active) return cloneFrozenState();
+      setLiveContentVisible(false);
       applyFrozenState();
       return cloneFrozenState();
     };
@@ -423,6 +429,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         ? parseVector(transform.scale, FROZEN_SPRITE_SCALE)
         : { ...FROZEN_SPRITE_SCALE };
       setLiveContentVisible(false);
+      getPersistentIntroAnim()?.enterFinalIdle?.();
       applyFrozenState();
       return cloneFrozenState();
     };
@@ -430,6 +437,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     const hideFinalObject = () => {
       frozenState.active = false;
       frozenState.sourceTarget = null;
+      getPersistentIntroAnim()?.reset?.();
       applyFrozenState();
       return cloneFrozenState();
     };
@@ -498,8 +506,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const payload = cloneTarget(target);
       activeTargets.delete(target.targetIndex);
       pushDiagnostics({ activeTargetId: activeTargets.size ? diagnosticsRef.current.activeTargetId : '', lastEvent: `target-lost:${target.targetId}` });
-      if (activeTargets.size === 0) scheduleLostGrace(target.targetIndex);
-      else setStatus('found');
+      setStatus(frozenState.active ? 'persistent' : 'running');
       lostCbs.forEach((cb) => {
         try { cb(payload); } catch (error) { console.error(error); }
       });
@@ -586,7 +593,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         lostTimers.forEach(({ dim, hide }) => { window.clearTimeout(dim); window.clearTimeout(hide); });
         lostTimers.clear();
         anchors.forEach((anchor) => getIntroAnim(anchor)?.reset());
-        unfreezeCurrentTarget();
+        hideFinalObject();
         setStatus(scene.hasLoaded ? 'ready' : 'idle');
       },
     };

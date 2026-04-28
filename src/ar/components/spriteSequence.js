@@ -66,6 +66,8 @@ if (AFRAME && !AFRAME.components['sprite-sequence']) {
       if (!tex) return;
       mesh.material.map = tex;
       mesh.material.transparent = true;
+      mesh.material.depthWrite = false;
+      if (mesh.material.color) mesh.material.color.set('#ffffff');
       mesh.material.needsUpdate = true;
       this.frameIdx = idx;
     },
@@ -94,6 +96,8 @@ if (AFRAME && !AFRAME.components['sprite-sequence']) {
       if (!mesh || !mesh.material) return;
       mesh.material.map = tex;
       mesh.material.transparent = true;
+      mesh.material.depthWrite = false;
+      if (mesh.material.color) mesh.material.color.set('#ffffff');
       mesh.material.needsUpdate = true;
     },
     tick(_, dtMs) {

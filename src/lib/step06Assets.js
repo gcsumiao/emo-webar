@@ -1,4 +1,4 @@
-import { ASSET_BASE, asset } from './assetUrl.js';
+import { asset } from './assetUrl.js';
 
 const STEP06_MANIFEST_URL = asset('/assets/step06/manifest.json');
 
@@ -124,8 +124,9 @@ export function getStep06FrameUrl(index) {
   return manifest.frameUrls[index] || manifest.finalFrameUrl || manifest.frameUrls[manifest.frameUrls.length - 1] || null;
 }
 
-export const introFrameRanges = [[9, 65], [242, 261]];
-export const introFrameUrls = introFrameRanges.flatMap(([start, end]) =>
-  Array.from({ length: end - start + 1 }, (_, i) => asset(`/assets/step06/intro-hq/1_${String(start + i).padStart(4, '0')}.png`))
+export const introFrameRanges = [[9, 300]];
+export const introFrameUrls = Array.from({ length: 292 }, (_, i) =>
+  asset(`/assets/step06/sequence/1_${String(i + 9).padStart(4, '0')}.png`)
 );
-export const introDurationMs = Math.round((introFrameUrls.length / 30) * 1000);
+export const introFps = manifestDefaults.fps;
+export const introDurationMs = Math.round((introFrameUrls.length / introFps) * 1000);
