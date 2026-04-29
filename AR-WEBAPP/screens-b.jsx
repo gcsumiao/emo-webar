@@ -225,11 +225,20 @@ function ScreenScan({ lang = 'zh', setLang }) {
     return () => clearTimeout(t);
   }, [isLocked]);
 
-  const scanHintStyle = {
+  const scanControlStyle = {
     position: 'absolute',
     left: '50%',
     bottom: 138,
     transform: 'translateX(-50%)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 14,
+    pointerEvents: 'none',
+    zIndex: 8,
+  };
+
+  const scanHintStyle = {
     padding: '9px 16px',
     borderRadius: 999,
     background: 'rgba(0,0,0,0.26)',
@@ -297,46 +306,44 @@ function ScreenScan({ lang = 'zh', setLang }) {
         <LangChip lang={lang} onToggle={setLang} />
       </div>
 
-      {showManualLock && !isLocked && (
-        <button
-          type="button"
-          aria-label={t(lang, '一键锁定目标', 'Tap to lock target')}
-          onClick={lockManually}
-          style={{
-            position: 'absolute',
-            left: SCAN_FLOWER_FRAME.cx,
-            top: SCAN_FLOWER_FRAME.cy,
-            transform: 'translate(-50%, -50%)',
-            width: 108,
-            height: 108,
-            borderRadius: 999,
-            border: 'none',
-            background: 'rgba(31,26,31,0.78)',
-            color: '#fff',
-            fontFamily: langFont(lang),
-            fontSize: 12,
-            fontWeight: 800,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 7,
-            boxShadow: '0 0 0 2px rgba(255,255,255,0.86), 0 0 0 7px rgba(244,183,200,0.34), 0 18px 36px rgba(0,0,0,0.34)',
-            cursor: 'pointer',
-            zIndex: 8,
-            padding: 0,
-          }}
-        >
-          <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32">
-            <circle cx="16" cy="16" r="9" fill="none" stroke="#fff" strokeWidth="2.2" />
-            <circle cx="16" cy="16" r="2.8" fill={TOKENS.pink} />
-            <path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
-          </svg>
-          <span>{t(lang, '一键锁定', 'Tap to lock')}</span>
-        </button>
-      )}
-      <div style={scanHintStyle}>
-        {scanHintText}
+      <div style={scanControlStyle}>
+        <div style={scanHintStyle}>
+          {scanHintText}
+        </div>
+        {showManualLock && !isLocked && (
+          <button
+            type="button"
+            aria-label={t(lang, '一键锁定目标', 'Tap to lock target')}
+            onClick={lockManually}
+            style={{
+              width: 108,
+              height: 108,
+              borderRadius: 999,
+              border: 'none',
+              background: 'rgba(31,26,31,0.78)',
+              color: '#fff',
+              fontFamily: langFont(lang),
+              fontSize: 12,
+              fontWeight: 800,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              boxShadow: '0 0 0 2px rgba(255,255,255,0.86), 0 0 0 7px rgba(244,183,200,0.34), 0 18px 36px rgba(0,0,0,0.34)',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              padding: 0,
+            }}
+          >
+            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="9" fill="none" stroke="#fff" strokeWidth="2.2" />
+              <circle cx="16" cy="16" r="2.8" fill={TOKENS.pink} />
+              <path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+            <span>{t(lang, '一键锁定', 'Tap to lock')}</span>
+          </button>
+        )}
       </div>
     </div>
   );
