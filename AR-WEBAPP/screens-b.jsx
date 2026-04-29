@@ -233,7 +233,7 @@ function ScreenScan({ lang = 'zh', setLang }) {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
     pointerEvents: 'none',
     zIndex: 8,
   };
@@ -316,30 +316,29 @@ function ScreenScan({ lang = 'zh', setLang }) {
             aria-label={t(lang, '一键锁定目标', 'Tap to lock target')}
             onClick={lockManually}
             style={{
-              width: 108,
-              height: 108,
-              borderRadius: 999,
+              minWidth: 112,
+              minHeight: 88,
               border: 'none',
-              background: 'rgba(31,26,31,0.78)',
+              background: 'transparent',
               color: '#fff',
               fontFamily: langFont(lang),
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: 800,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 7,
-              boxShadow: '0 0 0 2px rgba(255,255,255,0.86), 0 0 0 7px rgba(244,183,200,0.34), 0 18px 36px rgba(0,0,0,0.34)',
+              gap: 5,
               cursor: 'pointer',
               pointerEvents: 'auto',
-              padding: 0,
+              padding: '8px 12px',
+              textShadow: '0 2px 8px rgba(0,0,0,0.55)',
             }}
           >
-            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32">
-              <circle cx="16" cy="16" r="9" fill="none" stroke="#fff" strokeWidth="2.2" />
+            <svg aria-hidden="true" width="46" height="46" viewBox="0 0 32 32" style={{ filter: 'drop-shadow(0 3px 9px rgba(0,0,0,0.48))' }}>
+              <circle cx="16" cy="16" r="9" fill="none" stroke="#fff" strokeWidth="2.4" />
               <circle cx="16" cy="16" r="2.8" fill={TOKENS.pink} />
-              <path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
+              <path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
             </svg>
             <span>{t(lang, '一键锁定', 'Tap to lock')}</span>
           </button>
