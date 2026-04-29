@@ -2,6 +2,8 @@ import React from 'react';
 import { LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
 import { useScanGeometry } from '../lib/viewport.js';
 
+const MANUAL_LOCK_DELAY_MS = 3000;
+
 function FlowerViewfinder({ cx, cy, size, color = TOKENS.pink, strokeWidth = 2.4 }) {
   const r = 0.30 * size;
   const d = 0.25 * size;
@@ -47,6 +49,7 @@ function ScanSweepOverlay({ active = true }) {
 
 export function Scan({ lang = 'zh', setLang }) {
   const [scanState, setScanState] = React.useState('searching');
+  const [showManualLock, setShowManualLock] = React.useState(false);
   const geometry = useScanGeometry();
   const isLocked = scanState === 'locked';
   const isLandscapePhone = geometry.orientation === 'landscape' && !geometry.isTablet && geometry.height < 520;
@@ -64,7 +67,10 @@ export function Scan({ lang = 'zh', setLang }) {
         retryTimer = window.setTimeout(bindMindAR, 80);
         return;
       }
-      offFound = mindar.onTargetFound(() => setScanState('locked'));
+      offFound = mindar.onTargetFound(() => {
+        setShowManualLock(false);
+        setScanState('locked');
+      });
       offLost = mindar.onTargetLost(() => {
         setScanState((current) => current === 'locked' ? current : 'searching');
       });
@@ -80,10 +86,48 @@ export function Scan({ lang = 'zh', setLang }) {
   }, []);
 
   React.useEffect(() => {
+    if (isLocked) {
+      setShowManualLock(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setShowManualLock(true), MANUAL_LOCK_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [isLocked]);
+
+  React.useEffect(() => {
     if (!isLocked) return undefined;
     const timer = setTimeout(() => window.__setProtoState?.('ar'), 600);
     return () => clearTimeout(timer);
   }, [isLocked]);
+
+  const scanHintStyle = {
+    position: 'absolute',
+    left: '50%',
+    bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 22 : 138}px)`,
+    transform: 'translateX(-50%)',
+    padding: '9px 16px',
+    borderRadius: 999,
+    background: 'rgba(0,0,0,0.26)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    color: 'rgba(255,255,255,0.86)',
+    fontFamily: langFont(lang),
+    fontSize: 11,
+    whiteSpace: 'nowrap',
+  };
+
+  const scanHintText = isLocked
+    ? t(lang, '已锁定，一毛出现中…', 'Locked · EMO is appearing…')
+    : showManualLock
+      ? t(lang, '扫不到？一键锁定目标', 'No scan? Tap to lock target')
+      : isLandscapePhone
+        ? t(lang, '横屏模式 · 对准目标', 'Landscape · aim at target')
+        : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning');
+
+  const lockManually = React.useCallback(() => {
+    setShowManualLock(false);
+    setScanState('locked');
+  }, []);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -97,13 +141,24 @@ export function Scan({ lang = 'zh', setLang }) {
         </FrostButton>
         <LangChip lang={lang} onToggle={setLang} light />
       </div>
-      <div style={{ position: 'absolute', left: '50%', bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 22 : 138}px)`, transform: 'translateX(-50%)', padding: '9px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.26)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', color: 'rgba(255,255,255,0.86)', fontFamily: langFont(lang), fontSize: 11, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
-        {isLandscapePhone
-          ? t(lang, '横屏模式 · 对准目标', 'Landscape · aim at target')
-          : isLocked
-            ? t(lang, '已锁定，一毛出现中…', 'Locked · EMO is appearing…')
-            : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning')}
-      </div>
+      {showManualLock && !isLocked ? (
+        <button
+          type="button"
+          onClick={lockManually}
+          style={{
+            ...scanHintStyle,
+            border: 'none',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+          }}
+        >
+          {scanHintText}
+        </button>
+      ) : (
+        <div style={{ ...scanHintStyle, pointerEvents: 'none' }}>
+          {scanHintText}
+        </div>
+      )}
     </div>
   );
 }

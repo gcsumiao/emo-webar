@@ -187,20 +187,35 @@ function FrostButton({ children, onClick, disabled = false, style = {}, title })
 // ─── SCREEN 3: Scan — looking for target ──────────────────────
 // Drives from the shared MindAR runtime (window.__mindar). Only decoration:
 // a pink flower-shaped viewfinder that fades out on targetFound.
+const MANUAL_LOCK_DELAY_MS = 3000;
+
 function ScreenScan({ lang = 'zh', setLang }) {
   const [scanState, setScanState] = React.useState('searching');
+  const [showManualLock, setShowManualLock] = React.useState(false);
   const isLocked = scanState === 'locked';
   const isFocusing = scanState === 'focusing';
 
   React.useEffect(() => {
     const mindar = window.__mindar;
     if (!mindar) return undefined;
-    const offFound = mindar.onTargetFound(() => setScanState('locked'));
+    const offFound = mindar.onTargetFound(() => {
+      setShowManualLock(false);
+      setScanState('locked');
+    });
     const offLost  = mindar.onTargetLost(() => {
       setScanState((current) => current === 'locked' ? current : 'searching');
     });
     return () => { offFound(); offLost(); };
   }, []);
+
+  React.useEffect(() => {
+    if (isLocked) {
+      setShowManualLock(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setShowManualLock(true), MANUAL_LOCK_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [isLocked]);
 
   React.useEffect(() => {
     if (!isLocked) return undefined;
@@ -209,6 +224,35 @@ function ScreenScan({ lang = 'zh', setLang }) {
     }, 600);
     return () => clearTimeout(t);
   }, [isLocked]);
+
+  const scanHintStyle = {
+    position: 'absolute',
+    left: '50%',
+    bottom: 138,
+    transform: 'translateX(-50%)',
+    padding: '9px 16px',
+    borderRadius: 999,
+    background: 'rgba(0,0,0,0.26)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    color: 'rgba(255,255,255,0.86)',
+    fontFamily: langFont(lang),
+    fontSize: 11,
+    whiteSpace: 'nowrap',
+  };
+
+  const scanHintText = isLocked
+    ? t(lang, '已锁定，一毛出现中…', 'Locked · EMO is appearing…')
+    : showManualLock
+      ? t(lang, '扫不到？一键锁定目标', 'No scan? Tap to lock target')
+      : isFocusing
+        ? t(lang, '正在对焦，自动锁定…', 'Focusing · locking target…')
+        : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning');
+
+  const lockManually = React.useCallback(() => {
+    setShowManualLock(false);
+    setScanState('locked');
+  }, []);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -255,25 +299,23 @@ function ScreenScan({ lang = 'zh', setLang }) {
         <LangChip lang={lang} onToggle={setLang} />
       </div>
 
-      <div style={{
-        position: 'absolute',
-        left: '50%',
-        bottom: 138,
-        transform: 'translateX(-50%)',
-        padding: '9px 16px',
-        borderRadius: 999,
-        background: 'rgba(0,0,0,0.26)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        color: 'rgba(255,255,255,0.86)',
-        fontFamily: langFont(lang),
-        fontSize: 11,
-        whiteSpace: 'nowrap',
-      }}>
-        {isFocusing
-          ? t(lang, '正在对焦，自动锁定…', 'Focusing · locking target…')
-          : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning')}
-      </div>
+      {showManualLock && !isLocked ? (
+        <button
+          type="button"
+          onClick={lockManually}
+          style={{
+            ...scanHintStyle,
+            border: 'none',
+            cursor: 'pointer',
+          }}
+        >
+          {scanHintText}
+        </button>
+      ) : (
+        <div style={scanHintStyle}>
+          {scanHintText}
+        </div>
+      )}
     </div>
   );
 }
