@@ -53,6 +53,7 @@ export function Scan({ lang = 'zh', setLang }) {
   const geometry = useScanGeometry();
   const isLocked = scanState === 'locked';
   const isLandscapePhone = geometry.orientation === 'landscape' && !geometry.isTablet && geometry.height < 520;
+  const scanControlOffset = isLandscapePhone ? 8 : 12;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -103,7 +104,7 @@ export function Scan({ lang = 'zh', setLang }) {
   const scanControlStyle = {
     position: 'absolute',
     left: '50%',
-    bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 22 : 138}px)`,
+    top: geometry.scanCenterY + geometry.scanSize / 2 + scanControlOffset,
     transform: 'translateX(-50%)',
     display: 'flex',
     flexDirection: 'column',

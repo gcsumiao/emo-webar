@@ -228,7 +228,7 @@ function ScreenScan({ lang = 'zh', setLang }) {
   const scanControlStyle = {
     position: 'absolute',
     left: '50%',
-    bottom: 138,
+    top: SCAN_FLOWER_FRAME.cy + SCAN_FLOWER_FRAME.size / 2 + 12,
     transform: 'translateX(-50%)',
     display: 'flex',
     flexDirection: 'column',
