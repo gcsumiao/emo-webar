@@ -118,16 +118,16 @@ export function Scan({ lang = 'zh', setLang }) {
 
   const scanHintText = isLocked
     ? t(lang, '已锁定，一毛出现中…', 'Locked · EMO is appearing…')
-    : showManualLock
-      ? t(lang, '扫不到？一键锁定目标', 'No scan? Tap to lock target')
-      : isLandscapePhone
-        ? t(lang, '横屏模式 · 对准目标', 'Landscape · aim at target')
-        : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning');
+    : isLandscapePhone
+      ? t(lang, '横屏模式 · 对准目标', 'Landscape · aim at target')
+      : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning');
 
   const lockManually = React.useCallback(() => {
     setShowManualLock(false);
     setScanState('locked');
   }, []);
+
+  const lockButtonSize = isLandscapePhone ? 92 : 108;
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -141,24 +141,49 @@ export function Scan({ lang = 'zh', setLang }) {
         </FrostButton>
         <LangChip lang={lang} onToggle={setLang} light />
       </div>
-      {showManualLock && !isLocked ? (
+
+      {showManualLock && !isLocked && (
         <button
           type="button"
+          aria-label={t(lang, '一键锁定目标', 'Tap to lock target')}
           onClick={lockManually}
           style={{
-            ...scanHintStyle,
+            position: 'absolute',
+            left: geometry.scanCenterX,
+            top: geometry.scanCenterY,
+            transform: 'translate(-50%, -50%)',
+            width: lockButtonSize,
+            height: lockButtonSize,
+            borderRadius: 999,
             border: 'none',
+            background: 'rgba(31,26,31,0.78)',
+            color: '#fff',
+            fontFamily: langFont(lang),
+            fontSize: isLandscapePhone ? 11 : 12,
+            fontWeight: 800,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 7,
+            boxShadow: '0 0 0 2px rgba(255,255,255,0.86), 0 0 0 7px rgba(244,183,200,0.34), 0 18px 36px rgba(0,0,0,0.34)',
             cursor: 'pointer',
             pointerEvents: 'auto',
+            zIndex: 8,
+            padding: 0,
           }}
         >
-          {scanHintText}
+          <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="9" fill="none" stroke="#fff" strokeWidth="2.2" />
+            <circle cx="16" cy="16" r="2.8" fill={TOKENS.pink} />
+            <path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+          <span>{t(lang, '一键锁定', 'Tap to lock')}</span>
         </button>
-      ) : (
-        <div style={{ ...scanHintStyle, pointerEvents: 'none' }}>
-          {scanHintText}
-        </div>
       )}
+      <div style={{ ...scanHintStyle, pointerEvents: 'none' }}>
+        {scanHintText}
+      </div>
     </div>
   );
 }

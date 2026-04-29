@@ -365,15 +365,15 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       )}
 
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLandscapePhone ? 8 : 14, pointerEvents: 'none', zIndex: 12 }}>
-        <div style={{ padding: '10px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)', fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)', maxWidth: 'min(84vw, 360px)', textAlign: 'center' }}>
-          {arPhase === 'scanning-success' || arPhase === 'sprite-entering'
-            ? t(lang, '一毛出现中…', 'EMO is appearing…')
-            : isCapturing
-              ? t(lang, '照片生成中…', 'Creating photo…')
-            : isCaptured
-              ? t(lang, '已固定 · 可重新拍照或分享', 'Fixed · Retake or share')
-              : t(lang, '单指拖动 / 旋转 · 双指缩放 · 拍下并固定', 'One finger moves / rotates · two fingers scale · capture to lock')}
-        </div>
+        {!isCaptured && (
+          <div style={{ padding: '10px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)', fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)', maxWidth: 'min(84vw, 360px)', textAlign: 'center' }}>
+            {arPhase === 'scanning-success' || arPhase === 'sprite-entering'
+              ? t(lang, '一毛出现中…', 'EMO is appearing…')
+              : isCapturing
+                ? t(lang, '照片生成中…', 'Creating photo…')
+                : t(lang, '单指拖动 / 旋转 · 双指缩放 · 拍下并固定', 'One finger moves / rotates · two fingers scale · capture to lock')}
+          </div>
+        )}
         {isCaptured ? (
           <div style={{ display: 'flex', gap: 12, pointerEvents: 'auto' }}>
             <button type="button" onClick={captureFrame} style={actionButtonStyle(lang)}>{t(lang, '重新拍照', 'Retake')}</button>

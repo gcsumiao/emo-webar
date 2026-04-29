@@ -243,11 +243,9 @@ function ScreenScan({ lang = 'zh', setLang }) {
 
   const scanHintText = isLocked
     ? t(lang, '已锁定，一毛出现中…', 'Locked · EMO is appearing…')
-    : showManualLock
-      ? t(lang, '扫不到？一键锁定目标', 'No scan? Tap to lock target')
-      : isFocusing
-        ? t(lang, '正在对焦，自动锁定…', 'Focusing · locking target…')
-        : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning');
+    : isFocusing
+      ? t(lang, '正在对焦，自动锁定…', 'Focusing · locking target…')
+      : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning');
 
   const lockManually = React.useCallback(() => {
     setShowManualLock(false);
@@ -299,23 +297,47 @@ function ScreenScan({ lang = 'zh', setLang }) {
         <LangChip lang={lang} onToggle={setLang} />
       </div>
 
-      {showManualLock && !isLocked ? (
+      {showManualLock && !isLocked && (
         <button
           type="button"
+          aria-label={t(lang, '一键锁定目标', 'Tap to lock target')}
           onClick={lockManually}
           style={{
-            ...scanHintStyle,
+            position: 'absolute',
+            left: SCAN_FLOWER_FRAME.cx,
+            top: SCAN_FLOWER_FRAME.cy,
+            transform: 'translate(-50%, -50%)',
+            width: 108,
+            height: 108,
+            borderRadius: 999,
             border: 'none',
+            background: 'rgba(31,26,31,0.78)',
+            color: '#fff',
+            fontFamily: langFont(lang),
+            fontSize: 12,
+            fontWeight: 800,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 7,
+            boxShadow: '0 0 0 2px rgba(255,255,255,0.86), 0 0 0 7px rgba(244,183,200,0.34), 0 18px 36px rgba(0,0,0,0.34)',
             cursor: 'pointer',
+            zIndex: 8,
+            padding: 0,
           }}
         >
-          {scanHintText}
+          <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="9" fill="none" stroke="#fff" strokeWidth="2.2" />
+            <circle cx="16" cy="16" r="2.8" fill={TOKENS.pink} />
+            <path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+          <span>{t(lang, '一键锁定', 'Tap to lock')}</span>
         </button>
-      ) : (
-        <div style={scanHintStyle}>
-          {scanHintText}
-        </div>
       )}
+      <div style={scanHintStyle}>
+        {scanHintText}
+      </div>
     </div>
   );
 }
@@ -375,7 +397,6 @@ function ScreenARActive({ lang = 'zh', setLang }) {
 
   const isCaptured = arPhase === 'captured-frame';
   const isLive = arPhase === 'final-live' || isCaptured;
-  const capturedHint = t(lang, '单指拖动 · 双指旋转一毛', 'Drag to move · Twist with two fingers to rotate');
 
   const handleFrozenPointerDown = React.useCallback((event) => {
     if (!isLive) return;
@@ -506,25 +527,25 @@ function ScreenARActive({ lang = 'zh', setLang }) {
         gap: 14,
         pointerEvents: 'none',
       }}>
-        <div style={{
-          padding: '10px 16px',
-          borderRadius: 999,
-          background: 'rgba(0,0,0,0.32)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          border: '0.5px solid rgba(255,255,255,0.15)',
-          fontFamily: langFont(lang),
-          fontSize: 11,
-          color: 'rgba(255,255,255,0.92)',
-          maxWidth: 320,
-          textAlign: 'center',
-        }}>
-          {arPhase === 'intro-playing'
-            ? t(lang, '一毛出现中…', 'EMO is appearing…')
-            : isCaptured
-            ? capturedHint
-            : t(lang, '双指旋转一毛 · 拍下并分享', 'Twist with two fingers · Capture & share')}
-        </div>
+        {!isCaptured && (
+          <div style={{
+            padding: '10px 16px',
+            borderRadius: 999,
+            background: 'rgba(0,0,0,0.32)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '0.5px solid rgba(255,255,255,0.15)',
+            fontFamily: langFont(lang),
+            fontSize: 11,
+            color: 'rgba(255,255,255,0.92)',
+            maxWidth: 320,
+            textAlign: 'center',
+          }}>
+            {arPhase === 'intro-playing'
+              ? t(lang, '一毛出现中…', 'EMO is appearing…')
+              : t(lang, '双指旋转一毛 · 拍下并分享', 'Twist with two fingers · Capture & share')}
+          </div>
+        )}
         {isCaptured ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, pointerEvents: 'auto' }}>
             <div style={{ display: 'flex', gap: 12 }}>
