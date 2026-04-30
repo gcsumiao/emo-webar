@@ -1,19 +1,24 @@
-export const LIVE_ANCHORED_GLB_SCALE = 0.075;
+import {
+  DEFAULT_GLB_CONFIG,
+  DEFAULT_TARGETS,
+} from './arManifestDefaults.js';
+
+export const LIVE_ANCHORED_GLB_SCALE = DEFAULT_GLB_CONFIG.scale[0];
 
 export const defaultAnchoredAr = {
   type: 'model',
-  assetId: 'emo-model',
-  position: [0, 0, 0.08],
+  assetId: DEFAULT_GLB_CONFIG.assetId,
+  position: [...DEFAULT_GLB_CONFIG.position],
   rotation: [0, 0, 0],
-  scale: [LIVE_ANCHORED_GLB_SCALE, LIVE_ANCHORED_GLB_SCALE, LIVE_ANCHORED_GLB_SCALE],
+  scale: [
+    LIVE_ANCHORED_GLB_SCALE,
+    LIVE_ANCHORED_GLB_SCALE,
+    LIVE_ANCHORED_GLB_SCALE,
+  ],
   floatTo: [0, 0, 0.12],
 };
 
-export const arTargets = [
-  { targetIndex: 0, targetId: 'emo-scene-airmodel-01', label: 'EMO installation photo 01' },
-  { targetIndex: 1, targetId: 'emo-scene-airmodel-02', label: 'EMO installation photo 02' },
-  { targetIndex: 2, targetId: 'emo-pillow', label: 'EMO pillow product' },
-  { targetIndex: 3, targetId: 'emo-plush-charm-01', label: 'EMO plush charm 01' },
-  { targetIndex: 4, targetId: 'emo-plush-charm-02', label: 'EMO plush charm 02' },
-  { targetIndex: 5, targetId: 'emo-front', label: 'EMO front poster' },
-].map((target) => ({ ...target, ...defaultAnchoredAr }));
+export const arTargets = DEFAULT_TARGETS.map((target) => ({
+  ...target,
+  ...defaultAnchoredAr,
+}));

@@ -37,19 +37,11 @@ if (AFRAME && !AFRAME.components['sprite-sequence']) {
       autoplay: { type: 'boolean', default: false },
     },
     init() {
-      const registry = ensureRegistry();
-      const config = registry.configs.get(this.data.configKey) || {};
-      this.frames = Array.isArray(config.frameSequenceUrls) ? config.frameSequenceUrls.slice() : [];
-      this.fps = config.frameRate || 30;
-      this.frameDurMs = 1000 / this.fps;
-      this.finalIdleUrl = config.finalIdleFrameUrl || (this.frames.length ? this.frames[this.frames.length - 1] : null);
       this.frameIdx = 0;
       this.elapsed = 0;
       this.playing = false;
       this.completed = false;
-
-      this.textures = this.frames.map(loadTexture).filter(Boolean);
-      if (this.finalIdleUrl) loadTexture(this.finalIdleUrl);
+      this._loadConfig();
 
       this._applyWhenReady = () => {
         this.applyFrame(0);
@@ -58,6 +50,38 @@ if (AFRAME && !AFRAME.components['sprite-sequence']) {
       const mesh = this.el.getObject3D('mesh');
       if (mesh && mesh.material) this._applyWhenReady();
       else this.el.addEventListener('object3dset', this._applyWhenReady, { once: true });
+    },
+    _loadConfig(config = null) {
+      const registry = ensureRegistry();
+      const nextConfig = config || registry.configs.get(this.data.configKey) || {};
+      this.frames = Array.isArray(nextConfig.frameSequenceUrls) ? nextConfig.frameSequenceUrls.slice() : [];
+      this.fps = nextConfig.frameRate || 30;
+      this.frameDurMs = 1000 / this.fps;
+      this.finalIdleUrl = nextConfig.finalIdleFrameUrl || (this.frames.length ? this.frames[this.frames.length - 1] : null);
+      this.textures = this.frames.map(loadTexture).filter(Boolean);
+      if (this.finalIdleUrl) loadTexture(this.finalIdleUrl);
+    },
+    reloadConfig(configKey) {
+      if (configKey) {
+        this.data.configKey = configKey;
+        this.el.setAttribute('sprite-sequence', 'configKey', configKey);
+      }
+      this.playing = false;
+      this.completed = false;
+      this.elapsed = 0;
+      this.frameIdx = 0;
+      this.textures = [];
+      this._loadConfig();
+      this.applyFrame(0);
+    },
+    setConfig(config) {
+      this.playing = false;
+      this.completed = false;
+      this.elapsed = 0;
+      this.frameIdx = 0;
+      this.textures = [];
+      this._loadConfig(config);
+      this.applyFrame(0);
     },
     applyFrame(idx) {
       const mesh = this.el.getObject3D('mesh');

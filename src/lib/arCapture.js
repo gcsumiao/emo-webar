@@ -123,7 +123,12 @@ function canvasToBlob(canvas) {
   });
 }
 
-export async function createARPhoto({ spriteSrc, visualTransform, isLandscapePhone }) {
+export async function createARPhoto({
+  spriteSrc,
+  visualTransform,
+  isLandscapePhone,
+  includeSpriteOverlay = true,
+}) {
   const cssWidth = window.innerWidth || document.documentElement.clientWidth || 390;
   const cssHeight = window.innerHeight || document.documentElement.clientHeight || 844;
   const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -139,17 +144,19 @@ export async function createARPhoto({ spriteSrc, visualTransform, isLandscapePho
 
   drawBackground(ctx, cssWidth, cssHeight);
 
-  const spriteImage = await primeImage(spriteSrc);
-  const transform = visualTransform || {};
-  drawContain(
-    ctx,
-    spriteImage,
-    cssWidth / 2 + (transform.x || 0),
-    cssHeight * (isLandscapePhone ? 0.47 : 0.44) + (transform.y || 0),
-    Math.min(cssWidth * 0.72, 420),
-    transform.rotation || 0,
-    transform.scale || 1
-  );
+  if (includeSpriteOverlay !== false && spriteSrc) {
+    const spriteImage = await primeImage(spriteSrc);
+    const transform = visualTransform || {};
+    drawContain(
+      ctx,
+      spriteImage,
+      cssWidth / 2 + (transform.x || 0),
+      cssHeight * (isLandscapePhone ? 0.47 : 0.44) + (transform.y || 0),
+      Math.min(cssWidth * 0.72, 420),
+      transform.rotation || 0,
+      transform.scale || 1
+    );
+  }
 
   drawPhotoFrame(ctx, cssWidth, cssHeight);
 

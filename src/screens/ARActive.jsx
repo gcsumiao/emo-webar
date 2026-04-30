@@ -5,6 +5,7 @@ import { createARPhoto } from '../lib/arCapture.js';
 import { introFps, introFrameUrls, preloadUrls } from '../lib/step06Assets.js';
 import { useViewport } from '../lib/viewport.js';
 import { clampScaleFactor, pointerDistance } from '../ar/frozenControls.js';
+import { getARRuntime, isKivicubeRuntime } from '../ar/arRuntime.js';
 
 const FLASH_MS = 240;
 
@@ -21,11 +22,30 @@ function readDebugFlag() {
   }
 }
 
+async function dataUrlToPhoto(dataUrl) {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const filename = `emo-ar-${Date.now()}.png`;
+  const file = typeof File === 'function'
+    ? new File([blob], filename, { type: blob.type || 'image/png' })
+    : null;
+  return {
+    blob,
+    file,
+    url: URL.createObjectURL(blob),
+    width: null,
+    height: null,
+    source: 'kivicube',
+  };
+}
+
 export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [arPhase, setArPhase] = React.useState('scanning-success');
-  const [frozenState, setFrozenState] = React.useState(() => window.__mindar?.getFrozenState?.() || null);
-  const [spriteState, setSpriteState] = React.useState(() => window.__mindar?.getSpriteState?.() || null);
+  const [frozenState, setFrozenState] = React.useState(() => getARRuntime()?.getFrozenState?.() || null);
+  const [spriteState, setSpriteState] = React.useState(() => getARRuntime()?.getSpriteState?.() || null);
   const [visualFrameIndex, setVisualFrameIndex] = React.useState(0);
+  const [visualFrames, setVisualFrames] = React.useState(introFrameUrls);
+  const [currentRenderMode, setCurrentRenderMode] = React.useState('sprite-only');
   const [visualTransform, setVisualTransform] = React.useState({ x: 0, y: 0, scale: 1, rotation: 0 });
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
   const pointersRef = React.useRef(new Map());
@@ -44,20 +64,20 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     let cancelled = false;
     let retryTimer = null;
 
-    const playVisualIntro = () => new Promise((resolve) => {
+    const playVisualIntro = (frames, fps) => new Promise((resolve) => {
       window.cancelAnimationFrame(visualRafRef.current);
       setVisualTransform({ x: 0, y: 0, scale: 1, rotation: 0 });
       setVisualFrameIndex(0);
       const startedAt = performance.now();
-      const frameMs = 1000 / introFps;
+      const frameMs = 1000 / (fps || introFps);
       const tick = (now) => {
         if (cancelled) {
           resolve();
           return;
         }
-        const idx = Math.min(introFrameUrls.length - 1, Math.floor((now - startedAt) / frameMs));
+        const idx = Math.min(frames.length - 1, Math.floor((now - startedAt) / frameMs));
         setVisualFrameIndex(idx);
-        if (idx >= introFrameUrls.length - 1) {
+        if (idx >= frames.length - 1) {
           resolve();
           return;
         }
@@ -67,26 +87,34 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     });
 
     const startIntro = () => {
-      const mindar = window.__mindar;
-      if (!mindar?.playSpriteIntro) {
+      const runtime = getARRuntime();
+      if (!runtime?.playSpriteIntro) {
         retryTimer = window.setTimeout(startIntro, 80);
         return;
       }
-      const target = mindar.getLastTarget?.() || mindar.getActiveTargets?.()?.[0] || null;
+      const target = runtime.getLastTarget?.() || runtime.getActiveTargets?.()?.[0] || null;
       const targetIndex = target?.targetIndex;
+      const spriteConfig = runtime.getCurrentSpriteConfig?.() || null;
+      const frames = spriteConfig?.frameSequenceUrls?.length ? spriteConfig.frameSequenceUrls : introFrameUrls;
+      const fps = spriteConfig?.frameRate || introFps;
+      setVisualFrames(frames);
+      preloadUrls(frames, { eagerCount: 48 });
+      setCurrentRenderMode(runtime.getCurrentRenderMode?.() || 'sprite-only');
       setArPhase('scanning-success');
       flashTimerRef.current = window.setTimeout(() => {
         if (cancelled) return;
         setArPhase('sprite-entering');
         arAudio.cueARIntro();
-        const arPromise = mindar.playSpriteIntro?.(targetIndex).catch?.(() => null) || Promise.resolve();
-        const visualPromise = playVisualIntro();
+        const arPromise = runtime.playSpriteIntro?.(targetIndex).catch?.(() => null) || Promise.resolve();
+        const visualPromise = playVisualIntro(frames, fps);
         Promise.all([arPromise, visualPromise]).then(() => {
           if (cancelled) return;
+          const nextRenderMode = runtime.getCurrentRenderMode?.() || 'sprite-only';
+          setCurrentRenderMode(nextRenderMode);
           setArPhase('final-live');
-          setVisualFrameIndex(introFrameUrls.length - 1);
-          setFrozenState(mindar.getFrozenState?.() || null);
-          setSpriteState(mindar.getSpriteState?.() || null);
+          setVisualFrameIndex(frames.length - 1);
+          setFrozenState(runtime.getFrozenState?.() || null);
+          setSpriteState(runtime.getSpriteState?.() || null);
         });
       }, FLASH_MS);
     };
@@ -103,7 +131,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   // On unmount, reset frozen object & sprite state so the scene is clean if user re-enters.
   React.useEffect(() => () => {
-    window.__mindar?.hideFinalObject?.();
+    getARRuntime()?.hideFinalObject?.();
   }, []);
 
   React.useEffect(() => () => {
@@ -112,9 +140,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   // Keep the AR scene alive after image tracking is lost; the recognized image is only the trigger.
   React.useEffect(() => {
-    const mindar = window.__mindar;
-    if (!mindar?.onStatus) return undefined;
-    const off = mindar.onStatus(() => {});
+    const runtime = getARRuntime();
+    if (!runtime?.onStatus) return undefined;
+    const off = runtime.onStatus(() => {});
     return () => { off?.(); };
   }, []);
 
@@ -123,7 +151,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const isLive = arPhase === 'final-live' || isCaptured;
   const canEdit = arPhase === 'final-live';
   const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
-  const visualSpriteSrc = introFrameUrls[visualFrameIndex] || introFrameUrls[introFrameUrls.length - 1];
+  const visualSpriteSrc = visualFrames[visualFrameIndex] || visualFrames[visualFrames.length - 1] || introFrameUrls[introFrameUrls.length - 1];
 
   const clearCapturedPhoto = React.useCallback(() => {
     setCapturedPhoto((current) => {
@@ -133,9 +161,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, []);
 
   const captureFrame = React.useCallback(async () => {
+    const runtime = getARRuntime();
     if (arPhase === 'captured-frame') {
       clearCapturedPhoto();
-      const next = window.__mindar?.unfreezeCurrentTarget?.();
+      const next = await runtime?.unfreezeCurrentTarget?.();
       if (next) setFrozenState(next);
       setArPhase('final-live');
       return;
@@ -145,14 +174,21 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     setArPhase('capturing-frame');
     try {
       arAudio.playShutter();
-      const next = window.__mindar?.freezeCurrentTarget?.();
+      const renderMode = runtime?.getCurrentRenderMode?.() || currentRenderMode;
+      if (renderMode === 'sprite-then-gltf' || renderMode === 'gltf-only') {
+        await runtime?.showFinalModel?.();
+      }
+      const next = await runtime?.freezeCurrentTarget?.();
       if (next) setFrozenState(next);
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
-      const photo = await createARPhoto({
-        spriteSrc: visualSpriteSrc,
-        visualTransform,
-        isLandscapePhone,
-      });
+      const photo = isKivicubeRuntime(runtime) && runtime?.takePhoto
+        ? await dataUrlToPhoto(await runtime.takePhoto())
+        : await createARPhoto({
+          spriteSrc: visualSpriteSrc,
+          visualTransform,
+          isLandscapePhone,
+          includeSpriteOverlay: renderMode === 'sprite-only',
+        });
       clearCapturedPhoto();
       setCapturedPhoto(photo);
       setArPhase('captured-frame');
@@ -160,12 +196,13 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       console.error('[EMO-AR] capture failed', error);
       setArPhase('final-live');
     }
-  }, [arPhase, clearCapturedPhoto, isLandscapePhone, visualSpriteSrc, visualTransform]);
+  }, [arPhase, clearCapturedPhoto, currentRenderMode, isLandscapePhone, visualSpriteSrc, visualTransform]);
 
-  const exitAR = React.useCallback(() => {
+  const exitAR = React.useCallback(async () => {
     window.clearTimeout(flashTimerRef.current);
     clearCapturedPhoto();
-    const next = window.__mindar?.restartScan?.() || window.__mindar?.hideFinalObject?.() || null;
+    const runtime = getARRuntime();
+    const next = await (runtime?.restartScan?.() || runtime?.hideFinalObject?.() || null);
     setFrozenState(next);
     window.__setProtoState?.('scan');
   }, [clearCapturedPhoto]);
@@ -234,7 +271,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
         setVisualTransform((current) => ({ ...current, scale: Math.max(0.35, Math.min(2.4, current.scale * scaleFactor)) }));
-        const r = window.__mindar?.scaleFrozenBy?.({ scaleFactor });
+        const r = getARRuntime()?.scaleFrozenBy?.({ scaleFactor });
         if (r) setFrozenState(r);
       }
       gestureRef.current.lastDistance = distance;
@@ -248,9 +285,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         y: current.y + dy,
         rotation: current.rotation + yawDelta,
       }));
-      const r = window.__mindar?.moveFrozenByScreenDelta?.({ dx, dy });
+      const runtime = getARRuntime();
+      const r = runtime?.moveFrozenByScreenDelta?.({ dx, dy });
       if (r) setFrozenState(r);
-      const rr = window.__mindar?.rotateFrozenBy?.({ yawDelta });
+      const rr = runtime?.rotateFrozenBy?.({ yawDelta });
       if (rr) setFrozenState(rr);
     }
   }, [canEdit]);
@@ -267,13 +305,16 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   React.useEffect(() => {
     if (!debugMode) return undefined;
     const id = window.setInterval(() => {
-      setSpriteState(window.__mindar?.getSpriteState?.() || null);
+      setSpriteState(getARRuntime()?.getSpriteState?.() || null);
     }, 250);
     return () => window.clearInterval(id);
   }, [debugMode]);
 
   const flashOpacity = arPhase === 'scanning-success' ? 0.85 : 0;
-  const showVisualSprite = arPhase === 'sprite-entering' || arPhase === 'final-live' || isCapturing;
+  const finalUsesSpriteOverlay = currentRenderMode === 'sprite-only'
+    || (currentRenderMode !== 'gltf-only' && frozenState?.contentMode !== 'gltf');
+  const showVisualSprite = arPhase === 'sprite-entering'
+    || ((arPhase === 'final-live' || isCapturing) && finalUsesSpriteOverlay);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -408,7 +449,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       {debugMode && (
         <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 72px)', right: 'calc(var(--safe-right) + 12px)', zIndex: 18, padding: '8px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.62)', border: '0.5px solid rgba(255,255,255,0.18)', fontFamily: FONT_MONO, fontSize: 9.5, lineHeight: 1.45, color: '#fff', textAlign: 'left', pointerEvents: 'none', maxWidth: 220 }}>
           <div>phase: <b style={{ color: TOKENS.green }}>{arPhase}</b></div>
-          <div>mindar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
+          <div>ar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
           <div>sprite: <b style={{ color: TOKENS.green }}>{spriteState?.phase || '-'}</b> · frame {spriteState?.frameIndex ?? 0}</div>
           <div>visual: frame {visualFrameIndex}</div>
           <div>activeTarget: {spriteState?.activeTargetIndex ?? '-'}</div>

@@ -1,5 +1,15 @@
 const AFRAME = window.AFRAME;
 
+function ensureRegistry() {
+  if (!window.__spriteRegistry) {
+    window.__spriteRegistry = {
+      configs: new Map(),
+      textureCache: new Map(),
+    };
+  }
+  return window.__spriteRegistry;
+}
+
 function easeOutBack(x) {
   const c1 = 1.70158;
   const c3 = c1 + 1;
@@ -24,7 +34,7 @@ if (AFRAME && !AFRAME.components['sprite-intro-anim']) {
       configKey: { type: 'string', default: '' },
     },
     init() {
-      const registry = window.__spriteRegistry;
+      const registry = ensureRegistry();
       const config = registry?.configs?.get(this.data.configKey) || {};
       this.config = config;
       this.state = 'idle'; // idle | entering | final | hidden | lossDimmed
@@ -35,6 +45,19 @@ if (AFRAME && !AFRAME.components['sprite-intro-anim']) {
       this.shadowEl = this.el.parentEl?.querySelector('.sprite-shadow') || null;
       this.el.object3D.visible = false;
       this._setOpacities(0);
+    },
+    reloadConfig(configKey) {
+      if (configKey) {
+        this.data.configKey = configKey;
+        this.el.setAttribute('sprite-intro-anim', 'configKey', configKey);
+      }
+      const registry = ensureRegistry();
+      this.config = registry.configs.get(this.data.configKey) || {};
+      if (this.state !== 'entering') this.reset();
+    },
+    setConfig(config) {
+      this.config = config || {};
+      if (this.state !== 'entering') this.reset();
     },
     _setOpacities(charOpacity) {
       setMaterialOpacity(this.charEl, charOpacity);

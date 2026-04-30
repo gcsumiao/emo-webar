@@ -1,5 +1,6 @@
 import { introFps, introFrameUrls } from '../lib/step06Assets.js';
 import { asset } from '../lib/assetUrl.js';
+import { getTargetSpriteConfig } from './arManifest.js';
 
 const FINAL_IDLE_FRAME = asset('/assets/step06/intro-hq/1_0261.png');
 const CHARACTER_PLANE_SIZE = [0.95, 0.95];
@@ -28,8 +29,23 @@ export const spriteOverridesByTarget = {
   // Per-target overrides go here, e.g. 0: { finalIdleFrameUrl: '...' }
 };
 
+export function createSpriteConfig(overrides = {}) {
+  const hasFrameSequence = Array.isArray(overrides.frameSequenceUrls);
+  return {
+    ...spriteDefaults,
+    ...overrides,
+    frameSequenceUrls: hasFrameSequence ? overrides.frameSequenceUrls : introFrameUrls,
+    frameRate: overrides.frameRate || introFps,
+    finalIdleFrameUrl: overrides.finalIdleFrameUrl || FINAL_IDLE_FRAME,
+  };
+}
+
 export function spriteConfigFor(targetIndex) {
-  return { ...spriteDefaults, ...(spriteOverridesByTarget[targetIndex] || {}) };
+  return createSpriteConfig(spriteOverridesByTarget[targetIndex] || {});
+}
+
+export function spriteConfigForTarget(manifest, targetIndexOrTarget) {
+  return createSpriteConfig(getTargetSpriteConfig(manifest, targetIndexOrTarget) || {});
 }
 
 export const FROZEN_SPRITE_DEFAULTS = {
