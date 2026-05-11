@@ -14,14 +14,21 @@ const SCAN_FRAME_BOUNDS = {
   viewBoxHeight: 1920,
 };
 
-function ScanFrameViewfinder({ cx, cy, size }) {
+function getScanFrameMetrics(size) {
   const targetWidth = size * 1.22;
   const scale = targetWidth / SCAN_FRAME_BOUNDS.width;
-  const frameWidth = SCAN_FRAME_BOUNDS.viewBoxWidth * scale;
-  const frameHeight = SCAN_FRAME_BOUNDS.viewBoxHeight * scale;
-  const frameCenterX = (SCAN_FRAME_BOUNDS.x + SCAN_FRAME_BOUNDS.width / 2) * scale;
-  const frameCenterY = (SCAN_FRAME_BOUNDS.y + SCAN_FRAME_BOUNDS.height / 2) * scale;
+  return {
+    scale,
+    frameWidth: SCAN_FRAME_BOUNDS.viewBoxWidth * scale,
+    frameHeight: SCAN_FRAME_BOUNDS.viewBoxHeight * scale,
+    frameCenterX: (SCAN_FRAME_BOUNDS.x + SCAN_FRAME_BOUNDS.width / 2) * scale,
+    frameCenterY: (SCAN_FRAME_BOUNDS.y + SCAN_FRAME_BOUNDS.height / 2) * scale,
+    outlineHalfHeight: (SCAN_FRAME_BOUNDS.height / 2) * scale,
+  };
+}
 
+function ScanFrameViewfinder({ cx, cy, size }) {
+  const { frameWidth, frameHeight, frameCenterX, frameCenterY } = getScanFrameMetrics(size);
   return (
     <img
       src={asset('/assets/site-ui/scan-frame.svg')}
@@ -55,7 +62,13 @@ export function Scan({ lang = 'zh', setLang }) {
   const geometry = useScanGeometry();
   const isLocked = scanState === 'locked';
   const isLandscapePhone = geometry.orientation === 'landscape' && !geometry.isTablet && geometry.height < 520;
-  const scanControlOffset = isLandscapePhone ? 8 : 12;
+  const scanControlGap = isLandscapePhone ? 12 : 18;
+  const scanFrameMetrics = getScanFrameMetrics(geometry.scanSize);
+  const scanFrameBottom = geometry.scanCenterY + scanFrameMetrics.outlineHalfHeight;
+  const scanControlTopRaw = scanFrameBottom + scanControlGap;
+  const scanControlTop = isLandscapePhone
+    ? Math.min(scanControlTopRaw, geometry.height - 128)
+    : scanControlTopRaw;
 
   React.useEffect(() => {
     let cancelled = false;
@@ -117,7 +130,7 @@ export function Scan({ lang = 'zh', setLang }) {
   const scanControlStyle = {
     position: 'absolute',
     left: '50%',
-    top: geometry.scanCenterY + geometry.scanSize / 2 + scanControlOffset,
+    top: scanControlTop,
     transform: 'translateX(-50%)',
     display: 'flex',
     flexDirection: 'column',
