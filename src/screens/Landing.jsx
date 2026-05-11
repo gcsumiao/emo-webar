@@ -19,11 +19,11 @@ export function Landing({ lang = 'zh', setLang }) {
         <LangChip lang={lang} onToggle={setLang} />
       </div>
 
-      <div style={{ position: 'absolute', top: isLandscapePhone ? '-18dvh' : '19dvh', left: 0, right: 0, height: isLandscapePhone ? '62dvh' : '38dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', zIndex: 1, opacity: isLandscapePhone ? 0.38 : 1 }}>
+      <div style={{ position: 'absolute', top: isLandscapePhone ? '-14dvh' : '0dvh', left: 0, right: 0, height: isLandscapePhone ? '72dvh' : '52dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', zIndex: 1, opacity: isLandscapePhone ? 0.38 : 1 }}>
         <img
           src={asset('/assets/mascot-face-emoji.png')}
           alt=""
-          style={{ width: isLandscapePhone ? 'min(54vw, 420px)' : 'min(94vw, 500px)', height: 'auto', animation: 'face-bob 5s ease-in-out infinite', filter: 'drop-shadow(0 30px 40px rgba(229,109,137,0.2))' }}
+          style={{ width: isLandscapePhone ? 'min(64vw, 460px)' : 'min(112vw, 620px)', height: 'auto', animation: 'face-drift 5s ease-in-out infinite', filter: 'drop-shadow(0 30px 40px rgba(229,109,137,0.2))' }}
         />
       </div>
 

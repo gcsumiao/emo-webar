@@ -1,9 +1,5 @@
 export function getARRuntime() {
-  return window.__ar || window.__mindar || null;
-}
-
-export function isKivicubeRuntime(runtime) {
-  return runtime?.provider === 'kivicube';
+  return window.__mindar || null;
 }
 
 export function subscribeARRuntime(eventName, cb) {
