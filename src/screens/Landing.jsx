@@ -6,6 +6,7 @@ import { useViewport } from '../lib/viewport.js';
 export function Landing({ lang = 'zh', setLang }) {
   const viewport = useViewport();
   const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
+  const isWideLandscape = viewport.orientation === 'landscape' && !isLandscapePhone;
   const titleSrc = lang === 'en'
     ? asset('/assets/site-ui/home-title-en.svg')
     : asset('/assets/site-ui/home-title-zh.svg');
@@ -19,12 +20,14 @@ export function Landing({ lang = 'zh', setLang }) {
         <LangChip lang={lang} onToggle={setLang} />
       </div>
 
-      <div style={{ position: 'absolute', top: isLandscapePhone ? '-14dvh' : '0dvh', left: 0, right: 0, height: isLandscapePhone ? '72dvh' : '52dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'visible', zIndex: 1, opacity: isLandscapePhone ? 0.38 : 1 }}>
-        <img
-          src={asset('/assets/mascot-face-emoji.png')}
-          alt=""
-          style={{ width: isLandscapePhone ? 'min(64vw, 460px)' : 'min(112vw, 620px)', height: 'auto', animation: 'face-drift 5s ease-in-out infinite', filter: 'drop-shadow(0 30px 40px rgba(229,109,137,0.2))' }}
-        />
+      <div style={{ position: 'absolute', top: isLandscapePhone ? '32dvh' : isWideLandscape ? '24dvh' : '36.6dvh', left: '50%', width: isLandscapePhone ? 'min(68vw, 460px)' : 'min(88vw, 620px)', transform: 'translate(-50%, -50%)', overflow: 'visible', zIndex: 1, opacity: isLandscapePhone ? 0.38 : 1, pointerEvents: 'none' }}>
+        <div style={{ animation: 'face-drift 8s ease-in-out infinite', willChange: 'transform' }}>
+          <img
+            src={asset('/assets/mascot-face-emoji.png')}
+            alt=""
+            style={{ width: '100%', height: 'auto', display: 'block', filter: 'drop-shadow(0 30px 40px rgba(229,109,137,0.2))' }}
+          />
+        </div>
       </div>
 
       <div className="bottom-controls" style={{ maxWidth: 560, margin: '0 auto', background: '#fff', borderRadius: 28, padding: '16px 18px 14px', boxShadow: '0 20px 40px rgba(229,109,137,0.22), 0 2px 8px rgba(0,0,0,0.04)', pointerEvents: 'auto', zIndex: 8 }}>
