@@ -5,7 +5,7 @@ import { createARPhoto } from '../lib/arCapture.js';
 import { introFps, introFrameUrls, preloadUrls } from '../lib/step06Assets.js';
 import { useViewport } from '../lib/viewport.js';
 import { clampScaleFactor, pointerDistance } from '../ar/frozenControls.js';
-import { getARRuntime, isKivicubeRuntime } from '../ar/arRuntime.js';
+import { getARRuntime } from '../ar/arRuntime.js';
 
 const FLASH_MS = 240;
 
@@ -20,23 +20,6 @@ function readDebugFlag() {
   } catch {
     return false;
   }
-}
-
-async function dataUrlToPhoto(dataUrl) {
-  const res = await fetch(dataUrl);
-  const blob = await res.blob();
-  const filename = `emo-ar-${Date.now()}.png`;
-  const file = typeof File === 'function'
-    ? new File([blob], filename, { type: blob.type || 'image/png' })
-    : null;
-  return {
-    blob,
-    file,
-    url: URL.createObjectURL(blob),
-    width: null,
-    height: null,
-    source: 'kivicube',
-  };
 }
 
 export function ARActive({ lang = 'zh', setLang, diagnostics }) {
@@ -181,15 +164,12 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const next = await runtime?.freezeCurrentTarget?.();
       if (next) setFrozenState(next);
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
-      const runtimeNeedsHtmlSprite = isKivicubeRuntime(runtime);
-      const photo = isKivicubeRuntime(runtime) && runtime?.takePhoto
-        ? await dataUrlToPhoto(await runtime.takePhoto())
-        : await createARPhoto({
-          spriteSrc: visualSpriteSrc,
-          visualTransform,
-          isLandscapePhone,
-          includeSpriteOverlay: runtimeNeedsHtmlSprite && renderMode === 'sprite-only',
-        });
+      const photo = await createARPhoto({
+        spriteSrc: visualSpriteSrc,
+        visualTransform,
+        isLandscapePhone,
+        includeSpriteOverlay: renderMode === 'sprite-only',
+      });
       clearCapturedPhoto();
       setCapturedPhoto(photo);
       setArPhase('captured-frame');
@@ -314,11 +294,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const flashOpacity = arPhase === 'scanning-success' ? 0.85 : 0;
   const finalUsesSpriteOverlay = currentRenderMode === 'sprite-only'
     || (currentRenderMode !== 'gltf-only' && frozenState?.contentMode !== 'gltf');
-  const runtimeNeedsHtmlSprite = isKivicubeRuntime(getARRuntime());
-  const showVisualSprite = runtimeNeedsHtmlSprite && (
-    arPhase === 'sprite-entering'
-    || ((arPhase === 'final-live' || isCapturing) && finalUsesSpriteOverlay)
-  );
+  const showVisualSprite = arPhase === 'sprite-entering'
+    || ((arPhase === 'final-live' || isCapturing) && finalUsesSpriteOverlay);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>

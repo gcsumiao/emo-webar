@@ -1,8 +1,6 @@
 import React from 'react';
 import { STATES, HAPPY_PATH } from './app/flowConfig.js';
 import { MindARStage } from './ar/MindARStage.jsx';
-import { KivicubeStage } from './ar/KivicubeStage.jsx';
-import { getArProvider } from './ar/kivicubeConfig.js';
 import { Landing } from './screens/Landing.jsx';
 import { Permission } from './screens/Permission.jsx';
 import { Loading } from './screens/Loading.jsx';
@@ -59,8 +57,6 @@ function ScreenFor({ state, lang, setLang, diagnostics }) {
 }
 
 export default function App() {
-  const arProvider = React.useMemo(getArProvider, []);
-  const ARStage = arProvider === 'kivicube' ? KivicubeStage : MindARStage;
   const [state, setStateRaw] = React.useState('landing');
   const [lang, setLangRaw] = React.useState(() => {
     try {
@@ -143,7 +139,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <SiteFontFaces />
-      <ARStage active={arActive} visible={arActive} onDiagnostics={handleDiagnostics} />
+      <MindARStage active={arActive} visible={arActive} onDiagnostics={handleDiagnostics} />
       <div key={nonce} className="ui-layer screen-enter">
         <ScreenFor state={state} lang={lang} setLang={setLang} diagnostics={diagnostics} />
       </div>

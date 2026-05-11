@@ -119,6 +119,19 @@ img {
   }
 }
 
+@keyframes face-drift {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  33% {
+    transform: translateX(8vw);
+  }
+  66% {
+    transform: translateX(-2vw);
+  }
+}
+
 @keyframes face-bob {
   0%,
   100% {
