@@ -4,6 +4,10 @@ export const TOKENS = {
   pink: '#F29CB0',
   pinkDeep: '#E56D89',
   pinkSoft: '#FCE3EA',
+  emoPink: '#EAA4C4',
+  emoPinkLight: '#FFDCEA',
+  emoTextPink: '#DB86B1',
+  emoGray: '#DCDDDD',
   cream: '#FFF7F0',
   creamDeep: '#FBEDE0',
   ink: '#1F1A1F',
@@ -12,7 +16,7 @@ export const TOKENS = {
   green: '#A9D45A',
 };
 
-export const FONT_ZH = "'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
+export const FONT_ZH = "'Source Han Sans CN', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
 export const FONT_EN = "'Gantari', 'Inter', system-ui, sans-serif";
 export const FONT_MONO = "'JetBrains Mono', ui-monospace, monospace";
 

@@ -1,6 +1,8 @@
 import React from 'react';
 import { STATES, HAPPY_PATH } from './app/flowConfig.js';
 import { MindARStage } from './ar/MindARStage.jsx';
+import { KivicubeStage } from './ar/KivicubeStage.jsx';
+import { getArProvider } from './ar/kivicubeConfig.js';
 import { Landing } from './screens/Landing.jsx';
 import { Permission } from './screens/Permission.jsx';
 import { Loading } from './screens/Loading.jsx';
@@ -9,7 +11,31 @@ import { ARActive } from './screens/ARActive.jsx';
 import { Denied } from './screens/Denied.jsx';
 import { ErrorScreen } from './screens/Error.jsx';
 import { arAudio } from './lib/arAudio.js';
+import { asset } from './lib/assetUrl.js';
 import { introFrameUrls, preloadStep06, preloadUrls } from './lib/step06Assets.js';
+
+function SiteFontFaces() {
+  return (
+    <style>
+      {`
+        @font-face {
+          font-family: "Source Han Sans CN";
+          src: url("${asset('/assets/fonts/SourceHanSansCN-Heavy.otf')}") format("opentype");
+          font-weight: 800 900;
+          font-style: normal;
+          font-display: swap;
+        }
+        @font-face {
+          font-family: "Source Han Sans CN";
+          src: url("${asset('/assets/fonts/SourceHanSansCN-Bold.otf')}") format("opentype");
+          font-weight: 700;
+          font-style: normal;
+          font-display: swap;
+        }
+      `}
+    </style>
+  );
+}
 
 function ScreenFor({ state, lang, setLang, diagnostics }) {
   switch (state) {
@@ -33,14 +59,9 @@ function ScreenFor({ state, lang, setLang, diagnostics }) {
 }
 
 export default function App() {
-  const [state, setStateRaw] = React.useState(() => {
-    try {
-      const savedState = localStorage.getItem('emo_proto_state');
-      return STATES.some((item) => item.key === savedState) ? savedState : 'landing';
-    } catch {
-      return 'landing';
-    }
-  });
+  const arProvider = React.useMemo(getArProvider, []);
+  const ARStage = arProvider === 'kivicube' ? KivicubeStage : MindARStage;
+  const [state, setStateRaw] = React.useState('landing');
   const [lang, setLangRaw] = React.useState(() => {
     try {
       return localStorage.getItem('emo_proto_lang') || 'zh';
@@ -55,7 +76,7 @@ export default function App() {
     setStateRaw(nextState);
     setNonce((value) => value + 1);
     try {
-      localStorage.setItem('emo_proto_state', nextState);
+      localStorage.removeItem('emo_proto_state');
     } catch {}
   }, []);
 
@@ -121,7 +142,8 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <MindARStage active={arActive} visible={arActive} onDiagnostics={handleDiagnostics} />
+      <SiteFontFaces />
+      <ARStage active={arActive} visible={arActive} onDiagnostics={handleDiagnostics} />
       <div key={nonce} className="ui-layer screen-enter">
         <ScreenFor state={state} lang={lang} setLang={setLang} diagnostics={diagnostics} />
       </div>

@@ -181,13 +181,14 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const next = await runtime?.freezeCurrentTarget?.();
       if (next) setFrozenState(next);
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+      const runtimeNeedsHtmlSprite = isKivicubeRuntime(runtime);
       const photo = isKivicubeRuntime(runtime) && runtime?.takePhoto
         ? await dataUrlToPhoto(await runtime.takePhoto())
         : await createARPhoto({
           spriteSrc: visualSpriteSrc,
           visualTransform,
           isLandscapePhone,
-          includeSpriteOverlay: renderMode === 'sprite-only',
+          includeSpriteOverlay: runtimeNeedsHtmlSprite && renderMode === 'sprite-only',
         });
       clearCapturedPhoto();
       setCapturedPhoto(photo);
@@ -313,8 +314,11 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const flashOpacity = arPhase === 'scanning-success' ? 0.85 : 0;
   const finalUsesSpriteOverlay = currentRenderMode === 'sprite-only'
     || (currentRenderMode !== 'gltf-only' && frozenState?.contentMode !== 'gltf');
-  const showVisualSprite = arPhase === 'sprite-entering'
-    || ((arPhase === 'final-live' || isCapturing) && finalUsesSpriteOverlay);
+  const runtimeNeedsHtmlSprite = isKivicubeRuntime(getARRuntime());
+  const showVisualSprite = runtimeNeedsHtmlSprite && (
+    arPhase === 'sprite-entering'
+    || ((arPhase === 'final-live' || isCapturing) && finalUsesSpriteOverlay)
+  );
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -474,12 +478,12 @@ function actionButtonStyle(lang) {
     height: 42,
     borderRadius: 999,
     border: 'none',
-    background: '#1F1A1F',
-    color: '#FAF6F1',
+    background: TOKENS.emoPink,
+    color: '#fff',
     fontFamily: langFont(lang),
     fontSize: 13,
     fontWeight: 800,
-    boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+    boxShadow: '0 10px 28px rgba(0,0,0,0.16)',
     cursor: 'pointer',
   };
 }
