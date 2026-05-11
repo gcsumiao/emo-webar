@@ -1,41 +1,43 @@
 import React from 'react';
 import { LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
+import { getARRuntime } from '../ar/arRuntime.js';
+import { asset } from '../lib/assetUrl.js';
 import { useScanGeometry } from '../lib/viewport.js';
 
 const MANUAL_LOCK_DELAY_MS = 3000;
+const SCAN_FRAME_BOUNDS = {
+  x: 219,
+  y: 505,
+  width: 642,
+  height: 634,
+  viewBoxWidth: 1080,
+  viewBoxHeight: 1920,
+};
 
-function FlowerViewfinder({ cx, cy, size, color = TOKENS.pink, strokeWidth = 2.4 }) {
-  const r = 0.30 * size;
-  const d = 0.25 * size;
-  const lobes = [0, 1, 2, 3, 4].map((i) => {
-    const theta = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
-    return { x: size / 2 + Math.cos(theta) * d, y: size / 2 + Math.sin(theta) * d };
-  });
-  const filterId = `flower-outline-${Math.round(size)}-${strokeWidth}`;
+function ScanFrameViewfinder({ cx, cy, size }) {
+  const targetWidth = size * 1.22;
+  const scale = targetWidth / SCAN_FRAME_BOUNDS.width;
+  const frameWidth = SCAN_FRAME_BOUNDS.viewBoxWidth * scale;
+  const frameHeight = SCAN_FRAME_BOUNDS.viewBoxHeight * scale;
+  const frameCenterX = (SCAN_FRAME_BOUNDS.x + SCAN_FRAME_BOUNDS.width / 2) * scale;
+  const frameCenterY = (SCAN_FRAME_BOUNDS.y + SCAN_FRAME_BOUNDS.height / 2) * scale;
+
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
+    <img
+      src={asset('/assets/site-ui/scan-frame.svg')}
+      alt=""
+      aria-hidden="true"
       style={{
         position: 'absolute',
-        left: cx - size / 2,
-        top: cy - size / 2,
+        left: cx - frameCenterX,
+        top: cy - frameCenterY,
+        width: frameWidth,
+        height: frameHeight,
         pointerEvents: 'none',
-        overflow: 'visible',
-        filter: 'drop-shadow(0 0 6px rgba(242,156,176,0.45))',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
-    >
-      <defs>
-        <filter id={filterId} x="-5%" y="-5%" width="110%" height="110%">
-          <feMorphology in="SourceGraphic" operator="erode" radius={strokeWidth / 2} result="eroded" />
-          <feComposite in="SourceGraphic" in2="eroded" operator="out" />
-        </filter>
-      </defs>
-      <g filter={`url(#${filterId})`}>
-        {lobes.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={r} fill={color} />)}
-      </g>
-    </svg>
+    />
   );
 }
 
@@ -58,29 +60,40 @@ export function Scan({ lang = 'zh', setLang }) {
   React.useEffect(() => {
     let cancelled = false;
     let retryTimer = null;
+    let mockRecognitionTimer = null;
     let offFound = null;
     let offLost = null;
 
-    const bindMindAR = () => {
+    const bindRuntime = () => {
       if (cancelled) return;
-      const mindar = window.__mindar;
-      if (!mindar?.onTargetFound || !mindar?.onTargetLost) {
-        retryTimer = window.setTimeout(bindMindAR, 80);
+      const runtime = getARRuntime();
+      if (!runtime?.onTargetFound || !runtime?.onTargetLost) {
+        retryTimer = window.setTimeout(bindRuntime, 80);
         return;
       }
-      offFound = mindar.onTargetFound(() => {
+      offFound = runtime.onTargetFound(() => {
         setShowManualLock(false);
         setScanState('locked');
       });
-      offLost = mindar.onTargetLost(() => {
+      offLost = runtime.onTargetLost(() => {
         setScanState((current) => current === 'locked' ? current : 'searching');
       });
+      mockRecognitionTimer = window.setTimeout(async () => {
+        try {
+          const result = await runtime.recognizeFrameMock?.({ collectionId: runtime.collectionId });
+          if (cancelled || !result?.matched) return;
+          runtime.applyRecognitionResult?.(result);
+        } catch (error) {
+          console.warn('[EMO-AR] mock cloud recognition failed', error);
+        }
+      }, 120);
     };
 
-    bindMindAR();
+    bindRuntime();
     return () => {
       cancelled = true;
       window.clearTimeout(retryTimer);
+      window.clearTimeout(mockRecognitionTimer);
       offFound?.();
       offLost?.();
     };
@@ -140,7 +153,7 @@ export function Scan({ lang = 'zh', setLang }) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
       <div style={{ position: 'absolute', inset: 0, opacity: isLocked ? 0 : 1, transition: 'opacity 320ms ease-out', pointerEvents: 'none' }}>
-        <FlowerViewfinder cx={geometry.scanCenterX} cy={geometry.scanCenterY} size={geometry.scanSize} />
+        <ScanFrameViewfinder cx={geometry.scanCenterX} cy={geometry.scanCenterY} size={geometry.scanSize} />
       </div>
       <ScanSweepOverlay active={!isLocked} />
       <div className="top-controls">

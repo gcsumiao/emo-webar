@@ -1,8 +1,5 @@
 import { primeImage } from './step06Assets.js';
 
-const FRAME_WHITE = 'rgba(255,255,255,0.96)';
-const FRAME_PINK = 'rgba(244,183,200,0.92)';
-
 function sourceReady(source) {
   if (!source) return false;
   if (source instanceof HTMLVideoElement) {
@@ -57,21 +54,6 @@ function drawContain(ctx, source, cx, cy, maxWidth, rotationDeg, scale) {
   return true;
 }
 
-function drawRoundedRect(ctx, x, y, width, height, radius) {
-  const r = Math.min(radius, width / 2, height / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + width - r, y);
-  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
-  ctx.lineTo(x + width, y + height - r);
-  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  ctx.lineTo(x + r, y + height);
-  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
 function getCameraVideo() {
   const videos = Array.from(document.querySelectorAll('.ar-layer video, a-scene video, video'));
   return videos.find((video) => sourceReady(video)) || null;
@@ -91,27 +73,6 @@ function drawBackground(ctx, cssWidth, cssHeight) {
 
   const canvas = getArCanvas();
   drawCover(ctx, canvas, 0, 0, cssWidth, cssHeight);
-}
-
-function drawPhotoFrame(ctx, cssWidth, cssHeight) {
-  const inset = Math.max(10, Math.min(cssWidth, cssHeight) * 0.025);
-  const whiteWidth = Math.max(8, Math.min(cssWidth, cssHeight) * 0.026);
-  const pinkWidth = Math.max(5, Math.min(cssWidth, cssHeight) * 0.014);
-  const radius = Math.max(22, Math.min(cssWidth, cssHeight) * 0.055);
-
-  ctx.save();
-  ctx.lineJoin = 'round';
-  ctx.strokeStyle = FRAME_WHITE;
-  ctx.lineWidth = whiteWidth;
-  drawRoundedRect(ctx, inset, inset, cssWidth - inset * 2, cssHeight - inset * 2, radius);
-  ctx.stroke();
-
-  ctx.strokeStyle = FRAME_PINK;
-  ctx.lineWidth = pinkWidth;
-  const innerInset = inset + whiteWidth * 0.8;
-  drawRoundedRect(ctx, innerInset, innerInset, cssWidth - innerInset * 2, cssHeight - innerInset * 2, radius * 0.72);
-  ctx.stroke();
-  ctx.restore();
 }
 
 function canvasToBlob(canvas) {
@@ -157,8 +118,6 @@ export async function createARPhoto({
       transform.scale || 1
     );
   }
-
-  drawPhotoFrame(ctx, cssWidth, cssHeight);
 
   const blob = await canvasToBlob(canvas);
   const filename = `emo-ar-${Date.now()}.png`;
