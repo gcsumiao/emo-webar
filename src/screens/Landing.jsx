@@ -21,7 +21,7 @@ export function Landing({ lang = 'zh', setLang }) {
       </div>
 
       <div style={{ position: 'absolute', top: isLandscapePhone ? '32dvh' : isWideLandscape ? '24dvh' : '36.6dvh', left: '50%', width: isLandscapePhone ? 'min(68vw, 460px)' : 'min(88vw, 620px)', transform: 'translate(-50%, -50%)', overflow: 'visible', zIndex: 1, opacity: isLandscapePhone ? 0.38 : 1, pointerEvents: 'none' }}>
-        <div style={{ animation: 'face-drift 3.6s ease-in-out infinite', willChange: 'transform' }}>
+        <div style={{ animation: 'face-bob 5s ease-in-out infinite', willChange: 'transform' }}>
           <img
             src={asset('/assets/mascot-face-emoji.png')}
             alt=""
