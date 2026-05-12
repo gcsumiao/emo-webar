@@ -121,31 +121,31 @@ img {
 
 @keyframes face-drift {
   0% {
-    transform: translateX(1.7vw);
+    transform: translateX(1.7vw) rotate(-1deg);
   }
   12.5% {
-    transform: translateX(-1.7vw);
+    transform: translateX(-1.7vw) rotate(-3deg);
   }
   25% {
-    transform: translateX(-4.5vw);
+    transform: translateX(-4.5vw) rotate(-6deg);
   }
   37.5% {
-    transform: translateX(-1.7vw);
+    transform: translateX(-1.7vw) rotate(-8deg);
   }
   50% {
-    transform: translateX(2.2vw);
+    transform: translateX(2.2vw) rotate(-10deg);
   }
   62.5% {
-    transform: translateX(4.4vw);
+    transform: translateX(4.4vw) rotate(-8deg);
   }
   75% {
-    transform: translateX(4.4vw);
+    transform: translateX(4.4vw) rotate(-6deg);
   }
   87.5% {
-    transform: translateX(2.7vw);
+    transform: translateX(2.7vw) rotate(-3deg);
   }
   100% {
-    transform: translateX(1.7vw);
+    transform: translateX(1.7vw) rotate(-1deg);
   }
 }
 
