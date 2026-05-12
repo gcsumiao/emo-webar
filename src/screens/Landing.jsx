@@ -10,13 +10,17 @@ export function Landing({ lang = 'zh', setLang }) {
   const titleSrc = lang === 'en'
     ? asset('/assets/site-ui/home-title-en.svg')
     : asset('/assets/site-ui/home-title-zh.svg');
+  const titleAnchor = lang === 'en'
+    ? { leftVw: 34.81, topDvh: 25.97 }
+    : { leftVw: 36.38, topDvh: 25.63 };
+  const titleTransform = `translate(calc(var(--safe-left) + 16px - ${titleAnchor.leftVw}vw), calc(var(--safe-top) + 16px - ${titleAnchor.topDvh}dvh))`;
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'linear-gradient(180deg, #FFE4EA 0%, #FCD5DE 40%, #F8BCCB 100%)' }}>
-      <img src={titleSrc} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', transform: 'translateX(-17vw)', pointerEvents: 'none', zIndex: 2, display: isLandscapePhone ? 'none' : 'block' }} />
+      <img src={titleSrc} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', transform: titleTransform, pointerEvents: 'none', zIndex: 2, display: isLandscapePhone ? 'none' : 'block' }} />
       <img src={asset('/assets/site-ui/home-slogan.svg')} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', transform: 'translateY(11dvh)', pointerEvents: 'none', zIndex: 4, display: isLandscapePhone ? 'none' : 'block' }} />
 
-      <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 15dvh)', right: 'calc(var(--safe-right) + 16px)', zIndex: 6, pointerEvents: 'auto' }}>
+      <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 16px)', right: 'calc(var(--safe-right) + 16px)', zIndex: 6, pointerEvents: 'auto' }}>
         <LangChip lang={lang} onToggle={setLang} />
       </div>
 
