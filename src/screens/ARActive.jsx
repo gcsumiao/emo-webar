@@ -291,7 +291,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     return () => window.clearInterval(id);
   }, [debugMode]);
 
-  const flashOpacity = arPhase === 'scanning-success' ? 0.85 : 0;
   const finalUsesSpriteOverlay = currentRenderMode === 'sprite-only'
     || (currentRenderMode !== 'gltf-only' && frozenState?.contentMode !== 'gltf');
   const showVisualSprite = arPhase === 'sprite-entering'
@@ -299,19 +298,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
-      {/* Scanning-success flash: short, screen-wide, fades quickly. */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute', inset: 0,
-          background: 'radial-gradient(closest-side, rgba(255,255,255,0.85), rgba(244,183,200,0.4) 55%, rgba(244,183,200,0) 75%)',
-          opacity: flashOpacity,
-          transition: `opacity ${FLASH_MS}ms ease-out`,
-          pointerEvents: 'none',
-          zIndex: 6,
-        }}
-      />
-
       {showVisualSprite && (
         <img
           aria-hidden="true"
@@ -401,7 +387,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             <button type="button" onClick={captureFrame} style={actionButtonStyle(lang)}>{t(lang, '重新拍照', 'Retake')}</button>
             <button type="button" onClick={shareFrame} style={actionButtonStyle(lang)}>{t(lang, '分享好友', 'Share')}</button>
           </div>
-        ) : (
+        ) : isLive ? (
           <button
             type="button"
             onClick={captureFrame}
@@ -424,7 +410,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           >
             <div style={{ width: 20, height: 20, borderRadius: 999, background: '#fff' }} />
           </button>
-        )}
+        ) : null}
       </div>
 
       {debugMode && (
