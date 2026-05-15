@@ -2,16 +2,48 @@ import React from 'react';
 import { LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 import { arAudio } from '../lib/arAudio.js';
 import { createARPhoto } from '../lib/arCapture.js';
-import { introFps, introFrameUrls, preloadUrls } from '../lib/step06Assets.js';
 import { useViewport } from '../lib/viewport.js';
-import { clampScaleFactor, pointerDistance } from '../ar/frozenControls.js';
+import { clampScaleFactor, normalizeAngleDelta, pointerAngle, pointerDistance } from '../ar/frozenControls.js';
 import { getARRuntime, isKivicubeRuntime } from '../ar/arRuntime.js';
 
 const FLASH_MS = 240;
+const SINGLE_FINGER_YAW_SENSITIVITY = 0.16;
+const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
+const TWO_FINGER_YAW_SENSITIVITY = 0.18;
+const TWO_FINGER_PITCH_SENSITIVITY = 0.14;
+const TWO_FINGER_TWIST_SENSITIVITY = 0.75;
 
 function formatVector(value, digits = 2) {
   if (!value) return '-';
-  return `${value.x.toFixed(digits)}, ${value.y.toFixed(digits)}, ${value.z.toFixed(digits)}`;
+  const x = Number(value.x);
+  const y = Number(value.y);
+  const z = Number(value.z);
+  if (![x, y, z].every(Number.isFinite)) return '-';
+  return `${x.toFixed(digits)}, ${y.toFixed(digits)}, ${z.toFixed(digits)}`;
+}
+
+function formatNumber(value, digits = 2) {
+  const next = Number(value);
+  return Number.isFinite(next) ? next.toFixed(digits) : '-';
+}
+
+function formatArrayVector(value, digits = 2) {
+  if (!Array.isArray(value)) return '-';
+  return value.map((part) => Number(part).toFixed(digits)).join(', ');
+}
+
+function formatLayerInfo(value) {
+  if (!value) return '-';
+  const canvas = value.canvas;
+  const video = value.video;
+  return `c${value.canvasCount || 0}:${canvas?.z || '-'} ${canvas?.width || 0}x${canvas?.height || 0} / v${value.videoCount || 0}:${video?.z || '-'} ${video?.width || 0}x${video?.height || 0}`;
+}
+
+function pointerCenter(a, b) {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  };
 }
 
 function readDebugFlag() {
@@ -42,79 +74,36 @@ async function dataUrlToPhoto(dataUrl) {
 export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [arPhase, setArPhase] = React.useState('scanning-success');
   const [frozenState, setFrozenState] = React.useState(() => getARRuntime()?.getFrozenState?.() || null);
-  const [spriteState, setSpriteState] = React.useState(() => getARRuntime()?.getSpriteState?.() || null);
-  const [visualFrameIndex, setVisualFrameIndex] = React.useState(0);
-  const [visualFrames, setVisualFrames] = React.useState(introFrameUrls);
-  const [currentRenderMode, setCurrentRenderMode] = React.useState('sprite-only');
-  const [visualTransform, setVisualTransform] = React.useState({ x: 0, y: 0, scale: 1, rotation: 0 });
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
   const pointersRef = React.useRef(new Map());
-  const gestureRef = React.useRef({ lastDistance: null });
+  const gestureRef = React.useRef({ lastDistance: null, lastCenter: null, lastAngle: null });
   const flashTimerRef = React.useRef(null);
-  const visualRafRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
 
-  React.useEffect(() => {
-    preloadUrls(introFrameUrls, { eagerCount: 48 });
-  }, []);
-
-  // Drive the scanning-success → sprite-entering → final-live transition on mount.
+  // Drive the scanning-success -> glb-entering -> final-live transition on mount.
   React.useEffect(() => {
     let cancelled = false;
     let retryTimer = null;
 
-    const playVisualIntro = (frames, fps) => new Promise((resolve) => {
-      window.cancelAnimationFrame(visualRafRef.current);
-      setVisualTransform({ x: 0, y: 0, scale: 1, rotation: 0 });
-      setVisualFrameIndex(0);
-      const startedAt = performance.now();
-      const frameMs = 1000 / (fps || introFps);
-      const tick = (now) => {
-        if (cancelled) {
-          resolve();
-          return;
-        }
-        const idx = Math.min(frames.length - 1, Math.floor((now - startedAt) / frameMs));
-        setVisualFrameIndex(idx);
-        if (idx >= frames.length - 1) {
-          resolve();
-          return;
-        }
-        visualRafRef.current = window.requestAnimationFrame(tick);
-      };
-      visualRafRef.current = window.requestAnimationFrame(tick);
-    });
-
     const startIntro = () => {
       const runtime = getARRuntime();
-      if (!runtime?.playSpriteIntro) {
+      if (!runtime?.showFinalModel) {
         retryTimer = window.setTimeout(startIntro, 80);
         return;
       }
       const target = runtime.getLastTarget?.() || runtime.getActiveTargets?.()?.[0] || null;
       const targetIndex = target?.targetIndex;
-      const spriteConfig = runtime.getCurrentSpriteConfig?.() || null;
-      const frames = spriteConfig?.frameSequenceUrls?.length ? spriteConfig.frameSequenceUrls : introFrameUrls;
-      const fps = spriteConfig?.frameRate || introFps;
-      setVisualFrames(frames);
-      preloadUrls(frames, { eagerCount: 48 });
-      setCurrentRenderMode(runtime.getCurrentRenderMode?.() || 'sprite-only');
       setArPhase('scanning-success');
       flashTimerRef.current = window.setTimeout(() => {
         if (cancelled) return;
-        setArPhase('sprite-entering');
+        setArPhase('glb-entering');
         arAudio.cueARIntro();
-        const arPromise = runtime.playSpriteIntro?.(targetIndex).catch?.(() => null) || Promise.resolve();
-        const visualPromise = playVisualIntro(frames, fps);
-        Promise.all([arPromise, visualPromise]).then(() => {
+        const arPromise = runtime.showFinalModel?.(targetIndex).catch?.(() => null) || Promise.resolve();
+        Promise.resolve(arPromise).then(async () => {
           if (cancelled) return;
-          const nextRenderMode = runtime.getCurrentRenderMode?.() || 'sprite-only';
-          setCurrentRenderMode(nextRenderMode);
           setArPhase('final-live');
-          setVisualFrameIndex(frames.length - 1);
           setFrozenState(runtime.getFrozenState?.() || null);
-          setSpriteState(runtime.getSpriteState?.() || null);
         });
       }, FLASH_MS);
     };
@@ -125,11 +114,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       cancelled = true;
       window.clearTimeout(retryTimer);
       window.clearTimeout(flashTimerRef.current);
-      window.cancelAnimationFrame(visualRafRef.current);
     };
   }, []);
 
-  // On unmount, reset frozen object & sprite state so the scene is clean if user re-enters.
+  // On unmount, reset frozen object state so the scene is clean if user re-enters.
   React.useEffect(() => () => {
     getARRuntime()?.hideFinalObject?.();
   }, []);
@@ -151,7 +139,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const isLive = arPhase === 'final-live' || isCaptured;
   const canEdit = arPhase === 'final-live';
   const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
-  const visualSpriteSrc = visualFrames[visualFrameIndex] || visualFrames[visualFrames.length - 1] || introFrameUrls[introFrameUrls.length - 1];
 
   const clearCapturedPhoto = React.useCallback(() => {
     setCapturedPhoto((current) => {
@@ -174,21 +161,12 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     setArPhase('capturing-frame');
     try {
       arAudio.playShutter();
-      const renderMode = runtime?.getCurrentRenderMode?.() || currentRenderMode;
-      if (renderMode === 'sprite-then-gltf' || renderMode === 'gltf-only') {
-        await runtime?.showFinalModel?.();
-      }
       const next = await runtime?.freezeCurrentTarget?.();
       if (next) setFrozenState(next);
       await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
       const photo = isKivicubeRuntime(runtime) && runtime?.takePhoto
         ? await dataUrlToPhoto(await runtime.takePhoto())
-        : await createARPhoto({
-          spriteSrc: visualSpriteSrc,
-          visualTransform,
-          isLandscapePhone,
-          includeSpriteOverlay: renderMode === 'sprite-only',
-        });
+        : await createARPhoto();
       clearCapturedPhoto();
       setCapturedPhoto(photo);
       setArPhase('captured-frame');
@@ -196,7 +174,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       console.error('[EMO-AR] capture failed', error);
       setArPhase('final-live');
     }
-  }, [arPhase, clearCapturedPhoto, currentRenderMode, isLandscapePhone, visualSpriteSrc, visualTransform]);
+  }, [arPhase, clearCapturedPhoto]);
 
   const exitAR = React.useCallback(async () => {
     window.clearTimeout(flashTimerRef.current);
@@ -244,6 +222,11 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     try { await navigator.clipboard?.writeText?.(shareData.url); } catch {}
   }, [capturedPhoto, lang]);
 
+  const resetFinalTransform = React.useCallback(() => {
+    const next = getARRuntime()?.resetFinalTransform?.();
+    if (next) setFrozenState(next);
+  }, []);
+
   const handlePointerDown = React.useCallback((event) => {
     if (!canEdit) return;
     event.preventDefault();
@@ -252,8 +235,12 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     const points = Array.from(pointersRef.current.values());
     if (points.length >= 2) {
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
+      gestureRef.current.lastCenter = pointerCenter(points[0], points[1]);
+      gestureRef.current.lastAngle = pointerAngle(points[0], points[1]);
     } else {
       gestureRef.current.lastDistance = null;
+      gestureRef.current.lastCenter = null;
+      gestureRef.current.lastAngle = null;
     }
   }, [canEdit]);
 
@@ -268,79 +255,62 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
     if (points.length >= 2) {
       const distance = pointerDistance(points[0], points[1]);
+      const center = pointerCenter(points[0], points[1]);
+      const angle = pointerAngle(points[0], points[1]);
+      const runtime = getARRuntime();
+      let updatedState = null;
       if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
-        setVisualTransform((current) => ({ ...current, scale: Math.max(0.35, Math.min(2.4, current.scale * scaleFactor)) }));
-        const r = getARRuntime()?.scaleFrozenBy?.({ scaleFactor });
-        if (r) setFrozenState(r);
+        updatedState = runtime?.scaleFrozenBy?.({ scaleFactor }) || updatedState;
       }
+      if (gestureRef.current.lastCenter) {
+        const dx = center.x - gestureRef.current.lastCenter.x;
+        const dy = center.y - gestureRef.current.lastCenter.y;
+        const twistDelta = gestureRef.current.lastAngle == null
+          ? 0
+          : normalizeAngleDelta(angle - gestureRef.current.lastAngle);
+        const yawDelta = (dx * TWO_FINGER_YAW_SENSITIVITY) + (twistDelta * TWO_FINGER_TWIST_SENSITIVITY);
+        const pitchDelta = -dy * TWO_FINGER_PITCH_SENSITIVITY;
+        updatedState = runtime?.rotateFrozenBy?.({ yawDelta, pitchDelta }) || updatedState;
+      }
+      if (updatedState) setFrozenState(updatedState);
       gestureRef.current.lastDistance = distance;
+      gestureRef.current.lastCenter = center;
+      gestureRef.current.lastAngle = angle;
     } else if (points.length === 1) {
       const dx = next.x - prev.x;
       const dy = next.y - prev.y;
-      const yawDelta = dx * 0.35;
-      setVisualTransform((current) => ({
-        ...current,
-        x: current.x + dx,
-        y: current.y + dy,
-        rotation: current.rotation + yawDelta,
-      }));
+      gestureRef.current.lastDistance = null;
+      gestureRef.current.lastCenter = null;
+      gestureRef.current.lastAngle = null;
       const runtime = getARRuntime();
-      const r = runtime?.moveFrozenByScreenDelta?.({ dx, dy });
-      if (r) setFrozenState(r);
-      const rr = runtime?.rotateFrozenBy?.({ yawDelta });
-      if (rr) setFrozenState(rr);
+      const moved = runtime?.moveFrozenByScreenDelta?.({ dx, dy });
+      const rotated = runtime?.rotateFrozenBy?.({
+        yawDelta: dx * SINGLE_FINGER_YAW_SENSITIVITY,
+        pitchDelta: -dy * SINGLE_FINGER_PITCH_SENSITIVITY,
+      });
+      const updatedState = rotated || moved;
+      if (updatedState) setFrozenState(updatedState);
     }
   }, [canEdit]);
 
   const handlePointerUp = React.useCallback((event) => {
     pointersRef.current.delete(event.pointerId);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
-    if (pointersRef.current.size < 2) {
+    const points = Array.from(pointersRef.current.values());
+    if (points.length >= 2) {
+      gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
+      gestureRef.current.lastCenter = pointerCenter(points[0], points[1]);
+      gestureRef.current.lastAngle = pointerAngle(points[0], points[1]);
+    } else {
       gestureRef.current.lastDistance = null;
+      gestureRef.current.lastCenter = null;
+      gestureRef.current.lastAngle = null;
     }
   }, []);
 
-  // Poll sprite state for diagnostics overlay (debug only).
-  React.useEffect(() => {
-    if (!debugMode) return undefined;
-    const id = window.setInterval(() => {
-      setSpriteState(getARRuntime()?.getSpriteState?.() || null);
-    }, 250);
-    return () => window.clearInterval(id);
-  }, [debugMode]);
-
-  const finalUsesSpriteOverlay = currentRenderMode === 'sprite-only'
-    || (currentRenderMode !== 'gltf-only' && frozenState?.contentMode !== 'gltf');
-  const showVisualSprite = arPhase === 'sprite-entering'
-    || ((arPhase === 'final-live' || isCapturing) && finalUsesSpriteOverlay);
-
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
-      {showVisualSprite && (
-        <img
-          aria-hidden="true"
-          src={visualSpriteSrc}
-          alt=""
-          draggable={false}
-          style={{
-            position: 'absolute',
-            left: '50%',
-            top: isLandscapePhone ? '47%' : '44%',
-            width: 'min(72vw, 420px)',
-            height: 'auto',
-            transform: `translate(-50%, -50%) translate(${visualTransform.x}px, ${visualTransform.y}px) rotate(${visualTransform.rotation}deg) scale(${visualTransform.scale})`,
-            transformOrigin: '50% 58%',
-            zIndex: 3,
-            pointerEvents: 'none',
-            userSelect: 'none',
-            WebkitUserSelect: 'none',
-            filter: 'none',
-            opacity: 1,
-          }}
-        />
-      )}
-
       {capturedPhoto?.url && (
         <img
           aria-hidden="true"
@@ -372,7 +342,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         <div
           data-interactive="true"
           data-ar-edit-surface="true"
-          aria-label="Drag with one finger to move and rotate EMO; pinch with two fingers to scale"
+          aria-label="Drag to move and rotate EMO; pinch with two fingers to scale"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -392,13 +362,11 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       )}
 
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLandscapePhone ? 8 : 14, pointerEvents: 'none', zIndex: 12 }}>
-        {!isCaptured && (
+        {!isCaptured && (arPhase === 'scanning-success' || arPhase === 'glb-entering' || isCapturing) && (
           <div style={{ padding: '10px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)', fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)', maxWidth: 'min(84vw, 360px)', textAlign: 'center' }}>
-            {arPhase === 'scanning-success' || arPhase === 'sprite-entering'
+            {arPhase === 'scanning-success' || arPhase === 'glb-entering'
               ? t(lang, '一毛出现中…', 'EMO is appearing…')
-              : isCapturing
-                ? t(lang, '照片生成中…', 'Creating photo…')
-                : t(lang, '单指拖动 / 旋转 · 双指缩放 · 拍下并固定', 'One finger moves / rotates · two fingers scale · capture to lock')}
+              : t(lang, '照片生成中…', 'Creating photo…')}
           </div>
         )}
         {isCaptured ? (
@@ -407,38 +375,53 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             <button type="button" onClick={shareFrame} style={actionButtonStyle(lang)}>{t(lang, '分享好友', 'Share')}</button>
           </div>
         ) : isLive ? (
-          <button
-            type="button"
-            onClick={captureFrame}
-            disabled={!isLive || isCapturing}
-            style={{
-              pointerEvents: 'auto',
-              width: isLandscapePhone ? 54 : 68,
-              height: isLandscapePhone ? 54 : 68,
-              borderRadius: 999,
-              border: '3px solid #fff',
-              background: TOKENS.pink,
-              cursor: isLive && !isCapturing ? 'pointer' : 'default',
-              boxShadow: '0 0 0 2px rgba(255,255,255,0.3), 0 10px 28px rgba(0,0,0,0.42)',
-              opacity: isLive && !isCapturing ? 1 : 0.55,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
-            }}
-          >
-            <div style={{ width: 20, height: 20, borderRadius: 999, background: '#fff' }} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, pointerEvents: 'auto' }}>
+            <button
+              type="button"
+              aria-label={t(lang, '重置人物位置', 'Reset EMO')}
+              title={t(lang, '重置', 'Reset')}
+              onClick={resetFinalTransform}
+              disabled={!isLive || isCapturing}
+              style={resetButtonStyle(isLive && !isCapturing)}
+            >
+              <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none">
+                <path d="M8.5 7.2A6.8 6.8 0 1 1 5.4 13" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+                <path d="M8.5 3.8v3.4H5.1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={captureFrame}
+              disabled={!isLive || isCapturing}
+              style={{
+                pointerEvents: 'auto',
+                width: isLandscapePhone ? 54 : 68,
+                height: isLandscapePhone ? 54 : 68,
+                borderRadius: 999,
+                border: '3px solid #fff',
+                background: TOKENS.pink,
+                cursor: isLive && !isCapturing ? 'pointer' : 'default',
+                boxShadow: '0 0 0 2px rgba(255,255,255,0.3), 0 10px 28px rgba(0,0,0,0.42)',
+                opacity: isLive && !isCapturing ? 1 : 0.55,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+              }}
+            >
+              <div style={{ width: 20, height: 20, borderRadius: 999, background: '#fff' }} />
+            </button>
+          </div>
         ) : null}
       </div>
 
       {debugMode && (
-        <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 72px)', right: 'calc(var(--safe-right) + 12px)', zIndex: 18, padding: '8px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.62)', border: '0.5px solid rgba(255,255,255,0.18)', fontFamily: FONT_MONO, fontSize: 9.5, lineHeight: 1.45, color: '#fff', textAlign: 'left', pointerEvents: 'none', maxWidth: 220 }}>
+        <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 72px)', right: 'calc(var(--safe-right) + 12px)', zIndex: 18, padding: '8px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.62)', border: '0.5px solid rgba(255,255,255,0.18)', fontFamily: FONT_MONO, fontSize: 9.5, lineHeight: 1.45, color: '#fff', textAlign: 'left', pointerEvents: 'none', maxWidth: 248 }}>
           <div>phase: <b style={{ color: TOKENS.green }}>{arPhase}</b></div>
           <div>ar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
-          <div>sprite: <b style={{ color: TOKENS.green }}>{spriteState?.phase || '-'}</b> · frame {spriteState?.frameIndex ?? 0}</div>
-          <div>visual: frame {visualFrameIndex}</div>
-          <div>activeTarget: {spriteState?.activeTargetIndex ?? '-'}</div>
+          <div>glb: <b style={{ color: TOKENS.green }}>{diagnostics?.glbPhase || '-'}</b> · mode {diagnostics?.contentMode || '-'}</div>
+          <div>gesture: mixed-drag</div>
+          <div>activeTarget: {diagnostics?.activeTargetId || '-'}</div>
           <div>edit: <b style={{ color: frozenState?.active ? TOKENS.green : TOKENS.pinkDeep }}>{String(!!frozenState?.active)}</b></div>
           {frozenState && (
             <>
@@ -447,11 +430,45 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
               <div>scale: {formatVector(frozenState.scale)}</div>
             </>
           )}
-          {diagnostics?.modelError && <div style={{ color: '#ffbac8' }}>model-error</div>}
+          <div>glbScale: {formatArrayVector(diagnostics?.glbScale, 3)}</div>
+          <div>glbSize: {formatArrayVector(diagnostics?.glbBounds?.size, 3)}</div>
+          <div>modelReady: {String(Boolean(diagnostics?.modelReady))}</div>
+          <div>modelSrc: {diagnostics?.modelSrc || '-'}</div>
+          <div>near/depth: {formatNumber(diagnostics?.cameraNear, 2)} / {formatNumber(diagnostics?.finalRenderDepth, 2)}</div>
+          <div>glbNdc: {formatVector(diagnostics?.glbNdc, 2)}</div>
+          <div>meshNdc: {formatVector(diagnostics?.meshCenterNdc, 2)}</div>
+          <div>glbProj: {formatNumber(diagnostics?.glbProjectedSize?.width, 2)} x {formatNumber(diagnostics?.glbProjectedSize?.height, 2)}</div>
+          <div>markerNdc: {formatVector(diagnostics?.markerNdc, 2)}</div>
+          <div>marker: {formatVector(diagnostics?.debugMarkerWorld, 2)}</div>
+          <div>layers: {formatLayerInfo(diagnostics?.layerInfo)}</div>
+          {diagnostics?.textureWarning && <div style={{ color: '#ffbac8' }}>texture: {diagnostics.textureWarning}</div>}
+          {diagnostics?.lastError && <div style={{ color: '#ffbac8' }}>last-error: {diagnostics.lastError}</div>}
+          {diagnostics?.modelError && <div style={{ color: '#ffbac8' }}>model-error: {diagnostics.modelError}</div>}
         </div>
       )}
     </div>
   );
+}
+
+function resetButtonStyle(enabled, active = false) {
+  return {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    border: active ? '1px solid rgba(255,255,255,0.76)' : '1px solid rgba(255,255,255,0.36)',
+    background: active ? 'rgba(238,128,158,0.92)' : 'rgba(0,0,0,0.34)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    boxShadow: active
+      ? '0 0 0 2px rgba(255,255,255,0.22), 0 8px 22px rgba(0,0,0,0.28)'
+      : '0 8px 22px rgba(0,0,0,0.28)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+    cursor: enabled ? 'pointer' : 'default',
+    opacity: enabled ? 1 : 0.55,
+  };
 }
 
 function actionButtonStyle(lang) {

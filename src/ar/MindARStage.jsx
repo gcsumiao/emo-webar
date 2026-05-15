@@ -1,6 +1,8 @@
 import React from 'react';
 import { aframeAssets, isDebugMode, debugGlbAssetId } from './aframeAssets.js';
 import {
+  getRuntimeSceneManifest,
+  getSceneCatalog,
   getTargetGlbConfig,
   getTargetRenderMode,
   loadArManifest,
@@ -12,9 +14,13 @@ import './components/index.js';
 const PERSISTENT_SPRITE_CONFIG_KEY = 'persistent-sprite';
 const PERSISTENT_GLB_CONFIG_KEY = 'persistent-glb';
 const FROZEN_SPRITE_POSITION = { x: 0, y: -0.02, z: -1.18 };
+const FROZEN_SPRITE_ROTATION = { x: 0, y: 0, z: 0 };
 const FROZEN_SPRITE_SCALE = { x: 1, y: 1, z: 1 };
 const FROZEN_SPRITE_SCALE_MIN = 0.25;
 const FROZEN_SPRITE_SCALE_MAX = 2.4;
+const FINAL_BASE_RENDER_DEPTH = Math.abs(FROZEN_SPRITE_POSITION.z);
+const FINAL_NEAR_DEPTH_MULTIPLIER = 1.2;
+const DROP_ENTER_MARGIN_RATIO = 0.16;
 
 function ensureSpriteRegistry() {
   if (!window.__spriteRegistry) {
@@ -55,6 +61,14 @@ function cloneTarget(target) {
   return clone(target);
 }
 
+function readInitialSceneId() {
+  try {
+    return new URLSearchParams(window.location.search).get('scene') || null;
+  } catch {
+    return null;
+  }
+}
+
 function vectorAttr(value, fallback = [0, 0, 0]) {
   const source = Array.isArray(value) ? value : fallback;
   return source.map((part, index) => {
@@ -84,6 +98,18 @@ function parseVector(value, fallback) {
     y: Number.isFinite(parts[1]) ? parts[1] : fallback.y,
     z: Number.isFinite(parts[2]) ? parts[2] : fallback.z,
   };
+}
+
+function normalizeDegrees(value) {
+  const next = Number(value || 0);
+  if (!Number.isFinite(next)) return 0;
+  return ((next % 360) + 360) % 360;
+}
+
+function clampPitchDegrees(value) {
+  const next = Number(value || 0);
+  if (!Number.isFinite(next)) return 0;
+  return Math.max(-75, Math.min(75, next));
 }
 
 function mergeTransformConfig(glb, transformOverride = {}) {
@@ -121,24 +147,7 @@ function buildAFrameAssetsMarkup(manifest) {
   }).join('');
 }
 
-function buildGlbMarkup(target, glb, renderMode) {
-  if (!(renderMode === 'gltf-only' || renderMode === 'sprite-then-gltf') || !glb) return '';
-  const modelAttr = buildGltfModelAttr(glb);
-  if (!modelAttr) return '';
-  const visible = glb.visibleOnTarget ? 'true' : 'false';
-  return `
-    <a-entity id="live-glb-${escapeAttr(target.targetIndex)}"
-      class="anchored-content glb-content"
-      visible="${visible}"
-      position="${escapeAttr(vectorAttr(glb.position, [0, 0, 0]))}"
-      rotation="${escapeAttr(vectorAttr(glb.rotation, [0, 0, 0]))}"
-      scale="${escapeAttr(vectorAttr(glb.scale, [1, 1, 1]))}"
-      gltf-model="${escapeAttr(modelAttr)}"
-      gltf-transition-model="configKey: ${escapeAttr(gltfConfigKey(target.targetIndex))}"></a-entity>
-  `;
-}
-
-function buildSpriteGroupMarkup(target, spriteConfig, glbConfig, renderMode) {
+function buildSpriteGroupMarkup(target, spriteConfig) {
   const targetId = escapeAttr(target.targetId);
   const label = escapeAttr(target.label);
   const configKey = escapeAttr(spriteConfigKey(target.targetIndex));
@@ -169,16 +178,21 @@ function buildSpriteGroupMarkup(target, spriteConfig, glbConfig, renderMode) {
       </a-entity>
       ${debugGlbMarkup}
     </a-entity>
-    ${buildGlbMarkup(target, glbConfig, renderMode)}
   `;
 }
 
 function buildFrozenSpriteMarkup() {
-  const idleSrc = escapeAttr(FROZEN_SPRITE_DEFAULTS.finalIdleFrameUrl);
+  const idleSrc = FROZEN_SPRITE_DEFAULTS.finalIdleFrameUrl
+    ? escapeAttr(FROZEN_SPRITE_DEFAULTS.finalIdleFrameUrl)
+    : '';
+  const spriteMaterial = `shader: flat; transparent: true; opacity: 0; alphaTest: 0.02; side: double; depthWrite: false; color: #ffffff${idleSrc ? `; src: ${idleSrc}` : ''}`;
   const charW = FROZEN_SPRITE_DEFAULTS.characterPlaneSize[0];
   const charH = FROZEN_SPRITE_DEFAULTS.characterPlaneSize[1];
   const shadowW = FROZEN_SPRITE_DEFAULTS.shadowSize[0];
   const shadowH = FROZEN_SPRITE_DEFAULTS.shadowSize[1];
+  const debugGlbMarker = isDebugMode
+    ? '<a-entity id="debug-glb-marker" visible="false" position="0 0 0"></a-entity>'
+    : '';
   return `
     <a-entity id="frozen-ar-object" visible="false" position="${FROZEN_SPRITE_POSITION.x} ${FROZEN_SPRITE_POSITION.y} ${FROZEN_SPRITE_POSITION.z}" rotation="0 0 0">
       <a-plane class="sprite-shadow frozen-shadow"
@@ -191,13 +205,14 @@ function buildFrozenSpriteMarkup() {
         sprite-intro-anim="configKey: ${PERSISTENT_SPRITE_CONFIG_KEY}">
         <a-plane id="frozen-sprite-character" class="sprite-character"
           width="${charW}" height="${charH}"
-          material="shader: flat; transparent: true; opacity: 0; alphaTest: 0.02; side: double; depthWrite: false; color: #ffffff; src: ${idleSrc}"
+          material="${spriteMaterial}"
           sprite-sequence="configKey: ${PERSISTENT_SPRITE_CONFIG_KEY}; autoplay: false"></a-plane>
       </a-entity>
       <a-entity id="frozen-ar-model"
         class="glb-content"
         visible="false"
         gltf-transition-model="configKey: ${PERSISTENT_GLB_CONFIG_KEY}"></a-entity>
+      ${debugGlbMarker}
     </a-entity>
   `;
 }
@@ -220,7 +235,31 @@ function createDiagnostics() {
     scale: null,
     spritePhase: 'idle',
     glbPhase: 'idle',
+    contentMode: null,
+    glbBounds: null,
+    glbScale: null,
+    glbWorld: null,
+    glbNdc: null,
+    markerNdc: null,
+    meshCenterNdc: null,
+    glbProjectedSize: null,
+    debugMarkerWorld: null,
+    cameraNear: null,
+    finalRenderDepth: null,
+    layerInfo: null,
+    modelSrc: '',
+    modelReady: false,
+    lastError: '',
     frameIndex: 0,
+    frameCount: 0,
+    textureLoadedCount: 0,
+    textureErrorCount: 0,
+    texturePendingCount: 0,
+    textureReady: false,
+    textureWarning: '',
+    sceneId: '',
+    sceneLabel: '',
+    mindTargetUrl: '',
   };
 }
 
@@ -267,57 +306,76 @@ export function MindARStage({ active, visible, onDiagnostics }) {
 
     let cancelled = false;
     let cleanupScene = null;
+    let manifest = null;
+    let currentSceneId = readInitialSceneId();
+    let sceneSwitchQueue = Promise.resolve();
+    const foundCbs = new Set();
+    const lostCbs = new Set();
+    const statusCbs = new Set();
 
     const setStatus = (nextStatus) => {
       statusRef.current = nextStatus;
       pushDiagnostics({ status: nextStatus, lastEvent: `status:${nextStatus}` });
     };
 
-    const setup = async () => {
+    const setup = async (requestedSceneId = currentSceneId) => {
       const container = containerRef.current;
       if (!container || sceneRef.current) return;
 
-      pushDiagnostics({ status: 'manifest-loading', lastEvent: 'manifest-loading' });
-      const manifest = await loadArManifest();
-      if (cancelled || !containerRef.current) return;
+      if (!manifest) {
+        pushDiagnostics({ status: 'manifest-loading', lastEvent: 'manifest-loading' });
+        manifest = await loadArManifest();
+        if (cancelled || !containerRef.current) return;
 
+        pushDiagnostics({
+          status: 'manifest-loaded',
+          lastEvent: 'manifest-loaded',
+          manifestWarning: manifest.__warning || (manifest.__fallback ? 'Using default AR manifest fallback.' : ''),
+        });
+      }
+
+      const runtimeManifest = getRuntimeSceneManifest(manifest, requestedSceneId);
+      const activeScene = runtimeManifest.currentScene || null;
+      currentSceneId = activeScene?.sceneId || runtimeManifest.defaultSceneId || null;
       pushDiagnostics({
-        status: 'manifest-loaded',
-        lastEvent: 'manifest-loaded',
-        manifestWarning: manifest.__fallback ? manifest.__warning || 'Using default AR manifest fallback.' : '',
+        sceneId: currentSceneId || '',
+        sceneLabel: activeScene?.label || '',
+        mindTargetUrl: runtimeManifest.mindTargetUrl || '',
+        lastEvent: `scene-selected:${currentSceneId || 'default'}`,
       });
 
       const spriteRegistry = ensureSpriteRegistry();
       const gltfRegistry = ensureGltfRegistry();
-      const targets = manifest.targets?.length ? manifest.targets : arTargets;
+      const targets = (runtimeManifest.targets?.length ? runtimeManifest.targets : arTargets).map((target) => ({
+        ...target,
+        sceneId: target.sceneId || activeScene?.sceneId || currentSceneId || '',
+        sceneLabel: target.sceneLabel || activeScene?.label || '',
+        mindTargetUrl: target.mindTargetUrl || runtimeManifest.mindTargetUrl,
+      }));
       targets.forEach((target) => {
-        const spriteConfig = spriteConfigForTarget(manifest, target.targetIndex);
-        const glbConfig = getTargetGlbConfig(manifest, target.targetIndex);
+        const spriteConfig = spriteConfigForTarget(runtimeManifest, target.targetIndex);
+        const glbConfig = getTargetGlbConfig(runtimeManifest, target.targetIndex);
         spriteRegistry.configs.set(spriteConfigKey(target.targetIndex), spriteConfig);
         gltfRegistry.configs.set(gltfConfigKey(target.targetIndex), glbConfig);
       });
-      spriteRegistry.configs.set(PERSISTENT_SPRITE_CONFIG_KEY, spriteConfigForTarget(manifest, targets[0]?.targetIndex ?? 0));
-      gltfRegistry.configs.set(PERSISTENT_GLB_CONFIG_KEY, getTargetGlbConfig(manifest, targets[0]?.targetIndex ?? 0));
+      spriteRegistry.configs.set(PERSISTENT_SPRITE_CONFIG_KEY, spriteConfigForTarget(runtimeManifest, targets[0]?.targetIndex ?? 0));
+      gltfRegistry.configs.set(PERSISTENT_GLB_CONFIG_KEY, getTargetGlbConfig(runtimeManifest, targets[0]?.targetIndex ?? 0));
 
       const anchorMarkup = targets.map((target) => {
-        const spriteConfig = spriteConfigForTarget(manifest, target.targetIndex);
-        const glbConfig = getTargetGlbConfig(manifest, target.targetIndex);
-        const renderMode = getTargetRenderMode(manifest, target.targetIndex);
+        const spriteConfig = spriteConfigForTarget(runtimeManifest, target.targetIndex);
         return `<a-entity mindar-image-target="targetIndex: ${target.targetIndex}" id="emo-anchor-${target.targetIndex}">
-          ${buildSpriteGroupMarkup(target, spriteConfig, glbConfig, renderMode)}
+          ${buildSpriteGroupMarkup(target, spriteConfig)}
         </a-entity>`;
       }).join('');
 
       container.innerHTML = `
         <a-scene embedded
-          mindar-image="imageTargetSrc: ${escapeAttr(manifest.mindTargetUrl)}; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
+          mindar-image="imageTargetSrc: ${escapeAttr(runtimeManifest.mindTargetUrl)}; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
           vr-mode-ui="enabled: false"
           device-orientation-permission-ui="enabled: false"
-          renderer="colorManagement: true; physicallyCorrectLights: true; alpha: true; preserveDrawingBuffer: true"
+          renderer="colorManagement: true; alpha: true; preserveDrawingBuffer: true"
           style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;">
-          <a-assets timeout="15000">${buildAFrameAssetsMarkup(manifest)}</a-assets>
-          <a-entity light="type: ambient; color: #ffffff; intensity: 1.15"></a-entity>
-          <a-entity light="type: directional; color: #ffffff; intensity: 0.75" position="1 2 1"></a-entity>
+          <a-assets timeout="15000">${buildAFrameAssetsMarkup(runtimeManifest)}</a-assets>
           <a-camera id="emo-camera" position="0 0 0" look-controls="enabled: false">
             ${buildFrozenSpriteMarkup()}
           </a-camera>
@@ -331,6 +389,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const frozenCharacter = container.querySelector('#frozen-sprite-character');
       const persistentSpriteContent = container.querySelector('#persistent-sprite-content');
       const frozenModel = container.querySelector('#frozen-ar-model');
+      const debugGlbMarker = container.querySelector('#debug-glb-marker');
       const anchors = targets.map((target) => ({
         target,
         element: container.querySelector(`#emo-anchor-${target.targetIndex}`),
@@ -346,23 +405,194 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const getPersistentIntroAnim = () => persistentSpriteContent?.components?.['sprite-intro-anim'] || null;
       const getPersistentSeq = () => frozenCharacter?.components?.['sprite-sequence'] || null;
       const getPersistentModelComp = () => frozenModel?.components?.['gltf-transition-model'] || null;
+      const plainVector = (vector) => vector
+        ? { x: vector.x, y: vector.y, z: vector.z }
+        : null;
+      const readCameraNear = () => {
+        const near = Number(scene.camera?.near);
+        return Number.isFinite(near) && near > 0 ? near : null;
+      };
+      const getFinalRenderDepth = () => Math.max(
+        FINAL_BASE_RENDER_DEPTH,
+        (readCameraNear() || 0) * FINAL_NEAR_DEPTH_MULTIPLIER
+      );
+      const getFinalDepthRatio = () => getFinalRenderDepth() / FINAL_BASE_RENDER_DEPTH;
+      const toRenderedFrozenPosition = (position) => {
+        const ratio = getFinalDepthRatio();
+        return {
+          x: position.x * ratio,
+          y: position.y * ratio,
+          z: -getFinalRenderDepth(),
+        };
+      };
+      const toRenderedFrozenScale = (scale) => {
+        const ratio = getFinalDepthRatio();
+        return {
+          x: scale.x * ratio,
+          y: scale.y * ratio,
+          z: scale.z * ratio,
+        };
+      };
+      const withViewportDropMotion = (spriteConfig) => {
+        const next = clone(spriteConfig) || {};
+        const THREE = getThree();
+        const depth = getFinalRenderDepth();
+        const fovDeg = Number(scene.camera?.fov) || 60;
+        const fovRad = THREE?.MathUtils?.degToRad
+          ? THREE.MathUtils.degToRad(fovDeg)
+          : fovDeg * Math.PI / 180;
+        const visibleHalfHeight = Math.tan(fovRad / 2) * depth;
+        const parentPosition = toRenderedFrozenPosition(FROZEN_SPRITE_POSITION);
+        const parentScale = toRenderedFrozenScale(FROZEN_SPRITE_SCALE);
+        const characterHeight = Number(next.characterPlaneSize?.[1]) || FROZEN_SPRITE_DEFAULTS.characterPlaneSize[1] || 0.95;
+        const halfHeightWorld = characterHeight * parentScale.y * 0.5;
+        const marginWorld = Math.max(0.05, characterHeight * parentScale.y * DROP_ENTER_MARGIN_RATIO);
+        const startY = (visibleHalfHeight + halfHeightWorld + marginWorld - parentPosition.y) / (parentScale.y || 1);
+        const frameCount = Array.isArray(next.frameSequenceUrls) ? next.frameSequenceUrls.length : 0;
+        const fps = Number(next.frameRate) || 30;
+        return {
+          ...next,
+          enterFromPosition: [0, startY, 0],
+          enterToPosition: [0, 0, 0],
+          enterFromScale: [1, 1, 1],
+          enterToScale: [1, 1, 1],
+          enterDurationMs: frameCount ? Math.round((frameCount / fps) * 1000) : 0,
+          idleFloatToZ: 0,
+        };
+      };
+      const syncRenderMatrices = () => {
+        scene.camera?.updateMatrixWorld?.(true);
+        scene.object3D?.updateMatrixWorld?.(true);
+      };
+      const projectWorldVector = (vector) => {
+        const camera = scene.camera;
+        if (!camera || !vector) return null;
+        syncRenderMatrices();
+        return plainVector(vector.clone().project(camera));
+      };
+      const projectedVector = (object3D) => {
+        const THREE = getThree();
+        if (!THREE || !object3D) return null;
+        syncRenderMatrices();
+        const vector = new THREE.Vector3();
+        object3D.getWorldPosition(vector);
+        return projectWorldVector(vector);
+      };
+      const readMeshCenterProjection = () => {
+        const THREE = getThree();
+        const model = getPersistentModelComp()?.model || frozenModel?.getObject3D?.('mesh');
+        if (!THREE || !model) return null;
+        syncRenderMatrices();
+        const box = new THREE.Box3().setFromObject(model);
+        if (box.isEmpty()) return null;
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        return projectWorldVector(center);
+      };
+      const readMeshProjectedSize = () => {
+        const THREE = getThree();
+        const model = getPersistentModelComp()?.model || frozenModel?.getObject3D?.('mesh');
+        if (!THREE || !model) return null;
+        syncRenderMatrices();
+        const box = new THREE.Box3().setFromObject(model);
+        if (box.isEmpty()) return null;
+        const corners = [
+          [box.min.x, box.min.y, box.min.z],
+          [box.min.x, box.min.y, box.max.z],
+          [box.min.x, box.max.y, box.min.z],
+          [box.min.x, box.max.y, box.max.z],
+          [box.max.x, box.min.y, box.min.z],
+          [box.max.x, box.min.y, box.max.z],
+          [box.max.x, box.max.y, box.min.z],
+          [box.max.x, box.max.y, box.max.z],
+        ].map(([x, y, z]) => projectWorldVector(new THREE.Vector3(x, y, z))).filter(Boolean);
+        if (!corners.length) return null;
+        const xs = corners.map((point) => point.x);
+        const ys = corners.map((point) => point.y);
+        return {
+          width: Math.max(...xs) - Math.min(...xs),
+          height: Math.max(...ys) - Math.min(...ys),
+        };
+      };
+      const readLayerInfo = () => {
+        const read = (el) => {
+          if (!el) return null;
+          const style = window.getComputedStyle(el);
+          const rect = el.getBoundingClientRect();
+          return {
+            z: style.zIndex,
+            position: style.position,
+            display: style.display,
+            visibility: style.visibility,
+            opacity: style.opacity,
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          };
+        };
+        const canvas = container.querySelector('canvas') || document.querySelector('canvas.a-canvas, canvas');
+        const video = container.querySelector('video') || document.querySelector('video[playsinline], video');
+        return {
+          canvas: read(canvas),
+          video: read(video),
+          canvasCount: document.querySelectorAll('canvas').length,
+          videoCount: document.querySelectorAll('video').length,
+        };
+      };
+      const configureDebugGlbMarker = () => {
+        if (!debugGlbMarker?.object3D) return;
+        debugGlbMarker.object3D.traverse((node) => {
+          node.frustumCulled = false;
+        });
+      };
+      const readRenderDiagnostics = (lastEvent = 'render-diagnostics') => {
+        const THREE = getThree();
+        syncRenderMatrices();
+        if (!isDebugMode) {
+          return {
+            cameraNear: readCameraNear(),
+            finalRenderDepth: getFinalRenderDepth(),
+            lastEvent,
+          };
+        }
+        const glbWorld = THREE && frozenModel?.object3D
+          ? plainVector(frozenModel.object3D.getWorldPosition(new THREE.Vector3()))
+          : null;
+        const markerWorld = THREE && debugGlbMarker?.object3D
+          ? plainVector(debugGlbMarker.object3D.getWorldPosition(new THREE.Vector3()))
+          : null;
+        return {
+          cameraNear: readCameraNear(),
+          finalRenderDepth: getFinalRenderDepth(),
+          glbWorld,
+          glbNdc: projectedVector(frozenModel?.object3D),
+          markerNdc: projectedVector(debugGlbMarker?.object3D),
+          meshCenterNdc: readMeshCenterProjection(),
+          glbProjectedSize: readMeshProjectedSize(),
+          debugMarkerWorld: markerWorld,
+          layerInfo: readLayerInfo(),
+          lastEvent,
+        };
+      };
+      const pushRenderDiagnostics = (lastEvent = 'render-diagnostics') => {
+        pushDiagnostics(readRenderDiagnostics(lastEvent));
+      };
 
       sceneRef.current = scene;
 
-      const foundCbs = new Set();
-      const lostCbs = new Set();
-      const statusCbs = new Set();
       const activeTargets = new Map();
       const lostTimers = new Map();
       let lastTarget = null;
       let activeFinalMode = null;
       let liveYawOffset = 0;
+      let persistentModelAttr = '';
+      let persistentModelSrc = '';
+      let persistentModelTargetIndex = targets[0]?.targetIndex ?? 0;
       const frozenState = {
         active: false,
         sourceTarget: null,
         contentMode: null,
         position: { ...FROZEN_SPRITE_POSITION },
-        rotation: { x: 0, y: 0, z: 0 },
+        rotation: { ...FROZEN_SPRITE_ROTATION },
         scale: { ...FROZEN_SPRITE_SCALE },
       };
 
@@ -381,9 +611,9 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       };
 
       const getCurrentTargetConfig = () => getTargetConfig();
-      const getCurrentRenderMode = () => getTargetRenderMode(manifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
-      const getCurrentSpriteConfig = () => spriteConfigForTarget(manifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
-      const getCurrentGlbConfig = () => getTargetGlbConfig(manifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
+      const getCurrentRenderMode = () => getTargetRenderMode(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
+      const getCurrentSpriteConfig = () => spriteConfigForTarget(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
+      const getCurrentGlbConfig = () => getTargetGlbConfig(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
 
       const cloneFrozenState = () => ({
         active: frozenState.active,
@@ -398,39 +628,82 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         if (!frozenObject?.object3D) return false;
         const THREE = getThree();
         if (!THREE) return false;
-        frozenObject.object3D.position.set(frozenState.position.x, frozenState.position.y, frozenState.position.z);
+        const clampedPitch = clampPitchDegrees(frozenState.rotation.x);
+        if (clampedPitch !== frozenState.rotation.x) {
+          frozenState.rotation = { ...frozenState.rotation, x: clampedPitch };
+        }
+        const renderedPosition = toRenderedFrozenPosition(frozenState.position);
+        const renderedScale = toRenderedFrozenScale(frozenState.scale);
+        frozenObject.object3D.position.set(renderedPosition.x, renderedPosition.y, renderedPosition.z);
         frozenObject.object3D.rotation.set(
           THREE.MathUtils.degToRad(frozenState.rotation.x),
           THREE.MathUtils.degToRad(frozenState.rotation.y),
           THREE.MathUtils.degToRad(frozenState.rotation.z)
         );
-        frozenObject.object3D.scale.set(frozenState.scale.x, frozenState.scale.y, frozenState.scale.z);
+        frozenObject.object3D.scale.set(renderedScale.x, renderedScale.y, renderedScale.z);
         frozenObject.setAttribute('visible', frozenState.active ? 'true' : 'false');
         pushDiagnostics({
           frozen: frozenState.active,
+          contentMode: frozenState.contentMode,
           position: { ...frozenState.position },
           rotation: { ...frozenState.rotation },
           scale: { ...frozenState.scale },
-          lastEvent: 'frozen-transform',
+          ...readRenderDiagnostics('frozen-transform'),
         });
         return true;
       };
 
-      const waitForPersistentSpriteReady = () => new Promise((resolve) => {
-        const ready = () => getPersistentIntroAnim() && getPersistentSeq() && frozenCharacter?.getObject3D('mesh');
-        if (ready()) {
-          resolve(true);
+      const getPersistentSpriteReadiness = () => {
+        const introAnim = getPersistentIntroAnim();
+        const seq = getPersistentSeq();
+        const mesh = frozenCharacter?.getObject3D('mesh');
+        const textureReadiness = seq?.getTextureReadiness?.() || {
+          frameCount: seq?.frames?.length || 0,
+          loadedCount: 0,
+          errorCount: 0,
+          pendingCount: seq?.frames?.length || 0,
+          ready: false,
+        };
+        return {
+          ready: Boolean(introAnim && seq && mesh && textureReadiness.ready),
+          componentsReady: Boolean(introAnim && seq && mesh),
+          textureReadiness,
+        };
+      };
+
+      const pushSpriteReadinessDiagnostics = (readiness, lastEvent) => {
+        const textureReadiness = readiness?.textureReadiness || {};
+        const textureWarning = readiness?.timedOut
+          ? `Sprite texture preload timed out: ${textureReadiness.loadedCount || 0}/${textureReadiness.frameCount || 0} loaded`
+          : textureReadiness.errorCount
+            ? `Sprite texture load errors: ${textureReadiness.errorCount}`
+            : '';
+        pushDiagnostics({
+          frameCount: textureReadiness.frameCount || 0,
+          textureLoadedCount: textureReadiness.loadedCount || 0,
+          textureErrorCount: textureReadiness.errorCount || 0,
+          texturePendingCount: textureReadiness.pendingCount || 0,
+          textureReady: Boolean(textureReadiness.ready),
+          textureWarning,
+          lastEvent,
+        });
+      };
+
+      const waitForPersistentSpriteReady = (timeoutMs = 5000) => new Promise((resolve) => {
+        const initial = getPersistentSpriteReadiness();
+        if (initial.ready) {
+          resolve({ ...initial, timedOut: false });
           return;
         }
-        let attempts = 0;
+        const startedAt = performance.now();
         const check = () => {
-          attempts += 1;
-          if (ready()) {
-            resolve(true);
+          const next = getPersistentSpriteReadiness();
+          if (next.ready) {
+            resolve({ ...next, timedOut: false });
             return;
           }
-          if (attempts >= 90) {
-            resolve(false);
+          if (performance.now() - startedAt >= timeoutMs) {
+            resolve({ ...next, timedOut: true });
             return;
           }
           window.requestAnimationFrame(check);
@@ -441,6 +714,14 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const waitForPersistentModelReady = (timeoutMs = 3000) => new Promise((resolve) => {
         const comp = getPersistentModelComp();
         if (comp?.isReady?.()) {
+          pushDiagnostics({
+            frozenModelLoaded: true,
+            modelReady: true,
+            modelSrc: persistentModelSrc,
+            glbBounds: comp.getBounds?.() || null,
+            glbScale: getCurrentGlbConfig()?.scale || null,
+            lastEvent: 'glb-ready-existing',
+          });
           resolve(true);
           return;
         }
@@ -452,7 +733,17 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           frozenModel?.removeEventListener('gltf-transition-ready', onReady);
           resolve(ready);
         };
-        const onReady = () => finish(true);
+        const onReady = (event) => {
+          pushDiagnostics({
+            frozenModelLoaded: true,
+            modelReady: true,
+            modelSrc: persistentModelSrc,
+            glbBounds: event.detail?.bounds || getPersistentModelComp()?.getBounds?.() || null,
+            glbScale: getCurrentGlbConfig()?.scale || null,
+            lastEvent: 'gltf-transition-ready',
+          });
+          finish(true);
+        };
         const timeoutId = window.setTimeout(() => finish(Boolean(getPersistentModelComp()?.isReady?.())), timeoutMs);
         frozenModel?.addEventListener('gltf-transition-ready', onReady, { once: true });
       });
@@ -485,7 +776,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       };
 
       const configurePersistentSprite = (targetIndex) => {
-        const spriteConfig = spriteConfigForTarget(manifest, targetIndex);
+        const spriteConfig = withViewportDropMotion(spriteConfigForTarget(runtimeManifest, targetIndex));
         spriteRegistry.configs.set(PERSISTENT_SPRITE_CONFIG_KEY, spriteConfig);
         getPersistentSeq()?.reloadConfig?.(PERSISTENT_SPRITE_CONFIG_KEY);
         getPersistentIntroAnim()?.reloadConfig?.(PERSISTENT_SPRITE_CONFIG_KEY);
@@ -495,6 +786,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const hideFinalModel = () => {
         getPersistentModelComp()?.hide?.({ crossfadeMs: 0 });
         frozenModel?.setAttribute('visible', 'false');
+        debugGlbMarker?.setAttribute('visible', 'false');
         activeFinalMode = activeFinalMode === 'gltf' ? null : activeFinalMode;
         pushDiagnostics({ glbPhase: 'hidden', lastEvent: 'glb-hidden' });
       };
@@ -505,50 +797,134 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         frozenModel.setAttribute('position', vectorAttr(transform.position, [0, 0, 0]));
         frozenModel.setAttribute('rotation', vectorAttr(transform.rotation, [0, 0, 0]));
         frozenModel.setAttribute('scale', vectorAttr(transform.scale, [1, 1, 1]));
+        if (debugGlbMarker) {
+          debugGlbMarker.setAttribute('position', vectorAttr(transform.position, [0, 0, 0]));
+          debugGlbMarker.setAttribute('rotation', vectorAttr(transform.rotation, [0, 0, 0]));
+          configureDebugGlbMarker();
+        }
+      };
+
+      const getFinalModelDebug = () => {
+        const comp = getPersistentModelComp();
+        return {
+          targetIndex: persistentModelTargetIndex,
+          modelSrc: persistentModelSrc,
+          modelAttr: persistentModelAttr,
+          ready: Boolean(comp?.isReady?.()),
+          visible: Boolean(frozenModel?.object3D?.visible),
+          bounds: comp?.getBounds?.() || null,
+          animations: comp?.getAnimationNames?.() || [],
+        };
+      };
+
+      const configurePersistentGlb = (targetIndex, transformOverride = {}) => {
+        const idx = targetIndex ?? lastTarget?.targetIndex ?? activeTargets.keys().next().value ?? targets[0]?.targetIndex ?? 0;
+        const glb = getTargetGlbConfig(runtimeManifest, idx);
+        if (!frozenModel || !glb) {
+          pushDiagnostics({
+            glbPhase: 'missing',
+            modelReady: false,
+            modelError: `No GLB configured for target ${idx}`,
+            lastError: `No GLB configured for target ${idx}`,
+            lastEvent: `glb-missing:${idx}`,
+          });
+          return null;
+        }
+
+        const modelAttr = buildGltfModelAttr(glb);
+        if (!modelAttr) {
+          pushDiagnostics({
+            glbPhase: 'missing',
+            modelReady: false,
+            modelError: `No GLB source configured for target ${idx}`,
+            lastError: `No GLB source configured for target ${idx}`,
+            lastEvent: `glb-missing:${idx}`,
+          });
+          return null;
+        }
+
+        const modelSrc = glb.src || modelAttr;
+        const attrChanged = persistentModelAttr !== modelAttr;
+        persistentModelAttr = modelAttr;
+        persistentModelSrc = modelSrc;
+        persistentModelTargetIndex = idx;
+
+        gltfRegistry.configs.set(PERSISTENT_GLB_CONFIG_KEY, glb);
+        frozenModel.setAttribute('gltf-transition-model', 'configKey', PERSISTENT_GLB_CONFIG_KEY);
+        const comp = getPersistentModelComp();
+        if (attrChanged) comp?.resetLoadState?.();
+        comp?.reloadConfig?.(PERSISTENT_GLB_CONFIG_KEY);
+        applyPersistentGlbTransform(glb, transformOverride);
+
+        if (attrChanged || !frozenModel.getAttribute('gltf-model')) {
+          frozenModel.setAttribute('gltf-model', modelAttr);
+        }
+
+        const ready = Boolean(getPersistentModelComp()?.isReady?.());
+        pushDiagnostics({
+          glbPhase: ready ? 'preloaded' : 'preloading',
+          modelSrc,
+          modelReady: ready,
+          modelError: '',
+          lastError: '',
+          glbScale: glb.scale || null,
+          lastEvent: `glb-preload:${idx}`,
+        });
+        return { idx, glb, modelAttr, modelSrc };
       };
 
       const revealModelAfterSprite = async (targetIndex, transformOverride = {}) => {
         const idx = targetIndex ?? lastTarget?.targetIndex ?? activeTargets.keys().next().value ?? targets[0]?.targetIndex ?? 0;
         const sourceTarget = getTargetConfig(idx);
-        const glb = getTargetGlbConfig(manifest, idx);
-        if (!frozenModel || !glb) return cloneFrozenState();
-        const modelAttr = buildGltfModelAttr(glb);
-        if (!modelAttr) {
-          pushDiagnostics({ glbPhase: 'missing', modelError: `No GLB configured for target ${idx}`, lastEvent: `glb-missing:${idx}` });
-          return cloneFrozenState();
-        }
-
-        gltfRegistry.configs.set(PERSISTENT_GLB_CONFIG_KEY, glb);
-        frozenModel.setAttribute('gltf-transition-model', 'configKey', PERSISTENT_GLB_CONFIG_KEY);
-        getPersistentModelComp()?.reloadConfig?.(PERSISTENT_GLB_CONFIG_KEY);
-        frozenModel.setAttribute('gltf-model', modelAttr);
-        applyPersistentGlbTransform(glb, transformOverride);
+        const renderMode = getTargetRenderMode(runtimeManifest, idx);
+        const configured = configurePersistentGlb(idx, transformOverride);
+        if (!configured) return cloneFrozenState();
+        const { glb, modelSrc } = configured;
 
         frozenState.active = true;
-        frozenState.contentMode = 'gltf';
+        frozenState.contentMode = renderMode === 'gltf-only' ? null : (frozenState.contentMode || 'sprite');
         frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
-        frozenState.position = { ...FROZEN_SPRITE_POSITION };
-        frozenState.rotation = { x: 0, y: liveYawOffset, z: 0 };
-        frozenState.scale = { ...FROZEN_SPRITE_SCALE };
-        activeFinalMode = 'gltf';
+        frozenState.position = frozenState.position || { ...FROZEN_SPRITE_POSITION };
+        frozenState.rotation = frozenState.rotation || { ...FROZEN_SPRITE_ROTATION };
+        frozenState.scale = frozenState.scale || { ...FROZEN_SPRITE_SCALE };
         setLiveContentVisible(false);
         applyFrozenState();
-        pushDiagnostics({ glbPhase: 'loading', spritePhase: 'handoff', lastEvent: `glb-loading:${idx}` });
+        pushDiagnostics({
+          glbPhase: getPersistentModelComp()?.isReady?.() ? 'preloaded' : 'loading',
+          spritePhase: renderMode === 'gltf-only' ? 'hidden' : 'handoff',
+          modelSrc,
+          modelReady: Boolean(getPersistentModelComp()?.isReady?.()),
+          lastEvent: `glb-loading:${idx}`,
+        });
 
         const ready = await waitForPersistentModelReady(3000);
         const comp = getPersistentModelComp();
         if (!ready || !comp) {
-          frozenState.contentMode = 'sprite';
-          activeFinalMode = 'sprite';
-          getPersistentIntroAnim()?.enterFinalIdle?.();
+          frozenState.contentMode = renderMode === 'gltf-only' ? null : 'sprite';
+          activeFinalMode = renderMode === 'gltf-only' ? null : 'sprite';
+          if (renderMode !== 'gltf-only') getPersistentIntroAnim()?.enterFinalIdle?.();
           applyFrozenState();
-          pushDiagnostics({ glbPhase: 'error', modelError: `persistent GLB not ready for target ${idx}`, lastEvent: `glb-timeout:${idx}` });
+          const message = `persistent GLB not ready for target ${idx}`;
+          pushDiagnostics({
+            glbPhase: 'error',
+            modelReady: false,
+            modelError: message,
+            lastError: message,
+            lastEvent: `glb-timeout:${idx}`,
+          });
           return cloneFrozenState();
         }
 
+        frozenState.contentMode = 'gltf';
+        activeFinalMode = 'gltf';
+        applyFrozenState();
         frozenModel.setAttribute('visible', 'true');
+        debugGlbMarker?.setAttribute('visible', 'true');
+        configureDebugGlbMarker();
+        pushRenderDiagnostics(`glb-before-show:${idx}`);
         await comp.show?.({ crossfadeMs: glb.transition?.crossfadeMs });
-        pushDiagnostics({ glbPhase: 'visible', frozenModelLoaded: true, lastEvent: `glb-visible:${idx}` });
+        pushRenderDiagnostics(`glb-after-show:${idx}`);
+        pushDiagnostics({ glbPhase: 'visible', frozenModelLoaded: true, modelReady: true, modelSrc, lastEvent: `glb-visible:${idx}` });
         await comp.playIntroThenIdle?.();
         const clipNames = comp.getAnimationNames?.() || [];
         pushDiagnostics({
@@ -578,9 +954,10 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return getPersistentModelComp()?.playIdle?.();
       };
 
-      const playSpriteIntro = async (targetIndex) => {
+      const playSpriteIntro = async (targetIndex, options = {}) => {
         const idx = targetIndex ?? lastTarget?.targetIndex ?? activeTargets.keys().next().value ?? targets[0]?.targetIndex ?? 0;
-        const renderMode = getTargetRenderMode(manifest, idx);
+        const onStart = typeof options?.onStart === 'function' ? options.onStart : null;
+        const renderMode = getTargetRenderMode(runtimeManifest, idx);
         const sourceTarget = getTargetConfig(idx);
         if (renderMode === 'gltf-only') {
           pushDiagnostics({ spritePhase: 'hidden', lastEvent: `sprite-skipped:${idx}` });
@@ -588,6 +965,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         }
 
         configurePersistentSprite(idx);
+        hideFinalModel();
+        if (renderMode === 'sprite-then-gltf') configurePersistentGlb(idx);
         frozenState.active = true;
         frozenState.contentMode = 'sprite';
         frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
@@ -595,14 +974,14 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         frozenState.rotation = { x: 0, y: liveYawOffset, z: 0 };
         frozenState.scale = { ...FROZEN_SPRITE_SCALE };
         activeFinalMode = 'sprite';
-        hideFinalModel();
         setLiveContentVisible(false);
         applyFrozenState();
 
-        const ready = await waitForPersistentSpriteReady();
+        const readiness = await waitForPersistentSpriteReady();
+        pushSpriteReadinessDiagnostics(readiness, readiness.timedOut ? `sprite-textures-timeout:${idx}` : `sprite-textures-ready:${idx}`);
         const introAnim = getPersistentIntroAnim();
         const seq = getPersistentSeq();
-        if (!ready || !introAnim || !seq) {
+        if (!readiness.componentsReady || !introAnim || !seq) {
           pushDiagnostics({ modelError: 'persistent sprite not ready', lastEvent: `sprite-intro-missing:${idx}` });
           return cloneFrozenState();
         }
@@ -612,22 +991,37 @@ export function MindARStage({ active, visible, onDiagnostics }) {
             const finish = () => {
               if (settled) return;
               settled = true;
-              window.clearTimeout(timeoutId);
               frozenCharacter.removeEventListener('sprite-sequence-end', finish);
+              frozenCharacter.removeEventListener('sprite-sequence-started', handleStarted);
               resolve();
             };
+            const handleStarted = () => {
+              const textureReadiness = seq.getTextureReadiness?.() || {};
+              pushDiagnostics({
+                spritePhase: 'playing',
+                frameIndex: seq.frameIdx || 0,
+                frameCount: seq.frames?.length || 0,
+                textureLoadedCount: textureReadiness.loadedCount || 0,
+                textureErrorCount: textureReadiness.errorCount || 0,
+                texturePendingCount: textureReadiness.pendingCount || 0,
+                textureReady: Boolean(textureReadiness.ready),
+                lastEvent: `sprite-sequence-start:${idx}`,
+              });
+              try { onStart?.(); } catch (error) { console.error(error); }
+            };
             const frameCount = seq.frames.length;
-            const fps = seq.fps || 30;
-            const timeoutId = window.setTimeout(finish, Math.ceil((frameCount / fps) * 1000) + 750);
+            pushDiagnostics({ frameCount, frameIndex: 0 });
+            frozenCharacter.addEventListener('sprite-sequence-started', handleStarted, { once: true });
             frozenCharacter.addEventListener('sprite-sequence-end', finish, { once: true });
           })
-          : Promise.resolve();
+          : Promise.resolve().then(() => { try { onStart?.(); } catch (error) { console.error(error); } });
         introAnim.reset?.();
         pushDiagnostics({ spritePhase: 'entering', lastEvent: `sprite-intro-play:${idx}` });
         const transformDone = introAnim.playIntro();
         await Promise.all([transformDone, sequenceDone]);
 
         if (renderMode === 'sprite-then-gltf') {
+          introAnim.enterFinalIdle?.();
           pushDiagnostics({ spritePhase: 'handoff', lastEvent: `sprite-glb-handoff:${idx}` });
           return revealModelAfterSprite(idx);
         }
@@ -675,11 +1069,17 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const getSpriteState = () => {
         const persistentIntro = getPersistentIntroAnim();
         const persistentSeq = getPersistentSeq();
+        const persistentTextureReadiness = persistentSeq?.getTextureReadiness?.() || null;
         if (frozenState.active || persistentIntro?.state === 'entering' || persistentIntro?.state === 'final') {
           return {
             phase: persistentIntro?.state || 'idle',
             activeTargetIndex: lastTarget?.targetIndex ?? frozenState.sourceTarget?.targetIndex ?? null,
             frameIndex: persistentSeq?.frameIdx || 0,
+            frameCount: persistentSeq?.frames?.length || 0,
+            textureLoadedCount: persistentTextureReadiness?.loadedCount || 0,
+            textureErrorCount: persistentTextureReadiness?.errorCount || 0,
+            texturePendingCount: persistentTextureReadiness?.pendingCount || 0,
+            textureReady: Boolean(persistentTextureReadiness?.ready),
           };
         }
         const idx = lastTarget?.targetIndex ?? activeTargets.keys().next().value;
@@ -687,10 +1087,16 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         const anchor = findAnchorByIndex(idx);
         const introAnim = getIntroAnim(anchor);
         const seq = getSpriteSeq(anchor);
+        const textureReadiness = seq?.getTextureReadiness?.() || null;
         return {
           phase: introAnim?.state || 'idle',
           activeTargetIndex: idx,
           frameIndex: seq?.frameIdx || 0,
+          frameCount: seq?.frames?.length || 0,
+          textureLoadedCount: textureReadiness?.loadedCount || 0,
+          textureErrorCount: textureReadiness?.errorCount || 0,
+          texturePendingCount: textureReadiness?.pendingCount || 0,
+          textureReady: Boolean(textureReadiness?.ready),
         };
       };
 
@@ -733,6 +1139,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         setLiveContentVisible(false);
         if (activeFinalMode === 'gltf') {
           frozenModel?.setAttribute('visible', 'true');
+          debugGlbMarker?.setAttribute('visible', 'true');
         } else {
           getPersistentIntroAnim()?.enterFinalIdle?.();
         }
@@ -750,6 +1157,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         getPersistentModelComp()?.stopAllAnimations?.();
         getPersistentModelComp()?.hide?.({ crossfadeMs: 0 });
         frozenModel?.setAttribute('visible', 'false');
+        debugGlbMarker?.setAttribute('visible', 'false');
         applyFrozenState();
         return cloneFrozenState();
       };
@@ -774,6 +1182,17 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           frameIndex: 0,
           lastEvent: 'scan-reset',
         });
+        return cloneFrozenState();
+      };
+
+      const resetFinalTransform = () => {
+        frozenState.position = { ...FROZEN_SPRITE_POSITION };
+        frozenState.rotation = { ...FROZEN_SPRITE_ROTATION };
+        frozenState.scale = { ...FROZEN_SPRITE_SCALE };
+        liveYawOffset = 0;
+        applyLiveYaw();
+        applyFrozenState();
+        pushDiagnostics({ lastEvent: 'final-transform-reset' });
         return cloneFrozenState();
       };
 
@@ -806,6 +1225,60 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return snapshot;
       };
 
+      const getCurrentScene = () => activeScene ? clone(activeScene) : null;
+      const switchScene = (sceneId) => {
+        const nextSwitch = sceneSwitchQueue.catch(() => null).then(async () => {
+          const requestedId = sceneId == null ? manifest.defaultSceneId : String(sceneId);
+          const exactScene = (manifest.scenes || []).find((item) => item.sceneId === requestedId) || null;
+          if (sceneId != null && !exactScene) throw new Error(`Unknown MindAR scene: ${requestedId}`);
+          const nextRuntimeManifest = getRuntimeSceneManifest(manifest, exactScene?.sceneId || requestedId);
+          const nextScene = nextRuntimeManifest.currentScene || null;
+          if (!nextScene) throw new Error(`Unknown MindAR scene: ${requestedId}`);
+          if (nextScene.sceneId === currentSceneId && sceneRef.current) return clone(nextScene);
+
+          setRuntimeStatus('scene-switching');
+          cleanupScene?.();
+          cleanupScene = null;
+          await new Promise((resolve) => window.setTimeout(resolve, 0));
+          if (cancelled) return null;
+          await setup(nextScene.sceneId);
+          return window.__mindar?.getCurrentScene?.() || clone(nextScene);
+        });
+        sceneSwitchQueue = nextSwitch.catch((error) => {
+          const message = String(error?.message || error);
+          console.error('[MindAR] scene switch failed', error);
+          pushDiagnostics({ modelError: message, lastError: message, lastEvent: 'scene-switch-failed' });
+          throw error;
+        });
+        return sceneSwitchQueue;
+      };
+
+      const applyRecognitionResult = async (result = {}) => {
+        if (!result?.matched) {
+          pushDiagnostics({ lastEvent: 'recognition-miss' });
+          return { matched: false, scene: getCurrentScene() };
+        }
+
+        const requestedSceneId = result.sceneId || result.scene?.sceneId || currentSceneId || manifest.defaultSceneId;
+        const sceneAfterSwitch = requestedSceneId && requestedSceneId !== currentSceneId
+          ? await switchScene(requestedSceneId)
+          : getCurrentScene();
+        const targetIndex = Number(result.targetIndex);
+        const target = Number.isFinite(targetIndex)
+          ? window.__mindar?.getTargetConfig?.(targetIndex) || getTargetConfig(targetIndex)
+          : null;
+        pushDiagnostics({
+          activeTargetId: target?.targetId || diagnosticsRef.current.activeTargetId,
+          lastEvent: `recognition-applied:${sceneAfterSwitch?.sceneId || requestedSceneId}`,
+        });
+        return {
+          matched: true,
+          scene: sceneAfterSwitch,
+          target: target ? cloneTarget(target) : null,
+          confidence: result.confidence ?? null,
+        };
+      };
+
       const setFrozenTransform = (transform = {}) => {
         if (!frozenState.active) return cloneFrozenState();
         if (transform.position) frozenState.position = parseVector(transform.position, frozenState.position);
@@ -828,10 +1301,11 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return cloneFrozenState();
       };
 
-      const rotateFrozenBy = ({ yawDelta = 0 } = {}) => {
+      const rotateFrozenBy = ({ yawDelta = 0, pitchDelta = 0 } = {}) => {
         if (!frozenState.active) return cloneFrozenState();
-        const nextYaw = ((frozenState.rotation.y + Number(yawDelta || 0)) % 360 + 360) % 360;
-        frozenState.rotation = { ...frozenState.rotation, y: nextYaw };
+        const nextYaw = normalizeDegrees(frozenState.rotation.y + Number(yawDelta || 0));
+        const nextPitch = clampPitchDegrees(frozenState.rotation.x + Number(pitchDelta || 0));
+        frozenState.rotation = { ...frozenState.rotation, x: nextPitch, y: nextYaw };
         applyFrozenState();
         return cloneFrozenState();
       };
@@ -886,7 +1360,39 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const onGltfMissing = (event) => {
         pushDiagnostics({ glbPhase: 'missing-animation', lastEvent: `glb-animation-missing:${event.detail?.name || ''}` });
       };
+      const onGltfLoaded = () => {
+        window.requestAnimationFrame(() => {
+          const comp = getPersistentModelComp();
+          pushDiagnostics({
+            frozenModelLoaded: true,
+            modelReady: Boolean(comp?.isReady?.()),
+            modelSrc: persistentModelSrc,
+            glbPhase: comp?.isReady?.() ? 'loaded' : diagnosticsRef.current.glbPhase,
+            glbBounds: comp?.getBounds?.() || diagnosticsRef.current.glbBounds || null,
+            glbScale: getCurrentGlbConfig()?.scale || null,
+            lastEvent: 'gltf-model-loaded',
+          });
+        });
+      };
+      const onGltfError = (event) => {
+        const message = event.detail?.error?.message || event.detail?.message || 'GLB model failed to load';
+        pushDiagnostics({
+          glbPhase: 'error',
+          modelReady: false,
+          modelSrc: persistentModelSrc,
+          modelError: message,
+          lastError: message,
+          lastEvent: 'gltf-model-error',
+        });
+      };
+      const onGltfMarker = (event) => {
+        pushDiagnostics({ lastEvent: `gltf-marker:${event.detail?.id || event.detail?.frame || ''}` });
+      };
       frozenModel?.addEventListener('gltf-animation-missing', onGltfMissing);
+      frozenModel?.addEventListener('gltf-animation-marker', onGltfMarker);
+      frozenModel?.addEventListener('model-loaded', onGltfLoaded);
+      frozenModel?.addEventListener('model-error', onGltfError);
+      configurePersistentGlb(targets[0]?.targetIndex ?? 0);
 
       assets?.addEventListener('loaded', () => pushDiagnostics({ assetsLoaded: true, modelAssetLoaded: true, lastEvent: 'assets-loaded' }), { once: true });
       scene.addEventListener('loaded', () => {
@@ -899,6 +1405,10 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         anchors: anchors.map(({ element }) => element),
         targets: targets.map(cloneTarget),
         getManifest: () => manifest,
+        getSceneCatalog: () => getSceneCatalog(manifest),
+        getCurrentScene,
+        switchScene,
+        applyRecognitionResult,
         getTargetConfig,
         getCurrentTargetConfig,
         getCurrentRenderMode,
@@ -915,6 +1425,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         showFinalModel,
         hideFinalModel,
         revealModelAfterSprite,
+        resetFinalTransform,
+        getFinalModelDebug,
         playGlbIntro,
         playGlbIdle,
         restartScan,
@@ -990,6 +1502,9 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           anchor.element.removeEventListener('targetLost', anchor.onLost);
         });
         frozenModel?.removeEventListener('gltf-animation-missing', onGltfMissing);
+        frozenModel?.removeEventListener('gltf-animation-marker', onGltfMarker);
+        frozenModel?.removeEventListener('model-loaded', onGltfLoaded);
+        frozenModel?.removeEventListener('model-error', onGltfError);
         lostTimers.forEach(({ dim, hide }) => { window.clearTimeout(dim); window.clearTimeout(hide); });
         lostTimers.clear();
         if (window.__mindar && window.__mindar.scene === scene) delete window.__mindar;
