@@ -1,3 +1,5 @@
+import { arAudio } from '../../lib/arAudio.js';
+
 const AFRAME = window.AFRAME;
 
 function getThree() {
@@ -22,6 +24,16 @@ function numberOr(value, fallback) {
   return Number.isFinite(next) ? next : fallback;
 }
 
+function normalizeClipNames(names, fallbackNames) {
+  if (Array.isArray(names) && names.length) return names.filter(Boolean).map(String);
+  if (typeof names === 'string' && names) return [names];
+  return fallbackNames;
+}
+
+function markerAudioName(marker) {
+  return String(marker?.audio || marker?.sound || marker?.action || '').toLowerCase().replace(/[_\s]/g, '-');
+}
+
 if (AFRAME && !AFRAME.components['gltf-transition-model']) {
   AFRAME.registerComponent('gltf-transition-model', {
     schema: {
@@ -34,9 +46,12 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.mixer = null;
       this.actions = new Map();
       this.clips = [];
+      this.bounds = null;
       this.materialState = new Map();
+      this.nodeState = new Map();
       this.fadeToken = 0;
       this.ready = false;
+      this.markerRun = null;
       this._onModelLoaded = (event) => this._handleModelLoaded(event);
       this.el.addEventListener('model-loaded', this._onModelLoaded);
       this.reloadConfig(this.data.configKey);
@@ -57,6 +72,19 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.config = registry.configs.get(this.data.configKey) || {};
       if (this.ready && this.data.autoplay) this.playIntroThenIdle();
     },
+    resetLoadState() {
+      this.stopAllAnimations();
+      this.model = null;
+      this.mixer = null;
+      this.actions = new Map();
+      this.clips = [];
+      this.bounds = null;
+      this.materialState = new Map();
+      this.nodeState = new Map();
+      this.ready = false;
+      this.markerRun = null;
+      this.el.object3D.visible = false;
+    },
     _handleModelLoaded(event) {
       this._setupModel(event.detail?.model || this.el.getObject3D('mesh'));
     },
@@ -66,16 +94,35 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.stopAllAnimations();
       this.model = model;
       this.clips = this._readClips(model);
+      this.bounds = this._readBounds(model);
       this.actions = new Map();
       this.materialState = new Map();
+      this.nodeState = new Map();
       this.mixer = new THREE.AnimationMixer(model);
       this.clips.forEach((clip) => {
         if (clip?.name) this.actions.set(clip.name, this.mixer.clipAction(clip));
       });
+      this._configureOverlayRendering();
       this._captureMaterialState();
       this.ready = true;
-      this.el.emit('gltf-transition-ready', { clips: this.getAnimationNames() });
+      this.el.emit('gltf-transition-ready', { clips: this.getAnimationNames(), bounds: this.bounds });
       if (this.data.autoplay) this.show().then(() => this.playIntroThenIdle());
+    },
+    _readBounds(model) {
+      const THREE = getThree();
+      if (!THREE || !model) return null;
+      const box = new THREE.Box3().setFromObject(model);
+      if (box.isEmpty()) return null;
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+      return {
+        min: [box.min.x, box.min.y, box.min.z],
+        max: [box.max.x, box.max.y, box.max.z],
+        size: [size.x, size.y, size.z],
+        center: [center.x, center.y, center.z],
+      };
     },
     _readClips(model) {
       const component = this.el.components?.['gltf-model'];
@@ -87,6 +134,17 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       const clips = candidates.find((item) => Array.isArray(item) && item.length);
       return clips ? clips.slice() : [];
     },
+    _configureOverlayRendering() {
+      if (!this.model?.traverse) return;
+      this.model.traverse((node) => {
+        if (!node.isMesh) return;
+        this.nodeState.set(node, {
+          frustumCulled: node.frustumCulled,
+          renderOrder: node.renderOrder,
+        });
+        node.frustumCulled = false;
+      });
+    },
     _captureMaterialState() {
       if (!this.model?.traverse) return;
       this.model.traverse((node) => {
@@ -96,6 +154,11 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
           this.materialState.set(material, {
             opacity: numberOr(material.opacity, 1),
             transparent: Boolean(material.transparent),
+            depthWrite: material.depthWrite,
+            depthTest: material.depthTest,
+            roughness: material.roughness,
+            metalness: material.metalness,
+            envMapIntensity: material.envMapIntensity,
           });
         });
       });
@@ -104,6 +167,8 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.materialState.forEach((state, material) => {
         material.transparent = true;
         material.opacity = state.opacity * alpha;
+        material.depthTest = state.depthTest;
+        material.depthWrite = alpha >= 0.999 ? state.depthWrite : false;
         material.needsUpdate = true;
       });
     },
@@ -111,7 +176,16 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.materialState.forEach((state, material) => {
         material.opacity = state.opacity;
         material.transparent = state.transparent;
+        material.depthWrite = state.depthWrite;
+        material.depthTest = state.depthTest;
+        if ('roughness' in material && state.roughness !== undefined) material.roughness = state.roughness;
+        if ('metalness' in material && state.metalness !== undefined) material.metalness = state.metalness;
+        if ('envMapIntensity' in material && state.envMapIntensity !== undefined) material.envMapIntensity = state.envMapIntensity;
         material.needsUpdate = true;
+      });
+      this.nodeState.forEach((state, node) => {
+        node.renderOrder = state.renderOrder;
+        node.frustumCulled = state.frustumCulled;
       });
     },
     _fade({ from, to, durationMs = 0, endVisible = true } = {}) {
@@ -166,6 +240,57 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
         return result;
       });
     },
+    _normalizeMarkers(markers) {
+      if (!Array.isArray(markers) || !markers.length) return [];
+      const fps = Math.max(1, numberOr(this.config.animation?.fps, 24));
+      return markers
+        .map((marker, index) => {
+          const frame = Number(marker?.frame);
+          const time = Number(marker?.time ?? marker?.timeSec);
+          const timeSec = Number.isFinite(time)
+            ? time
+            : Number.isFinite(frame)
+              ? frame / fps
+              : null;
+          if (!Number.isFinite(timeSec)) return null;
+          return {
+            ...marker,
+            id: String(marker.id || marker.name || marker.audio || marker.sound || `marker-${index}`),
+            frame: Number.isFinite(frame) ? frame : null,
+            timeSec,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.timeSec - b.timeSec);
+    },
+    _startMarkers(markers, timeScale = 1) {
+      const normalized = this._normalizeMarkers(markers);
+      this.markerRun = normalized.length
+        ? { markers: normalized, fired: new Set(), elapsedSec: 0, timeScale: Math.abs(numberOr(timeScale, 1)) || 1 }
+        : null;
+    },
+    _stopMarkers() {
+      this.markerRun = null;
+    },
+    _flushMarkers(elapsedOverride = null) {
+      const run = this.markerRun;
+      if (!run) return;
+      const elapsedSec = Number.isFinite(elapsedOverride) ? elapsedOverride : run.elapsedSec;
+      run.markers.forEach((marker) => {
+        if (run.fired.has(marker.id) || elapsedSec < marker.timeSec) return;
+        run.fired.add(marker.id);
+        this._triggerMarker(marker);
+      });
+    },
+    _triggerMarker(marker) {
+      const audioName = markerAudioName(marker);
+      if (audioName === 'drop-bounce' || audioName === 'dropbounce' || audioName === 'drop') {
+        arAudio.playDropBounce();
+      } else if (audioName === 'branch-pop' || audioName === 'branchpop' || audioName === 'branch') {
+        arAudio.playBranchPop();
+      }
+      this.el.emit('gltf-animation-marker', marker);
+    },
     playClip(name, options = {}) {
       const THREE = getThree();
       if (!THREE || !name) return Promise.resolve(false);
@@ -184,6 +309,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       action.enabled = true;
       action.timeScale = timeScale;
       action.reset();
+      this._startMarkers(options.markers, timeScale);
       if (once) {
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = options.clampWhenFinished !== false;
@@ -198,14 +324,78 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
         const finish = (event) => {
           if (event.action !== action) return;
           this.mixer?.removeEventListener?.('finished', finish);
+          this._flushMarkers(Infinity);
+          this._stopMarkers();
           this.el.emit('gltf-animation-finished', { name });
           resolve(true);
         };
         this.mixer?.addEventListener?.('finished', finish);
       });
     },
+    playClipsOnce(names, options = {}) {
+      const THREE = getThree();
+      if (!THREE) return Promise.resolve(false);
+      const clipNames = normalizeClipNames(names, this.getAnimationNames());
+      const entries = clipNames
+        .map((name) => {
+          const action = this.actions.get(name);
+          if (!action) this.el.emit('gltf-animation-missing', { name });
+          return action ? { name, action } : null;
+        })
+        .filter(Boolean);
+      if (!entries.length) return Promise.resolve(false);
+
+      this.stopAllAnimations();
+      const fadeMs = numberOr(options.crossFadeMs, numberOr(this.config.animation?.crossFadeMs, 0));
+      const timeScale = numberOr(options.timeScale, numberOr(this.config.animation?.timeScale, 1));
+      entries.forEach(({ action }) => {
+        action.enabled = true;
+        action.timeScale = timeScale;
+        action.reset();
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = options.clampWhenFinished !== false;
+        action.fadeIn?.(fadeMs / 1000);
+        action.play();
+      });
+      this._startMarkers(options.markers || this.config.animation?.markers, timeScale);
+
+      return new Promise((resolve) => {
+        const remaining = new Set(entries.map(({ action }) => action));
+        let settled = false;
+        const maxDuration = Math.max(...entries.map(({ action }) => action.getClip?.().duration || 0));
+        const finish = (event) => {
+          if (!remaining.has(event.action)) return;
+          remaining.delete(event.action);
+          if (!remaining.size) done(true);
+        };
+        const done = (result) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          this.mixer?.removeEventListener?.('finished', finish);
+          this._flushMarkers(Infinity);
+          this._stopMarkers();
+          this.el.emit('gltf-animation-finished', { name: 'all-clips', clips: entries.map(({ name }) => name) });
+          resolve(result);
+        };
+        const durationMs = maxDuration > 0
+          ? (maxDuration / (Math.abs(timeScale) || 1)) * 1000 + 250
+          : 250;
+        const timeout = window.setTimeout(() => done(true), durationMs);
+        this.mixer?.addEventListener?.('finished', finish);
+      });
+    },
     async playIntroThenIdle() {
       const animation = this.config.animation || {};
+      if (animation.playMode === 'all-clips-once') {
+        await this.playClipsOnce(animation.clips, {
+          clampWhenFinished: animation.clampIntroWhenFinished !== false,
+          crossFadeMs: animation.crossFadeMs,
+          timeScale: animation.timeScale,
+          markers: animation.markers,
+        });
+        return this.playIdle();
+      }
       const introClip = animation.introClip;
       const idleClip = animation.idleClip;
       if (introClip && this.actions.has(introClip)) {
@@ -214,6 +404,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
           clampWhenFinished: animation.clampIntroWhenFinished !== false,
           crossFadeMs: animation.crossFadeMs,
           timeScale: animation.timeScale,
+          markers: animation.markers,
         });
       } else if (introClip) {
         this.el.emit('gltf-animation-missing', { name: introClip });
@@ -235,6 +426,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       });
     },
     stopAllAnimations() {
+      this._stopMarkers();
       this.actions?.forEach((action) => {
         try { action.stop(); } catch {}
       });
@@ -243,12 +435,20 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
     getAnimationNames() {
       return Array.from(this.actions?.keys?.() || []);
     },
+    getBounds() {
+      return this.bounds;
+    },
     isReady() {
       return Boolean(this.ready && this.model);
     },
     tick(_, dtMs) {
       if (!this.mixer) return;
-      this.mixer.update((dtMs || 0) / 1000);
+      const dtSec = (dtMs || 0) / 1000;
+      this.mixer.update(dtSec);
+      if (this.markerRun) {
+        this.markerRun.elapsedSec += dtSec * this.markerRun.timeScale;
+        this._flushMarkers();
+      }
     },
   });
 }

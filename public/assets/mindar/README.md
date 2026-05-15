@@ -1,10 +1,19 @@
-# MindAR image targets
+# MindAR image target packs
 
-`targets.mind` is consumed at runtime by MindAR (loaded via CDN in `Prototype.html`) to track image targets in the camera feed. It is a binary artifact — when the source image changes, recompile it with the steps below.
+Each `.mind` file in this folder is a MindAR scene pack. The Vite WebAR runtime loads one pack at a time through the scene catalog at `public/assets/ar/mindar-scenes.json`.
 
-## Source images
+The original `targets.mind` remains the default EMO flow. Additional files such as `气模targets.mind`, `水箱targets.mind`, and `电箱targets.mind` are selected by `sceneId` after recognition.
 
-The current `targets.mind` contains 6 image targets. Keep this order in sync with `MINDAR_TARGETS` in `AR-WEBAPP/Prototype.html`:
+MindAR cannot discover this folder from the browser at runtime and does not load all packs simultaneously. When files are added or removed, regenerate the catalog:
+
+```sh
+npm run mindar:catalog
+npm run mindar:catalog:check
+```
+
+## Default source images
+
+The default `targets.mind` contains 6 image targets. Keep this order in sync with the default `targets` entries in `public/assets/ar/manifest.json`:
 
 0. `../../../1.识别图素材/3.实际场景照片-jpg/一毛气模-实拍图01.jpg`
 1. `../../../1.识别图素材/3.实际场景照片-jpg/一毛气模-实拍图02.jpg`
@@ -19,12 +28,13 @@ The current `targets.mind` contains 6 image targets. Keep this order in sync wit
 2. Choose **Image Targets Compiler**.
 3. Upload the source images above in the exact order listed here. Each image receives an auto-incrementing `targetIndex`.
 4. Leave defaults, click **Start**.
-5. When compilation finishes, click **Download** and save the file to this folder as `targets.mind` (overwrite).
-6. If you add, remove, or reorder targets, update `MINDAR_TARGETS` in `AR-WEBAPP/Prototype.html`.
+5. When compilation finishes, click **Download** and save the file to this folder.
+6. Run `npm run mindar:catalog` so the frontend catalog includes the new or updated pack.
+7. If you add, remove, or reorder targets inside a pack and need custom labels/transforms, update that scene's explicit `targets` metadata.
 
-## Multi-target anchored runtime
+## Scene-pack runtime
 
-MindAR supports multiple targets in a single `.mind` by uploading several images at once. Each gets an auto-incrementing `targetIndex`, referenced in `Prototype.html` via `<a-entity mindar-image-target="targetIndex: N">`.
+MindAR supports multiple targets inside one `.mind` by uploading several images at compile time. Each image gets an auto-incrementing `targetIndex`, referenced by generated A-Frame anchors:
 
 `MindARStage` generates one anchor for each configured target and attaches A-Frame content as that anchor's child:
 
@@ -38,8 +48,12 @@ MindAR supports multiple targets in a single `.mind` by uploading several images
 
 Runtime state is exposed through `window.__mindar`:
 
-- `onTargetFound(cb)` receives `{ targetIndex, targetId, label, ar }`.
-- `onTargetLost(cb)` receives `{ targetIndex, targetId, label, ar }`.
+- `getSceneCatalog()` returns the known scene packs from `mindar-scenes.json`.
+- `getCurrentScene()` returns the active scene pack.
+- `switchScene(sceneId)` rebuilds MindAR with another `.mind` file.
+- `applyRecognitionResult({ matched, sceneId, targetIndex, confidence })` applies a future cloud/mock recognition result by switching scene packs.
+- `onTargetFound(cb)` receives `{ sceneId, sceneLabel, mindTargetUrl, targetIndex, targetId, label }`.
+- `onTargetLost(cb)` receives `{ sceneId, sceneLabel, mindTargetUrl, targetIndex, targetId, label }`.
 - `getActiveTargets()` returns all currently tracked targets.
 - `getLastTarget()` returns the most recent target metadata.
 - `freezeCurrentTarget()` copies the current anchored model into an editable scene-level frozen object.
@@ -52,31 +66,43 @@ The scan and AR screens currently treat any configured target as an EMO hit. Spa
 
 ## Frozen edit mode
 
-After the drop finishes, the runtime swaps from the live target-anchored sprite to `#frozen-ar-object`, keeps the final `1_0261.png` sprite visible in camera space, and lets the user edit it even if the physical target moves out of view.
+After scan success, Step 06 shows the configured animated GLB inside `#frozen-ar-object`. The frozen object remains editable even if the physical target moves out of view.
 
-Live final mode supports these gestures:
+Live final mode uses no gesture icons or mode switch. The editable object supports these direct gestures:
 
-- **Move / rotate**: drag the middle camera area with one finger to reposition the frozen sprite and rotate it around the Y axis.
-- **Scale**: pinch with two fingers to scale the frozen sprite.
+- **Move / 3D rotate**: drag the middle camera area with one finger to reposition the frozen object while smoothly rotating it around yaw and clamped pitch.
+- **Scale / auxiliary rotate**: pinch with two fingers to scale the frozen object; two-finger center movement and twist can also adjust rotation.
 
 When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 
 ## Anchored AR content
 
-The main Vite WebAR experience uses high-quality transparent PNG frames as the primary AR character, not `10249.MP4` and not the sitting GLB. The reference flow is Kivicube-like:
+The main Vite WebAR experience now plays the animated Step 06 GLB directly after recognition. The reference flow is Kivicube-like:
 
-1. MindAR recognizes one of the 6 image targets.
-2. The target anchor receives the live sprite plane.
-3. The intro sequence plays exactly `1_0009.png` through `1_0065.png`, then `1_0242.png` through `1_0261.png`.
-4. The live and captured final states both hold on `assets/step06/intro-hq/1_0261.png`.
+1. Recognition chooses a scene pack, then MindAR recognizes one of that pack's image targets.
+2. Targets configured with `renderMode: "gltf-only"` load `assets/step06/models/yimao_branch_grow_animated.glb`.
+3. The runtime plays `PolygonAction` and `Polygon_2Action` together once, clamps the final pose, and keeps the frozen GLB object for no-icon mixed-gesture editing and capture.
+4. The active Step 06 path does not request the old PNG frame sequence.
 
-`10249.MP4` is only a visual reference for timing and final composition. `yimao-sitting.glb` remains a static fallback/debug asset because it has no baked animation and does not match the desired landing sequence as closely as the PNG frames.
+The runtime intentionally avoids extra studio lights, tone-mapping exposure, generated environment maps, or material brightness overrides for the Step 06 GLB. The model should display from its own textures and material values.
 
-For a future Kivicube upload package, export separate platform-friendly images/video/GLB as needed. Do not reduce the Vite WebAR `intro-hq` sprite quality unless mobile performance testing shows a real problem.
+`10249.MP4` is only a visual reference for timing and final composition. The production Step 06 animation timing comes from the embedded GLB animation clips.
+
+Current audio contract:
+
+- `assets/step06/audio/button-click.mp3` plays for non-final-AR page buttons, including scan controls.
+- `assets/step06/audio/bgm.mp3` loops from scan through AR capture/retake/rescan flows.
+- `assets/step06/audio/drop-bounce.mp3` overlays the BGM when the GLB timeline reaches frame 1 at 24fps (`0.0417s`).
+- `assets/step06/audio/branch-pop.mp3` overlays the BGM when the GLB timeline reaches frame 14 at 24fps (`0.5833s`).
+- `assets/step06/audio/shutter.mp3` overlays the BGM when the AR shutter is pressed.
+
+This keeps the prototype frontend-only: no new production dependency, backend, or cloud recognition API is required for the GLB animation or audio marker changes.
+
+For a future Kivicube upload package, export separate platform-friendly images/video/GLB as needed.
 
 ## AI hybrid placeholder
 
-`Prototype.html` also defines a browser-local AI placeholder at `window.__emoDetector`:
+The legacy `Prototype.html` also defines a browser-local AI placeholder at `window.__emoDetector`:
 
 ```js
 window.__emoDetector.start({ source, intervalMs });
@@ -86,6 +112,4 @@ window.__emoDetector.onResult((result) => {
 });
 ```
 
-MindAR remains authoritative for known posters/packaging. The future local AI model should only report open-scene EMO presence unless it is used as an auxiliary label beside a MindAR `targetIndex`.
-
-The `.mind` URL is resolved relative to `Prototype.html`, so keep this file at `AR-WEBAPP/assets/mindar/targets.mind`.
+MindAR remains authoritative for known posters/packaging after a scene pack is selected. The future local AI or cloud recognizer should return a `sceneId` and optional `targetIndex`; the Vite runtime applies that through `window.__mindar.applyRecognitionResult()`.

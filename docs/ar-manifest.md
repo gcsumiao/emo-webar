@@ -16,23 +16,99 @@ VITE_AR_MANIFEST_URL=https://your-cdn.com/ar/manifest.json
 If `VITE_AR_MANIFEST_URL` is unset, the app requests `/assets/ar/manifest.json`.
 If that request fails or returns invalid JSON, the frontend falls back to the built-in EMO defaults.
 
+## Scene Catalog
+
+The app now separates scene recognition from local MindAR tracking. The manifest points to a generated scene catalog:
+
+```json
+{
+  "sceneCatalogUrl": "/assets/ar/mindar-scenes.json",
+  "defaultSceneId": "targets",
+  "mindTargetUrl": "/assets/mindar/targets.mind"
+}
+```
+
+`mindTargetUrl` and `targets` remain supported for the original single-scene contract. When `sceneCatalogUrl` is present, the runtime loads the catalog and chooses one scene pack at a time.
+
+The catalog shape is:
+
+```json
+{
+  "schemaVersion": 1,
+  "defaultSceneId": "targets",
+  "scenes": [
+    {
+      "sceneId": "气模",
+      "label": "气模",
+      "mindTargetUrl": "/assets/mindar/气模targets.mind",
+      "targetCount": 28
+    }
+  ]
+}
+```
+
+For scenes without explicit `targets`, the runtime generates target metadata as `${sceneId}-${targetIndex}`. The default `targets` scene keeps the existing EMO target IDs and labels from `public/assets/ar/manifest.json`.
+
 ## What The Manifest Controls
 
 The manifest can change model URLs, sprite frame URLs, target labels, per-target transforms, animation clip names, and sprite-to-GLB transition timing without changing frontend code.
 
-It does not add new image targets to an existing MindAR target file. New target images still require generating a new `.mind` file and updating `mindTargetUrl` plus the target order in `targets`.
+It does not merge image targets at runtime. Each `.mind` file is a scene pack, and MindAR tracks only the active pack. A cloud or mock recognition result should choose `sceneId`; the frontend then loads that scene pack and lets MindAR handle local image tracking.
+
+To add a new target pack:
+
+1. Add the compiled `.mind` file to `public/assets/mindar`.
+2. Run `npm run mindar:catalog`.
+3. Run `npm run mindar:catalog:check`.
+4. Add explicit target labels/transforms only if that scene needs custom behavior.
+
+## Runtime Scene API
+
+The local MindAR runtime exposes:
+
+```js
+window.__mindar.getSceneCatalog()
+window.__mindar.getCurrentScene()
+window.__mindar.switchScene(sceneId)
+window.__mindar.applyRecognitionResult({ matched, sceneId, targetIndex, confidence })
+```
+
+`switchScene(sceneId)` stops the current MindAR system, rebuilds the A-Frame scene with that scene's `mindTargetUrl`, and restarts scanning when the AR layer is active.
+
+`applyRecognitionResult()` is the frontend placeholder for the future Kivicube-like recognition response. It switches scenes when `matched: true` and `sceneId` is provided; MindAR target-found events remain authoritative for local tracking.
+
+Target found/lost callbacks receive payloads that include:
+
+```js
+{
+  sceneId,
+  sceneLabel,
+  mindTargetUrl,
+  targetIndex,
+  targetId,
+  label
+}
+```
 
 ## Render Modes
 
-- `sprite-only`: play the PNG sprite intro and keep the PNG final pose.
-- `gltf-only`: reveal the GLB model without keeping the PNG sprite final pose.
-- `sprite-then-gltf`: play the PNG sprite intro, reveal the GLB at the configured transform, then hide the sprite.
+- `gltf-only`: reveal the configured GLB directly after target recognition. This is the current Step 06 default.
+- `sprite-only`: legacy mode that plays a sprite intro and keeps the sprite final pose.
+- `sprite-then-gltf`: legacy mode that plays a sprite intro, reveals the GLB at the configured transform, then hides the sprite.
 
-## Sprite To GLB Transition
+## Step 06 GLB Flow
 
-The PNG sprite intro and the GLB model are separate runtime layers. They are made continuous by matching the final sprite pose to the initial GLB transform and using a short crossfade or hide delay during handoff.
+Step 06 now uses `assets/step06/models/yimao_branch_grow_animated.glb` directly after scan success. The runtime shows the GLB, plays the configured animation clips once, clamps the final pose, and keeps the frozen GLB object editable for move, rotate, scale, capture, retake, and rescan.
 
-The PNG sequence is not converted into a GLB. If a future intro needs true 3D motion, author that animation in Blender or another 3D tool and export it inside the GLB.
+The old PNG frame sequence is no longer part of the active Step 06 path.
+
+The WebAR runtime does not add studio lighting, tone-mapping exposure, generated environment maps, or material brightness overrides to the final GLB. The configured model should carry the intended material and texture appearance itself so the AR layer renders it as close as possible to the source GLB.
+
+## GLB Transform Space
+
+The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform that user gestures move, rotate, and scale during editing.
+
+Final GLB interaction uses a no-icon mixed gesture model. Single-finger drag moves the frozen object while also applying smooth 360-degree yaw and clamped pitch for top/bottom inspection. Two-finger pinch scales the object, and two-finger center movement or twist can further adjust rotation without changing modes.
 
 ## GLB Animation
 
@@ -45,4 +121,33 @@ Tap
 Outro
 ```
 
-The manifest can reference `introClip` and `idleClip`. If the configured clip names do not exist, the model still appears and the runtime emits a missing-animation diagnostic instead of crashing.
+The manifest can reference `introClip` and `idleClip`, or use `playMode: "all-clips-once"` with a `clips` array when a GLB exports multiple clips that must start together:
+
+```json
+{
+  "animation": {
+    "playMode": "all-clips-once",
+    "clips": ["PolygonAction", "Polygon_2Action"],
+    "fps": 24,
+    "markers": [
+      { "id": "drop-bounce", "frame": 1, "audio": "drop-bounce" },
+      { "id": "branch-pop", "frame": 14, "audio": "branch-pop" }
+    ],
+    "clampIntroWhenFinished": true,
+    "timeScale": 1
+  }
+}
+```
+
+Marker `frame` values are converted with `frame / fps`; Step 06 therefore plays `drop-bounce.mp3` at frame 1 (`0.0417s`) and `branch-pop.mp3` at frame 14 (`0.5833s`). If configured clip names do not exist, the model still appears and the runtime emits a missing-animation diagnostic instead of crashing.
+
+## Runtime Debug API
+
+The local MindAR runtime exposes:
+
+```js
+window.__mindar.getFinalModelDebug()
+window.__mindar.resetFinalTransform()
+```
+
+`getFinalModelDebug()` reports the active GLB source, ready state, bounds, and animation clip names. `resetFinalTransform()` restores the final character to the default camera-space position, yaw, and scale used after recognition.
