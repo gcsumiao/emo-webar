@@ -1,17 +1,14 @@
-import { introFps, introFrameUrls } from '../lib/step06Assets.js';
-import { asset } from '../lib/assetUrl.js';
 import { getTargetSpriteConfig } from './arManifest.js';
 
-const FINAL_IDLE_FRAME = asset('/assets/step06/intro-hq/1_0261.png');
 const CHARACTER_PLANE_SIZE = [0.95, 0.95];
 
 export const spriteDefaults = {
-  frameSequenceUrls: introFrameUrls,
-  finalIdleFrameUrl: FINAL_IDLE_FRAME,
+  frameSequenceUrls: [],
+  finalIdleFrameUrl: null,
   shadowUrl: null,
   glowUrl: null,
-  frameRate: introFps,
-  enterDurationMs: 120,
+  frameRate: 24,
+  enterDurationMs: 0,
   enterFromPosition: [0, 0, 0],
   enterToPosition:   [0, 0, 0],
   enterFromScale:    [1, 1, 1],
@@ -34,9 +31,9 @@ export function createSpriteConfig(overrides = {}) {
   return {
     ...spriteDefaults,
     ...overrides,
-    frameSequenceUrls: hasFrameSequence ? overrides.frameSequenceUrls : introFrameUrls,
-    frameRate: overrides.frameRate || introFps,
-    finalIdleFrameUrl: overrides.finalIdleFrameUrl || FINAL_IDLE_FRAME,
+    frameSequenceUrls: hasFrameSequence ? overrides.frameSequenceUrls : spriteDefaults.frameSequenceUrls,
+    frameRate: overrides.frameRate || spriteDefaults.frameRate,
+    finalIdleFrameUrl: overrides.finalIdleFrameUrl || spriteDefaults.finalIdleFrameUrl,
   };
 }
 
@@ -49,7 +46,7 @@ export function spriteConfigForTarget(manifest, targetIndexOrTarget) {
 }
 
 export const FROZEN_SPRITE_DEFAULTS = {
-  finalIdleFrameUrl: FINAL_IDLE_FRAME,
+  finalIdleFrameUrl: null,
   characterPlaneSize: CHARACTER_PLANE_SIZE,
   shadowSize: [0.72, 0.24],
   shadowOpacity: 0,

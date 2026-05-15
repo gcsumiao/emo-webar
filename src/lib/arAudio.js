@@ -1,12 +1,17 @@
 import { asset } from './assetUrl.js';
 
-const AR_BGM_URL = asset('/assets/step06/audio/bgm-10249.m4a');
-const AR_SHUTTER_URL = asset('/assets/step06/audio/shutter-10249.m4a');
-const AR_INTRO_CUE_SECONDS = 4;
+const AR_BGM_URL = asset('/assets/step06/audio/bgm.mp3');
+const AR_DROP_BOUNCE_URL = asset('/assets/step06/audio/drop-bounce.mp3');
+const AR_BRANCH_POP_URL = asset('/assets/step06/audio/branch-pop.mp3');
+const AR_SHUTTER_URL = asset('/assets/step06/audio/shutter.mp3');
+const UI_BUTTON_URL = asset('/assets/step06/audio/button-click.mp3');
 
 let bgm = null;
+let dropBounce = null;
+let branchPop = null;
 let shutter = null;
-let bgmLoopStart = null;
+let buttonClick = null;
+let preloaded = false;
 
 function makeAudio(url) {
   const audio = new Audio(url);
@@ -18,25 +23,19 @@ function makeAudio(url) {
 function getBgm() {
   if (!bgm) {
     bgm = makeAudio(AR_BGM_URL);
-    bgm.addEventListener('timeupdate', () => {
-      if (bgmLoopStart === null) return;
-      if (!Number.isFinite(bgm.duration) || bgm.duration <= bgmLoopStart) return;
-      if (bgm.currentTime >= bgm.duration - 0.08) {
-        try {
-          bgm.currentTime = bgmLoopStart;
-        } catch {}
-        bgm.play().catch(() => {});
-      }
-    });
-    bgm.addEventListener('ended', () => {
-      if (bgmLoopStart === null) return;
-      try {
-        bgm.currentTime = bgmLoopStart;
-      } catch {}
-      bgm.play().catch(() => {});
-    });
+    bgm.loop = true;
   }
   return bgm;
+}
+
+function getBranchPop() {
+  if (!branchPop) branchPop = makeAudio(AR_BRANCH_POP_URL);
+  return branchPop;
+}
+
+function getDropBounce() {
+  if (!dropBounce) dropBounce = makeAudio(AR_DROP_BOUNCE_URL);
+  return dropBounce;
 }
 
 function getShutter() {
@@ -44,33 +43,46 @@ function getShutter() {
   return shutter;
 }
 
-function playFrom(seconds, { loop = false } = {}) {
-  const audio = getBgm();
-  bgmLoopStart = loop ? seconds : null;
-  audio.loop = false;
+function getButtonClick() {
+  if (!buttonClick) buttonClick = makeAudio(UI_BUTTON_URL);
+  return buttonClick;
+}
+
+function playOneShot(audio) {
   try {
-    audio.currentTime = seconds;
+    audio.currentTime = 0;
   } catch {}
+  audio.play().catch(() => {});
+}
+
+function startBgm({ restart = false } = {}) {
+  const audio = getBgm();
+  if (restart || audio.ended) {
+    try {
+      audio.currentTime = 0;
+    } catch {}
+  }
   audio.play().catch(() => {});
 }
 
 export const arAudio = {
   preload: () => {
+    if (preloaded) return;
+    preloaded = true;
     getBgm().load();
+    getDropBounce().load();
+    getBranchPop().load();
     getShutter().load();
+    getButtonClick().load();
   },
-  startScan: () => playFrom(0, { loop: true }),
-  cueARIntro: () => playFrom(AR_INTRO_CUE_SECONDS, { loop: true }),
-  playShutter: () => {
-    const audio = getShutter();
-    try {
-      audio.currentTime = 0;
-    } catch {}
-    audio.play().catch(() => {});
-  },
+  startScan: () => startBgm(),
+  cueARIntro: () => startBgm(),
+  playDropBounce: () => playOneShot(getDropBounce()),
+  playBranchPop: () => playOneShot(getBranchPop()),
+  playShutter: () => playOneShot(getShutter()),
+  playButtonClick: () => playOneShot(getButtonClick()),
   stop: () => {
-    bgmLoopStart = null;
-    [bgm, shutter].forEach((audio) => {
+    [bgm, dropBounce, branchPop, shutter].forEach((audio) => {
       if (!audio) return;
       audio.pause();
       try {

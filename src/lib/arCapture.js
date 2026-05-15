@@ -1,5 +1,3 @@
-import { primeImage } from './step06Assets.js';
-
 function sourceReady(source) {
   if (!source) return false;
   if (source instanceof HTMLVideoElement) {
@@ -40,20 +38,6 @@ function drawCover(ctx, source, dx, dy, dw, dh) {
   }
 }
 
-function drawContain(ctx, source, cx, cy, maxWidth, rotationDeg, scale) {
-  if (!sourceReady(source)) return false;
-  const { width: sw, height: sh } = sourceSize(source);
-  const width = maxWidth;
-  const height = width * (sh / sw);
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate((rotationDeg * Math.PI) / 180);
-  ctx.scale(scale, scale);
-  ctx.drawImage(source, -width / 2, -height / 2, width, height);
-  ctx.restore();
-  return true;
-}
-
 function getCameraVideo() {
   const videos = Array.from(document.querySelectorAll('.ar-layer video, a-scene video, video'));
   return videos.find((video) => sourceReady(video)) || null;
@@ -69,8 +53,7 @@ function drawBackground(ctx, cssWidth, cssHeight) {
   ctx.fillRect(0, 0, cssWidth, cssHeight);
 
   const video = getCameraVideo();
-  if (drawCover(ctx, video, 0, 0, cssWidth, cssHeight)) return;
-
+  drawCover(ctx, video, 0, 0, cssWidth, cssHeight);
   const canvas = getArCanvas();
   drawCover(ctx, canvas, 0, 0, cssWidth, cssHeight);
 }
@@ -84,12 +67,7 @@ function canvasToBlob(canvas) {
   });
 }
 
-export async function createARPhoto({
-  spriteSrc,
-  visualTransform,
-  isLandscapePhone,
-  includeSpriteOverlay = true,
-}) {
+export async function createARPhoto() {
   const cssWidth = window.innerWidth || document.documentElement.clientWidth || 390;
   const cssHeight = window.innerHeight || document.documentElement.clientHeight || 844;
   const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -104,20 +82,6 @@ export async function createARPhoto({
   ctx.imageSmoothingQuality = 'high';
 
   drawBackground(ctx, cssWidth, cssHeight);
-
-  if (includeSpriteOverlay !== false && spriteSrc) {
-    const spriteImage = await primeImage(spriteSrc);
-    const transform = visualTransform || {};
-    drawContain(
-      ctx,
-      spriteImage,
-      cssWidth / 2 + (transform.x || 0),
-      cssHeight * (isLandscapePhone ? 0.47 : 0.44) + (transform.y || 0),
-      Math.min(cssWidth * 0.72, 420),
-      transform.rotation || 0,
-      transform.scale || 1
-    );
-  }
 
   const blob = await canvasToBlob(canvas);
   const filename = `emo-ar-${Date.now()}.png`;
