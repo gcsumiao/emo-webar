@@ -12,7 +12,6 @@ const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
 const TWO_FINGER_YAW_SENSITIVITY = 0.18;
 const TWO_FINGER_PITCH_SENSITIVITY = 0.14;
 const TWO_FINGER_TWIST_SENSITIVITY = 0.75;
-const GESTURE_HINT_STEP_MS = 1300;
 
 const GESTURE_HINTS = [
   { zh: '拖动旋转', en: 'Drag to rotate' },
@@ -20,8 +19,6 @@ const GESTURE_HINTS = [
   { zh: '捏合缩放', en: 'Pinch to scale' },
   { zh: '点重置恢复位置', en: 'Reset restores position' },
 ];
-
-let gestureHintShownThisSession = false;
 
 function formatVector(value, digits = 2) {
   if (!value) return '-';
@@ -85,11 +82,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [arPhase, setArPhase] = React.useState('scanning-success');
   const [frozenState, setFrozenState] = React.useState(() => getARRuntime()?.getFrozenState?.() || null);
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
-  const [gestureHintIndex, setGestureHintIndex] = React.useState(-1);
+  const [isGestureHintSuppressed, setIsGestureHintSuppressed] = React.useState(false);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({ lastDistance: null, lastCenter: null, lastAngle: null });
   const flashTimerRef = React.useRef(null);
-  const gestureHintTimerRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
 
@@ -139,25 +135,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, [capturedPhoto]);
 
   React.useEffect(() => {
-    window.clearTimeout(gestureHintTimerRef.current);
-    if (arPhase === 'final-live' && !gestureHintShownThisSession) {
-      gestureHintShownThisSession = true;
-      let nextIndex = 0;
-      setGestureHintIndex(nextIndex);
-      const advanceHint = () => {
-        nextIndex += 1;
-        if (nextIndex >= GESTURE_HINTS.length) {
-          setGestureHintIndex(-1);
-          return;
-        }
-        setGestureHintIndex(nextIndex);
-        gestureHintTimerRef.current = window.setTimeout(advanceHint, GESTURE_HINT_STEP_MS);
-      };
-      gestureHintTimerRef.current = window.setTimeout(advanceHint, GESTURE_HINT_STEP_MS);
-    } else if (arPhase !== 'final-live') {
-      setGestureHintIndex(-1);
+    if (arPhase === 'final-live') {
+      setIsGestureHintSuppressed(false);
     }
-    return () => window.clearTimeout(gestureHintTimerRef.current);
   }, [arPhase]);
 
   // Keep the AR scene alive after image tracking is lost; the recognized image is only the trigger.
@@ -173,13 +153,16 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const isLive = arPhase === 'final-live' || isCaptured;
   const canEdit = arPhase === 'final-live';
   const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
-  const gestureHint = gestureHintIndex >= 0 ? GESTURE_HINTS[gestureHintIndex] : null;
 
   const clearCapturedPhoto = React.useCallback(() => {
     setCapturedPhoto((current) => {
       if (current?.url) URL.revokeObjectURL(current.url);
       return null;
     });
+  }, []);
+
+  const dismissGestureHint = React.useCallback(() => {
+    setIsGestureHintSuppressed(true);
   }, []);
 
   const captureFrame = React.useCallback(async () => {
@@ -193,6 +176,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     }
     if (arPhase !== 'final-live') return;
 
+    dismissGestureHint();
     setArPhase('capturing-frame');
     try {
       arAudio.playShutter();
@@ -209,7 +193,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       console.error('[EMO-AR] capture failed', error);
       setArPhase('final-live');
     }
-  }, [arPhase, clearCapturedPhoto]);
+  }, [arPhase, clearCapturedPhoto, dismissGestureHint]);
 
   const exitAR = React.useCallback(async () => {
     window.clearTimeout(flashTimerRef.current);
@@ -265,8 +249,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const handlePointerDown = React.useCallback((event) => {
     if (!canEdit) return;
     event.preventDefault();
-    setGestureHintIndex(-1);
-    window.clearTimeout(gestureHintTimerRef.current);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const points = Array.from(pointersRef.current.values());
@@ -287,6 +269,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     if (!prev) return;
     event.preventDefault();
     const next = { x: event.clientX, y: event.clientY };
+    if (next.x !== prev.x || next.y !== prev.y) {
+      setIsGestureHintSuppressed(true);
+    }
     pointersRef.current.set(event.pointerId, next);
     const points = Array.from(pointersRef.current.values());
 
@@ -342,8 +327,11 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       gestureRef.current.lastDistance = null;
       gestureRef.current.lastCenter = null;
       gestureRef.current.lastAngle = null;
+      if (points.length === 0 && canEdit) {
+        setIsGestureHintSuppressed(false);
+      }
     }
-  }, []);
+  }, [canEdit]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -397,7 +385,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         />
       )}
 
-      {gestureHint && canEdit && (
+      {canEdit && !isGestureHintSuppressed && (
         <div
           aria-live="polite"
           style={{
@@ -405,10 +393,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             left: '50%',
             bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 88 : 166}px)`,
             transform: 'translateX(-50%)',
-            zIndex: 11,
-            maxWidth: 'min(78vw, 340px)',
-            padding: '9px 14px',
-            borderRadius: 999,
+            zIndex: 16,
+            maxWidth: 'min(82vw, 360px)',
+            padding: '10px 14px',
+            borderRadius: 16,
             background: 'rgba(0,0,0,0.44)',
             border: '0.5px solid rgba(255,255,255,0.18)',
             backdropFilter: 'blur(14px)',
@@ -421,9 +409,14 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             textAlign: 'center',
             pointerEvents: 'none',
             boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 3,
           }}
         >
-          {t(lang, gestureHint.zh, gestureHint.en)}
+          {GESTURE_HINTS.map((hint) => (
+            <div key={hint.zh}>{t(lang, hint.zh, hint.en)}</div>
+          ))}
         </div>
       )}
 
@@ -458,6 +451,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             <button
               type="button"
               onClick={captureFrame}
+              onPointerDown={dismissGestureHint}
               disabled={!isLive || isCapturing}
               style={{
                 pointerEvents: 'auto',
