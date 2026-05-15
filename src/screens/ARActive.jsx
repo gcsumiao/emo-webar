@@ -82,7 +82,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [arPhase, setArPhase] = React.useState('scanning-success');
   const [frozenState, setFrozenState] = React.useState(() => getARRuntime()?.getFrozenState?.() || null);
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
-  const [isGestureHintSuppressed, setIsGestureHintSuppressed] = React.useState(false);
+  const [isGestureHintVisible, setIsGestureHintVisible] = React.useState(false);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({ lastDistance: null, lastCenter: null, lastAngle: null });
   const flashTimerRef = React.useRef(null);
@@ -136,7 +136,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   React.useEffect(() => {
     if (arPhase === 'final-live') {
-      setIsGestureHintSuppressed(false);
+      setIsGestureHintVisible(false);
     }
   }, [arPhase]);
 
@@ -162,7 +162,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, []);
 
   const dismissGestureHint = React.useCallback(() => {
-    setIsGestureHintSuppressed(true);
+    setIsGestureHintVisible(false);
   }, []);
 
   const captureFrame = React.useCallback(async () => {
@@ -249,6 +249,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const handlePointerDown = React.useCallback((event) => {
     if (!canEdit) return;
     event.preventDefault();
+    setIsGestureHintVisible(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const points = Array.from(pointersRef.current.values());
@@ -269,9 +270,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     if (!prev) return;
     event.preventDefault();
     const next = { x: event.clientX, y: event.clientY };
-    if (next.x !== prev.x || next.y !== prev.y) {
-      setIsGestureHintSuppressed(true);
-    }
     pointersRef.current.set(event.pointerId, next);
     const points = Array.from(pointersRef.current.values());
 
@@ -328,7 +326,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       gestureRef.current.lastCenter = null;
       gestureRef.current.lastAngle = null;
       if (points.length === 0 && canEdit) {
-        setIsGestureHintSuppressed(false);
+        setIsGestureHintVisible(false);
       }
     }
   }, [canEdit]);
@@ -385,7 +383,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         />
       )}
 
-      {canEdit && !isGestureHintSuppressed && (
+      {canEdit && isGestureHintVisible && (
         <div
           aria-live="polite"
           style={{
