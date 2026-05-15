@@ -12,6 +12,9 @@ const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
 const TWO_FINGER_YAW_SENSITIVITY = 0.18;
 const TWO_FINGER_PITCH_SENSITIVITY = 0.14;
 const TWO_FINGER_TWIST_SENSITIVITY = 0.75;
+const GESTURE_HINT_MS = 4000;
+
+let gestureHintShownThisSession = false;
 
 function formatVector(value, digits = 2) {
   if (!value) return '-';
@@ -75,9 +78,11 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [arPhase, setArPhase] = React.useState('scanning-success');
   const [frozenState, setFrozenState] = React.useState(() => getARRuntime()?.getFrozenState?.() || null);
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
+  const [showGestureHint, setShowGestureHint] = React.useState(false);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({ lastDistance: null, lastCenter: null, lastAngle: null });
   const flashTimerRef = React.useRef(null);
+  const gestureHintTimerRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
 
@@ -125,6 +130,18 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   React.useEffect(() => () => {
     if (capturedPhoto?.url) URL.revokeObjectURL(capturedPhoto.url);
   }, [capturedPhoto]);
+
+  React.useEffect(() => {
+    window.clearTimeout(gestureHintTimerRef.current);
+    if (arPhase === 'final-live' && !gestureHintShownThisSession) {
+      gestureHintShownThisSession = true;
+      setShowGestureHint(true);
+      gestureHintTimerRef.current = window.setTimeout(() => setShowGestureHint(false), GESTURE_HINT_MS);
+    } else if (arPhase !== 'final-live') {
+      setShowGestureHint(false);
+    }
+    return () => window.clearTimeout(gestureHintTimerRef.current);
+  }, [arPhase]);
 
   // Keep the AR scene alive after image tracking is lost; the recognized image is only the trigger.
   React.useEffect(() => {
@@ -230,6 +247,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const handlePointerDown = React.useCallback((event) => {
     if (!canEdit) return;
     event.preventDefault();
+    setShowGestureHint(false);
+    window.clearTimeout(gestureHintTimerRef.current);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const points = Array.from(pointersRef.current.values());
@@ -271,6 +290,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           : normalizeAngleDelta(angle - gestureRef.current.lastAngle);
         const yawDelta = (dx * TWO_FINGER_YAW_SENSITIVITY) + (twistDelta * TWO_FINGER_TWIST_SENSITIVITY);
         const pitchDelta = -dy * TWO_FINGER_PITCH_SENSITIVITY;
+        updatedState = runtime?.moveFrozenByScreenDelta?.({ dx, dy, clampToViewport: true }) || updatedState;
         updatedState = runtime?.rotateFrozenBy?.({ yawDelta, pitchDelta }) || updatedState;
       }
       if (updatedState) setFrozenState(updatedState);
@@ -284,13 +304,11 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       gestureRef.current.lastCenter = null;
       gestureRef.current.lastAngle = null;
       const runtime = getARRuntime();
-      const moved = runtime?.moveFrozenByScreenDelta?.({ dx, dy });
       const rotated = runtime?.rotateFrozenBy?.({
         yawDelta: dx * SINGLE_FINGER_YAW_SENSITIVITY,
         pitchDelta: -dy * SINGLE_FINGER_PITCH_SENSITIVITY,
       });
-      const updatedState = rotated || moved;
-      if (updatedState) setFrozenState(updatedState);
+      if (rotated) setFrozenState(rotated);
     }
   }, [canEdit]);
 
@@ -342,7 +360,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         <div
           data-interactive="true"
           data-ar-edit-surface="true"
-          aria-label="Drag to move and rotate EMO; pinch with two fingers to scale"
+          aria-label="Drag to rotate EMO; use two fingers to move and scale"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -359,6 +377,36 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             cursor: 'grab',
           }}
         />
+      )}
+
+      {showGestureHint && canEdit && (
+        <div
+          aria-live="polite"
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 88 : 166}px)`,
+            transform: 'translateX(-50%)',
+            zIndex: 11,
+            maxWidth: 'min(78vw, 340px)',
+            padding: '9px 14px',
+            borderRadius: 999,
+            background: 'rgba(0,0,0,0.44)',
+            border: '0.5px solid rgba(255,255,255,0.18)',
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
+            color: '#fff',
+            fontFamily: langFont(lang),
+            fontSize: 11.5,
+            fontWeight: 700,
+            lineHeight: 1.25,
+            textAlign: 'center',
+            pointerEvents: 'none',
+            boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+          }}
+        >
+          {t(lang, '拖动旋转 · 双指移动/缩放', 'Drag to rotate · Two fingers move/scale')}
+        </div>
       )}
 
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLandscapePhone ? 8 : 14, pointerEvents: 'none', zIndex: 12 }}>
@@ -420,7 +468,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>phase: <b style={{ color: TOKENS.green }}>{arPhase}</b></div>
           <div>ar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
           <div>glb: <b style={{ color: TOKENS.green }}>{diagnostics?.glbPhase || '-'}</b> · mode {diagnostics?.contentMode || '-'}</div>
-          <div>gesture: mixed-drag</div>
+          <div>gesture: rotate + two-finger move/scale</div>
           <div>activeTarget: {diagnostics?.activeTargetId || '-'}</div>
           <div>edit: <b style={{ color: frozenState?.active ? TOKENS.green : TOKENS.pinkDeep }}>{String(!!frozenState?.active)}</b></div>
           {frozenState && (

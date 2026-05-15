@@ -10,7 +10,7 @@ import { Denied } from './screens/Denied.jsx';
 import { ErrorScreen } from './screens/Error.jsx';
 import { arAudio } from './lib/arAudio.js';
 import { asset } from './lib/assetUrl.js';
-import { introFrameUrls, preloadStep06, preloadUrls } from './lib/step06Assets.js';
+import { preloadStep06 } from './lib/step06Assets.js';
 
 function SiteFontFaces() {
   return (
@@ -60,9 +60,9 @@ export default function App() {
   const [state, setStateRaw] = React.useState('landing');
   const [lang, setLangRaw] = React.useState(() => {
     try {
-      return localStorage.getItem('emo_proto_lang') || 'zh';
+      return localStorage.getItem('emo_proto_lang') || 'en';
     } catch {
-      return 'zh';
+      return 'en';
     }
   });
   const [nonce, setNonce] = React.useState(0);
@@ -111,11 +111,42 @@ export default function App() {
     arAudio.preload();
     if (state === 'scan' || state === 'ar') {
       preloadStep06({ full: false });
-      preloadUrls(introFrameUrls);
     }
     if (state === 'scan') arAudio.startScan();
     else if (state === 'ar') arAudio.cueARIntro();
     else arAudio.stop();
+  }, [state]);
+
+  React.useEffect(() => {
+    if (state === 'ar') return undefined;
+
+    let lastPointerSound = { time: 0, control: null };
+    const findInteractiveControl = (event) => {
+      const target = event.target;
+      const control = target?.closest?.('button,[role="button"],[data-interactive="true"]');
+      if (!control || !event.currentTarget.documentElement.contains(control)) return null;
+      if (control.disabled || control.getAttribute('aria-disabled') === 'true') return null;
+      return control;
+    };
+    const playPointerSound = (event) => {
+      const control = findInteractiveControl(event);
+      if (!control) return;
+      lastPointerSound = { time: performance.now(), control };
+      arAudio.playButtonClick();
+    };
+    const playClickSound = (event) => {
+      const control = findInteractiveControl(event);
+      if (!control) return;
+      if (control === lastPointerSound.control && performance.now() - lastPointerSound.time < 600) return;
+      arAudio.playButtonClick();
+    };
+
+    document.addEventListener('pointerdown', playPointerSound, true);
+    document.addEventListener('click', playClickSound, true);
+    return () => {
+      document.removeEventListener('pointerdown', playPointerSound, true);
+      document.removeEventListener('click', playClickSound, true);
+    };
   }, [state]);
 
   React.useEffect(() => {

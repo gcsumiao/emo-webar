@@ -108,7 +108,13 @@ The WebAR runtime does not add studio lighting, tone-mapping exposure, generated
 
 The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform that user gestures move, rotate, and scale during editing.
 
-Final GLB interaction uses a no-icon mixed gesture model. Single-finger drag moves the frozen object while also applying smooth 360-degree yaw and clamped pitch for top/bottom inspection. Two-finger pinch scales the object, and two-finger center movement or twist can further adjust rotation without changing modes.
+Final GLB interaction follows a compact viewer-style gesture model inspired by View3D controls. Single-finger drag rotates the frozen object with continuous 360-degree yaw and clamped pitch for top/bottom inspection. Two-finger center movement translates the object inside the current AR edit area, and pinch scales it. Translation and scale are viewport-aware: the runtime clamps the projected GLB bounds so the editable model cannot be dragged off screen.
+
+The runtime move API accepts screen deltas and applies the same default bounds check:
+
+```js
+window.__mindar.moveFrozenByScreenDelta({ dx, dy, clampToViewport: true })
+```
 
 ## GLB Animation
 

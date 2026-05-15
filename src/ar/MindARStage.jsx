@@ -112,6 +112,11 @@ function clampPitchDegrees(value) {
   return Math.max(-75, Math.min(75, next));
 }
 
+function clampNumber(value, min, max) {
+  if (min > max) return (min + max) / 2;
+  return Math.max(min, Math.min(max, value));
+}
+
 function mergeTransformConfig(glb, transformOverride = {}) {
   return {
     position: transformOverride.position || glb?.position || [0, 0, 0],
@@ -470,6 +475,64 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         syncRenderMatrices();
         return plainVector(vector.clone().project(camera));
       };
+      const readEditBoundsNdc = () => {
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 390;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 844;
+        const editSurface = document.querySelector('[data-ar-edit-surface="true"]');
+        const rect = editSurface?.getBoundingClientRect?.() || {
+          left: 0,
+          right: viewportWidth,
+          top: 96,
+          bottom: Math.max(96, viewportHeight - 220),
+        };
+        const paddingPx = 12;
+        const left = Math.max(0, rect.left + paddingPx);
+        const right = Math.min(viewportWidth, rect.right - paddingPx);
+        const top = Math.max(0, rect.top + paddingPx);
+        const bottom = Math.min(viewportHeight, rect.bottom - paddingPx);
+        if (right <= left || bottom <= top) return null;
+        return {
+          minX: (left / viewportWidth) * 2 - 1,
+          maxX: (right / viewportWidth) * 2 - 1,
+          minY: 1 - (bottom / viewportHeight) * 2,
+          maxY: 1 - (top / viewportHeight) * 2,
+        };
+      };
+      const readModelProjectionBounds = () => {
+        const THREE = getThree();
+        const model = getPersistentModelComp()?.model || frozenModel?.getObject3D?.('mesh') || frozenObject?.object3D;
+        if (!THREE || !model) return null;
+        syncRenderMatrices();
+        const box = new THREE.Box3().setFromObject(model);
+        if (box.isEmpty()) return null;
+        const corners = [
+          [box.min.x, box.min.y, box.min.z],
+          [box.min.x, box.min.y, box.max.z],
+          [box.min.x, box.max.y, box.min.z],
+          [box.min.x, box.max.y, box.max.z],
+          [box.max.x, box.min.y, box.min.z],
+          [box.max.x, box.min.y, box.max.z],
+          [box.max.x, box.max.y, box.min.z],
+          [box.max.x, box.max.y, box.max.z],
+        ].map(([x, y, z]) => projectWorldVector(new THREE.Vector3(x, y, z))).filter(Boolean);
+        if (!corners.length) return null;
+        const xs = corners.map((point) => point.x);
+        const ys = corners.map((point) => point.y);
+        const minX = Math.min(...xs);
+        const maxX = Math.max(...xs);
+        const minY = Math.min(...ys);
+        const maxY = Math.max(...ys);
+        return {
+          minX,
+          maxX,
+          minY,
+          maxY,
+          centerX: (minX + maxX) / 2,
+          centerY: (minY + maxY) / 2,
+          width: maxX - minX,
+          height: maxY - minY,
+        };
+      };
       const projectedVector = (object3D) => {
         const THREE = getThree();
         if (!THREE || !object3D) return null;
@@ -596,6 +659,76 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         scale: { ...FROZEN_SPRITE_SCALE },
       };
 
+      const applyFrozenObjectTransform = () => {
+        if (!frozenObject?.object3D) return false;
+        const THREE = getThree();
+        if (!THREE) return false;
+        const renderedPosition = toRenderedFrozenPosition(frozenState.position);
+        const renderedScale = toRenderedFrozenScale(frozenState.scale);
+        frozenObject.object3D.position.set(renderedPosition.x, renderedPosition.y, renderedPosition.z);
+        frozenObject.object3D.rotation.set(
+          THREE.MathUtils.degToRad(frozenState.rotation.x),
+          THREE.MathUtils.degToRad(frozenState.rotation.y),
+          THREE.MathUtils.degToRad(frozenState.rotation.z)
+        );
+        frozenObject.object3D.scale.set(renderedScale.x, renderedScale.y, renderedScale.z);
+        frozenObject.setAttribute('visible', frozenState.active ? 'true' : 'false');
+        return true;
+      };
+
+      const clampFrozenToEditBounds = () => {
+        if (!frozenState.active) return false;
+        const THREE = getThree();
+        if (!THREE || !scene.camera) return false;
+        const editBounds = readEditBoundsNdc();
+        let modelBounds = readModelProjectionBounds();
+        if (!editBounds || !modelBounds) return false;
+        const editWidth = editBounds.maxX - editBounds.minX;
+        const editHeight = editBounds.maxY - editBounds.minY;
+        let changed = false;
+        if (modelBounds.width > editWidth || modelBounds.height > editHeight) {
+          const fitFactor = Math.min(editWidth / modelBounds.width, editHeight / modelBounds.height) * 0.98;
+          const nextScale = Math.max(FROZEN_SPRITE_SCALE_MIN, frozenState.scale.x * fitFactor);
+          if (Number.isFinite(nextScale) && nextScale < frozenState.scale.x) {
+            frozenState.scale = { x: nextScale, y: nextScale, z: nextScale };
+            applyFrozenObjectTransform();
+            modelBounds = readModelProjectionBounds() || modelBounds;
+            changed = true;
+          }
+        }
+        const targetCenterX = modelBounds.width >= editWidth
+          ? (editBounds.minX + editBounds.maxX) / 2
+          : clampNumber(
+            modelBounds.centerX,
+            editBounds.minX + modelBounds.width / 2,
+            editBounds.maxX - modelBounds.width / 2
+          );
+        const targetCenterY = modelBounds.height >= editHeight
+          ? (editBounds.minY + editBounds.maxY) / 2
+          : clampNumber(
+            modelBounds.centerY,
+            editBounds.minY + modelBounds.height / 2,
+            editBounds.maxY - modelBounds.height / 2
+          );
+        const deltaNdcX = targetCenterX - modelBounds.centerX;
+        const deltaNdcY = targetCenterY - modelBounds.centerY;
+        if (Math.abs(deltaNdcX) < 0.001 && Math.abs(deltaNdcY) < 0.001) return changed;
+        const depth = getFinalRenderDepth();
+        const ratio = getFinalDepthRatio();
+        const fovDeg = Number(scene.camera?.fov) || 60;
+        const fovRad = THREE.MathUtils?.degToRad
+          ? THREE.MathUtils.degToRad(fovDeg)
+          : fovDeg * Math.PI / 180;
+        const halfHeight = Math.tan(fovRad / 2) * depth;
+        const halfWidth = halfHeight * ((window.innerWidth || 390) / (window.innerHeight || 844));
+        frozenState.position = {
+          ...frozenState.position,
+          x: frozenState.position.x + (deltaNdcX * halfWidth) / ratio,
+          y: frozenState.position.y + (deltaNdcY * halfHeight) / ratio,
+        };
+        return true;
+      };
+
       const setRuntimeStatus = (nextStatus) => {
         statusRef.current = nextStatus;
         pushDiagnostics({ status: nextStatus, lastEvent: `status:${nextStatus}` });
@@ -626,22 +759,12 @@ export function MindARStage({ active, visible, onDiagnostics }) {
 
       const applyFrozenState = () => {
         if (!frozenObject?.object3D) return false;
-        const THREE = getThree();
-        if (!THREE) return false;
         const clampedPitch = clampPitchDegrees(frozenState.rotation.x);
         if (clampedPitch !== frozenState.rotation.x) {
           frozenState.rotation = { ...frozenState.rotation, x: clampedPitch };
         }
-        const renderedPosition = toRenderedFrozenPosition(frozenState.position);
-        const renderedScale = toRenderedFrozenScale(frozenState.scale);
-        frozenObject.object3D.position.set(renderedPosition.x, renderedPosition.y, renderedPosition.z);
-        frozenObject.object3D.rotation.set(
-          THREE.MathUtils.degToRad(frozenState.rotation.x),
-          THREE.MathUtils.degToRad(frozenState.rotation.y),
-          THREE.MathUtils.degToRad(frozenState.rotation.z)
-        );
-        frozenObject.object3D.scale.set(renderedScale.x, renderedScale.y, renderedScale.z);
-        frozenObject.setAttribute('visible', frozenState.active ? 'true' : 'false');
+        if (!applyFrozenObjectTransform()) return false;
+        if (clampFrozenToEditBounds()) applyFrozenObjectTransform();
         pushDiagnostics({
           frozen: frozenState.active,
           contentMode: frozenState.contentMode,
@@ -1288,7 +1411,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return cloneFrozenState();
       };
 
-      const moveFrozenByScreenDelta = ({ dx = 0, dy = 0, pixelsPerWorldUnit } = {}) => {
+      const moveFrozenByScreenDelta = ({ dx = 0, dy = 0, pixelsPerWorldUnit, clampToViewport = true } = {}) => {
         if (!frozenState.active) return cloneFrozenState();
         const viewportWidth = window.innerWidth || 390;
         const ratio = pixelsPerWorldUnit || Math.max(360, viewportWidth * 1.1);
@@ -1297,7 +1420,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           y: frozenState.position.y - dy / ratio,
           z: frozenState.position.z,
         };
-        applyFrozenState();
+        if (clampToViewport) applyFrozenState();
+        else applyFrozenObjectTransform();
         return cloneFrozenState();
       };
 

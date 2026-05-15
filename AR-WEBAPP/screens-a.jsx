@@ -218,7 +218,7 @@ function ScreenLanding({ lang = 'zh', setLang }) {
             letterSpacing: '-0.01em',
           }}
         >
-          {t(lang, '一毛来和你玩', 'EMO wants to play.')}
+          {t(lang, '一毛来和你玩', 'EMO wants to play')}
         </h1>
         <div
           style={{

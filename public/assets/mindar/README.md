@@ -58,7 +58,7 @@ Runtime state is exposed through `window.__mindar`:
 - `getLastTarget()` returns the most recent target metadata.
 - `freezeCurrentTarget()` copies the current anchored model into an editable scene-level frozen object.
 - `unfreezeCurrentTarget()` hides the frozen object and restores live anchored content.
-- `moveFrozenByScreenDelta({ dx, dy })` moves the frozen object along the camera-facing plane.
+- `moveFrozenByScreenDelta({ dx, dy, clampToViewport })` moves the frozen object along the camera-facing plane and clamps it inside the visible AR edit area by default.
 - `rotateFrozenBy({ yawDelta })` rotates the frozen object around the Y axis.
 - `getFrozenState()` returns the current frozen transform and source target.
 
@@ -68,10 +68,10 @@ The scan and AR screens currently treat any configured target as an EMO hit. Spa
 
 After scan success, Step 06 shows the configured animated GLB inside `#frozen-ar-object`. The frozen object remains editable even if the physical target moves out of view.
 
-Live final mode uses no gesture icons or mode switch. The editable object supports these direct gestures:
+Live final mode uses no persistent gesture icons or mode switch. A short popup explains the direct gestures the first time the model becomes editable:
 
-- **Move / 3D rotate**: drag the middle camera area with one finger to reposition the frozen object while smoothly rotating it around yaw and clamped pitch.
-- **Scale / auxiliary rotate**: pinch with two fingers to scale the frozen object; two-finger center movement and twist can also adjust rotation.
+- **Rotate**: drag the middle camera area with one finger for continuous 360-degree yaw and clamped pitch.
+- **Move / scale**: use two fingers to move the model inside the current screen-safe edit area; pinch to scale. Two-finger twist can also adjust yaw.
 
 When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 
@@ -81,7 +81,7 @@ The main Vite WebAR experience now plays the animated Step 06 GLB directly after
 
 1. Recognition chooses a scene pack, then MindAR recognizes one of that pack's image targets.
 2. Targets configured with `renderMode: "gltf-only"` load `assets/step06/models/yimao_branch_grow_animated.glb`.
-3. The runtime plays `PolygonAction` and `Polygon_2Action` together once, clamps the final pose, and keeps the frozen GLB object for no-icon mixed-gesture editing and capture.
+3. The runtime plays `PolygonAction` and `Polygon_2Action` together once, clamps the final pose, and keeps the frozen GLB object for viewer-style rotate, bounded move, scale, and capture.
 4. The active Step 06 path does not request the old PNG frame sequence.
 
 The runtime intentionally avoids extra studio lights, tone-mapping exposure, generated environment maps, or material brightness overrides for the Step 06 GLB. The model should display from its own textures and material values.
