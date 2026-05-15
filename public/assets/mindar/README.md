@@ -51,7 +51,9 @@ Runtime state is exposed through `window.__mindar`:
 - `getSceneCatalog()` returns the known scene packs from `mindar-scenes.json`.
 - `getCurrentScene()` returns the active scene pack.
 - `switchScene(sceneId)` rebuilds MindAR with another `.mind` file.
+- `recognizeFrameMock({ sceneId, targetIndex, confidence })` returns a frontend-only mock recognition result for testing scene selection.
 - `applyRecognitionResult({ matched, sceneId, targetIndex, confidence })` applies a future cloud/mock recognition result by switching scene packs.
+- `setMockSceneId(sceneId)` stores the current debug scene picker choice for `recognizeFrameMock()`.
 - `onTargetFound(cb)` receives `{ sceneId, sceneLabel, mindTargetUrl, targetIndex, targetId, label }`.
 - `onTargetLost(cb)` receives `{ sceneId, sceneLabel, mindTargetUrl, targetIndex, targetId, label }`.
 - `getActiveTargets()` returns all currently tracked targets.
@@ -62,16 +64,17 @@ Runtime state is exposed through `window.__mindar`:
 - `rotateFrozenBy({ yawDelta })` rotates the frozen object around the Y axis.
 - `getFrozenState()` returns the current frozen transform and source target.
 
-The scan and AR screens currently treat any configured target as an EMO hit. Spatial AR content lives under the MindAR anchor, so it follows the detected image's position, rotation, and scale.
+The scan and AR screens currently treat any configured target as an EMO hit. Spatial AR content lives under the MindAR anchor, so it follows the detected image's position, rotation, and scale. MindAR supports multiple targets in one compiled `.mind` pack; multiple packs require a scene selection step through `switchScene(sceneId)` or `applyRecognitionResult()`.
 
 ## Frozen edit mode
 
 After scan success, Step 06 shows the configured animated GLB inside `#frozen-ar-object`. The frozen object remains editable even if the physical target moves out of view.
 
-Live final mode uses no persistent gesture icons or mode switch. A short popup explains the direct gestures the first time the model becomes editable:
+Live final mode uses no persistent gesture icons or mode switch. Small staged toast hints explain the direct gestures the first time the model becomes editable:
 
 - **Rotate**: drag the middle camera area with one finger for continuous 360-degree yaw and clamped pitch.
 - **Move / scale**: use two fingers to move the model inside the current screen-safe edit area; pinch to scale. Two-finger twist can also adjust yaw.
+- **Reset**: tap the reset button to restore the default editable position.
 
 When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 
@@ -86,8 +89,6 @@ The main Vite WebAR experience now plays the animated Step 06 GLB directly after
 
 The runtime intentionally avoids extra studio lights, tone-mapping exposure, generated environment maps, or material brightness overrides for the Step 06 GLB. The model should display from its own textures and material values.
 
-`10249.MP4` is only a visual reference for timing and final composition. The production Step 06 animation timing comes from the embedded GLB animation clips.
-
 Current audio contract:
 
 - `assets/step06/audio/button-click.mp3` plays for non-final-AR page buttons, including scan controls.
@@ -100,16 +101,6 @@ This keeps the prototype frontend-only: no new production dependency, backend, o
 
 For a future Kivicube upload package, export separate platform-friendly images/video/GLB as needed.
 
-## AI hybrid placeholder
-
-The legacy `Prototype.html` also defines a browser-local AI placeholder at `window.__emoDetector`:
-
-```js
-window.__emoDetector.start({ source, intervalMs });
-window.__emoDetector.stop();
-window.__emoDetector.onResult((result) => {
-  // result: { present, confidence, source: 'local-ai' }
-});
-```
+## Recognition placeholder
 
 MindAR remains authoritative for known posters/packaging after a scene pack is selected. The future local AI or cloud recognizer should return a `sceneId` and optional `targetIndex`; the Vite runtime applies that through `window.__mindar.applyRecognitionResult()`.

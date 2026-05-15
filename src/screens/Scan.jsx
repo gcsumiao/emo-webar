@@ -5,6 +5,7 @@ import { asset } from '../lib/assetUrl.js';
 import { useScanGeometry } from '../lib/viewport.js';
 
 const MANUAL_LOCK_DELAY_MS = 3000;
+const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
 const SCAN_FRAME_BOUNDS = {
   x: 219,
   y: 505,
@@ -56,9 +57,20 @@ function ScanSweepOverlay({ active = true }) {
   );
 }
 
+function readDebugFlag() {
+  try {
+    return new URLSearchParams(window.location.search).get('debug') === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function Scan({ lang = 'zh', setLang }) {
   const [scanState, setScanState] = React.useState('searching');
   const [showManualLock, setShowManualLock] = React.useState(false);
+  const [sceneCatalog, setSceneCatalog] = React.useState([]);
+  const [selectedSceneId, setSelectedSceneId] = React.useState('');
+  const debugMode = React.useMemo(readDebugFlag, []);
   const geometry = useScanGeometry();
   const isLocked = scanState === 'locked';
   const isLandscapePhone = geometry.orientation === 'landscape' && !geometry.isTablet && geometry.height < 520;
@@ -76,6 +88,14 @@ export function Scan({ lang = 'zh', setLang }) {
     let mockRecognitionTimer = null;
     let offFound = null;
     let offLost = null;
+    let boundRuntime = null;
+
+    const clearRuntimeSubscriptions = () => {
+      offFound?.();
+      offLost?.();
+      offFound = null;
+      offLost = null;
+    };
 
     const bindRuntime = () => {
       if (cancelled) return;
@@ -84,6 +104,14 @@ export function Scan({ lang = 'zh', setLang }) {
         retryTimer = window.setTimeout(bindRuntime, 80);
         return;
       }
+      if (runtime === boundRuntime) return;
+
+      clearRuntimeSubscriptions();
+      boundRuntime = runtime;
+      const catalog = runtime.getSceneCatalog?.() || [];
+      setSceneCatalog(catalog);
+      setSelectedSceneId(runtime.getMockSceneId?.() || runtime.getCurrentScene?.()?.sceneId || catalog[0]?.sceneId || '');
+
       offFound = runtime.onTargetFound(() => {
         setShowManualLock(false);
         setScanState('locked');
@@ -91,6 +119,7 @@ export function Scan({ lang = 'zh', setLang }) {
       offLost = runtime.onTargetLost(() => {
         setScanState((current) => current === 'locked' ? current : 'searching');
       });
+      window.clearTimeout(mockRecognitionTimer);
       mockRecognitionTimer = window.setTimeout(async () => {
         try {
           const result = await runtime.recognizeFrameMock?.({ collectionId: runtime.collectionId });
@@ -102,13 +131,14 @@ export function Scan({ lang = 'zh', setLang }) {
       }, 120);
     };
 
+    window.addEventListener(RUNTIME_READY_EVENT, bindRuntime);
     bindRuntime();
     return () => {
       cancelled = true;
+      window.removeEventListener(RUNTIME_READY_EVENT, bindRuntime);
       window.clearTimeout(retryTimer);
       window.clearTimeout(mockRecognitionTimer);
-      offFound?.();
-      offLost?.();
+      clearRuntimeSubscriptions();
     };
   }, []);
 
@@ -163,6 +193,24 @@ export function Scan({ lang = 'zh', setLang }) {
     setScanState('locked');
   }, []);
 
+  const applyDebugScene = React.useCallback(async (event) => {
+    const sceneId = event.target.value;
+    setSelectedSceneId(sceneId);
+    setShowManualLock(false);
+    setScanState('searching');
+    const runtime = getARRuntime();
+    try {
+      runtime?.setMockSceneId?.(sceneId);
+      const result = await runtime?.recognizeFrameMock?.({ sceneId });
+      if (result?.matched) await runtime?.applyRecognitionResult?.(result);
+      const nextRuntime = getARRuntime();
+      setSceneCatalog(nextRuntime?.getSceneCatalog?.() || sceneCatalog);
+      setSelectedSceneId(nextRuntime?.getMockSceneId?.() || nextRuntime?.getCurrentScene?.()?.sceneId || sceneId);
+    } catch (error) {
+      console.warn('[EMO-AR] debug scene switch failed', error);
+    }
+  }, [sceneCatalog]);
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
       <div style={{ position: 'absolute', inset: 0, opacity: isLocked ? 0 : 1, transition: 'opacity 320ms ease-out', pointerEvents: 'none' }}>
@@ -175,6 +223,26 @@ export function Scan({ lang = 'zh', setLang }) {
         </FrostButton>
         <LangChip lang={lang} onToggle={setLang} light />
       </div>
+
+      {debugMode && sceneCatalog.length > 0 && (
+        <div style={debugScenePickerStyle(isLandscapePhone)}>
+          <label htmlFor="emo-debug-scene" style={{ opacity: 0.72 }}>
+            Scene
+          </label>
+          <select
+            id="emo-debug-scene"
+            value={selectedSceneId}
+            onChange={applyDebugScene}
+            style={debugSceneSelectStyle(lang)}
+          >
+            {sceneCatalog.map((scene) => (
+              <option key={scene.sceneId} value={scene.sceneId}>
+                {scene.label || scene.sceneId}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div style={scanControlStyle}>
         <div style={scanHintStyle}>
@@ -216,4 +284,40 @@ export function Scan({ lang = 'zh', setLang }) {
       </div>
     </div>
   );
+}
+
+function debugScenePickerStyle(isLandscapePhone) {
+  return {
+    position: 'absolute',
+    top: `calc(var(--safe-top) + ${isLandscapePhone ? 56 : 72}px)`,
+    left: 'calc(var(--safe-left) + 14px)',
+    zIndex: 18,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '8px 10px',
+    borderRadius: 12,
+    background: 'rgba(0,0,0,0.42)',
+    border: '0.5px solid rgba(255,255,255,0.18)',
+    color: '#fff',
+    fontFamily: 'JetBrains Mono, monospace',
+    fontSize: 10,
+    pointerEvents: 'auto',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+  };
+}
+
+function debugSceneSelectStyle(lang) {
+  return {
+    maxWidth: 150,
+    height: 28,
+    borderRadius: 8,
+    border: '1px solid rgba(255,255,255,0.26)',
+    background: 'rgba(255,255,255,0.94)',
+    color: '#1f1a1f',
+    fontFamily: langFont(lang),
+    fontSize: 12,
+    fontWeight: 700,
+  };
 }

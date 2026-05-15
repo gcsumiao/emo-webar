@@ -69,6 +69,14 @@ function readInitialSceneId() {
   }
 }
 
+function readSearchParam(name) {
+  try {
+    return new URLSearchParams(window.location.search).get(name) || null;
+  } catch {
+    return null;
+  }
+}
+
 function vectorAttr(value, fallback = [0, 0, 0]) {
   const source = Array.isArray(value) ? value : fallback;
   return source.map((part, index) => {
@@ -265,6 +273,7 @@ function createDiagnostics() {
     sceneId: '',
     sceneLabel: '',
     mindTargetUrl: '',
+    mockSceneId: '',
   };
 }
 
@@ -1349,6 +1358,18 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       };
 
       const getCurrentScene = () => activeScene ? clone(activeScene) : null;
+      const getMockSceneId = () => {
+        const urlSceneId = readSearchParam('mockScene');
+        if (urlSceneId) return urlSceneId;
+        if (typeof window !== 'undefined' && window.__emoMockSceneId) return String(window.__emoMockSceneId);
+        return '';
+      };
+      const setMockSceneId = (sceneId) => {
+        const nextSceneId = sceneId == null ? '' : String(sceneId);
+        if (typeof window !== 'undefined') window.__emoMockSceneId = nextSceneId;
+        pushDiagnostics({ mockSceneId: nextSceneId, lastEvent: nextSceneId ? `mock-scene-set:${nextSceneId}` : 'mock-scene-cleared' });
+        return nextSceneId;
+      };
       const switchScene = (sceneId) => {
         const nextSwitch = sceneSwitchQueue.catch(() => null).then(async () => {
           const requestedId = sceneId == null ? manifest.defaultSceneId : String(sceneId);
@@ -1374,6 +1395,50 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           throw error;
         });
         return sceneSwitchQueue;
+      };
+
+      const recognizeFrameMock = async ({ sceneId, targetIndex, confidence } = {}) => {
+        const requestedSceneId = sceneId || getMockSceneId();
+        if (!requestedSceneId) {
+          pushDiagnostics({ lastEvent: 'mock-recognition-idle' });
+          return {
+            matched: false,
+            sceneId: null,
+            targetIndex: null,
+            confidence: null,
+            source: 'mock',
+          };
+        }
+
+        const matchedScene = (manifest.scenes || []).find((item) => item.sceneId === String(requestedSceneId)) || null;
+        if (!matchedScene) {
+          const message = `Unknown mock MindAR scene: ${requestedSceneId}`;
+          pushDiagnostics({ mockSceneId: String(requestedSceneId), modelError: message, lastError: message, lastEvent: 'mock-recognition-unknown-scene' });
+          return {
+            matched: false,
+            sceneId: String(requestedSceneId),
+            targetIndex: null,
+            confidence: 0,
+            source: 'mock',
+          };
+        }
+
+        const urlTargetIndex = readSearchParam('mockTarget');
+        const rawTargetIndex = targetIndex ?? urlTargetIndex;
+        const parsedTargetIndex = rawTargetIndex == null ? null : Number(rawTargetIndex);
+        const nextTargetIndex = Number.isFinite(parsedTargetIndex) ? parsedTargetIndex : null;
+        const nextConfidence = Number(confidence);
+        pushDiagnostics({
+          mockSceneId: matchedScene.sceneId,
+          lastEvent: `mock-recognition-hit:${matchedScene.sceneId}`,
+        });
+        return {
+          matched: true,
+          sceneId: matchedScene.sceneId,
+          targetIndex: nextTargetIndex,
+          confidence: Number.isFinite(nextConfidence) ? nextConfidence : 1,
+          source: 'mock',
+        };
       };
 
       const applyRecognitionResult = async (result = {}) => {
@@ -1532,7 +1597,10 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         getSceneCatalog: () => getSceneCatalog(manifest),
         getCurrentScene,
         switchScene,
+        recognizeFrameMock,
         applyRecognitionResult,
+        getMockSceneId,
+        setMockSceneId,
         getTargetConfig,
         getCurrentTargetConfig,
         getCurrentRenderMode,
@@ -1615,6 +1683,10 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           setRuntimeStatus(scene.hasLoaded ? 'ready' : 'idle');
         },
       };
+
+      window.dispatchEvent(new CustomEvent('emo-mindar-runtime-ready', {
+        detail: { scene: getCurrentScene() },
+      }));
 
       cleanupScene = () => {
         try {

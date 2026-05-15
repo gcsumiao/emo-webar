@@ -70,12 +70,22 @@ The local MindAR runtime exposes:
 window.__mindar.getSceneCatalog()
 window.__mindar.getCurrentScene()
 window.__mindar.switchScene(sceneId)
+window.__mindar.recognizeFrameMock({ sceneId, targetIndex, confidence })
 window.__mindar.applyRecognitionResult({ matched, sceneId, targetIndex, confidence })
+window.__mindar.setMockSceneId(sceneId)
 ```
 
 `switchScene(sceneId)` stops the current MindAR system, rebuilds the A-Frame scene with that scene's `mindTargetUrl`, and restarts scanning when the AR layer is active.
 
 `applyRecognitionResult()` is the frontend placeholder for the future Kivicube-like recognition response. It switches scenes when `matched: true` and `sceneId` is provided; MindAR target-found events remain authoritative for local tracking.
+
+`recognizeFrameMock()` is a frontend-only scene selection adapter for testing the future cloud recognition handoff. It returns `{ matched, sceneId, targetIndex, confidence, source: "mock" }`, reading `sceneId` from the function argument first, then `?mockScene=...`, then the debug scene picker state. It does not confirm a target by itself; it only selects the scene pack that MindAR should track locally.
+
+For local testing:
+
+- `?scene=气模&debug=1` starts directly on the `气模` scene pack.
+- `?mockScene=水箱&debug=1` starts normally, then applies a mock recognition result for `水箱`.
+- `?debug=1` shows a scene picker on the scan screen; choosing a scene calls `recognizeFrameMock()` and `applyRecognitionResult()`.
 
 Target found/lost callbacks receive payloads that include:
 

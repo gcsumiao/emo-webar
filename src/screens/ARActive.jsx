@@ -12,7 +12,14 @@ const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
 const TWO_FINGER_YAW_SENSITIVITY = 0.18;
 const TWO_FINGER_PITCH_SENSITIVITY = 0.14;
 const TWO_FINGER_TWIST_SENSITIVITY = 0.75;
-const GESTURE_HINT_MS = 4000;
+const GESTURE_HINT_STEP_MS = 1300;
+
+const GESTURE_HINTS = [
+  { zh: '拖动旋转', en: 'Drag to rotate' },
+  { zh: '双指移动', en: 'Two fingers move' },
+  { zh: '捏合缩放', en: 'Pinch to scale' },
+  { zh: '点重置恢复位置', en: 'Reset restores position' },
+];
 
 let gestureHintShownThisSession = false;
 
@@ -78,7 +85,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [arPhase, setArPhase] = React.useState('scanning-success');
   const [frozenState, setFrozenState] = React.useState(() => getARRuntime()?.getFrozenState?.() || null);
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
-  const [showGestureHint, setShowGestureHint] = React.useState(false);
+  const [gestureHintIndex, setGestureHintIndex] = React.useState(-1);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({ lastDistance: null, lastCenter: null, lastAngle: null });
   const flashTimerRef = React.useRef(null);
@@ -135,10 +142,20 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     window.clearTimeout(gestureHintTimerRef.current);
     if (arPhase === 'final-live' && !gestureHintShownThisSession) {
       gestureHintShownThisSession = true;
-      setShowGestureHint(true);
-      gestureHintTimerRef.current = window.setTimeout(() => setShowGestureHint(false), GESTURE_HINT_MS);
+      let nextIndex = 0;
+      setGestureHintIndex(nextIndex);
+      const advanceHint = () => {
+        nextIndex += 1;
+        if (nextIndex >= GESTURE_HINTS.length) {
+          setGestureHintIndex(-1);
+          return;
+        }
+        setGestureHintIndex(nextIndex);
+        gestureHintTimerRef.current = window.setTimeout(advanceHint, GESTURE_HINT_STEP_MS);
+      };
+      gestureHintTimerRef.current = window.setTimeout(advanceHint, GESTURE_HINT_STEP_MS);
     } else if (arPhase !== 'final-live') {
-      setShowGestureHint(false);
+      setGestureHintIndex(-1);
     }
     return () => window.clearTimeout(gestureHintTimerRef.current);
   }, [arPhase]);
@@ -156,6 +173,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const isLive = arPhase === 'final-live' || isCaptured;
   const canEdit = arPhase === 'final-live';
   const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
+  const gestureHint = gestureHintIndex >= 0 ? GESTURE_HINTS[gestureHintIndex] : null;
 
   const clearCapturedPhoto = React.useCallback(() => {
     setCapturedPhoto((current) => {
@@ -247,7 +265,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const handlePointerDown = React.useCallback((event) => {
     if (!canEdit) return;
     event.preventDefault();
-    setShowGestureHint(false);
+    setGestureHintIndex(-1);
     window.clearTimeout(gestureHintTimerRef.current);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -379,7 +397,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         />
       )}
 
-      {showGestureHint && canEdit && (
+      {gestureHint && canEdit && (
         <div
           aria-live="polite"
           style={{
@@ -405,7 +423,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
           }}
         >
-          {t(lang, '拖动旋转 · 双指移动/缩放', 'Drag to rotate · Two fingers move/scale')}
+          {t(lang, gestureHint.zh, gestureHint.en)}
         </div>
       )}
 
@@ -468,7 +486,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>phase: <b style={{ color: TOKENS.green }}>{arPhase}</b></div>
           <div>ar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
           <div>glb: <b style={{ color: TOKENS.green }}>{diagnostics?.glbPhase || '-'}</b> · mode {diagnostics?.contentMode || '-'}</div>
-          <div>gesture: rotate + two-finger move/scale</div>
+          <div>gesture: rotate + two-finger move/scale + reset</div>
           <div>activeTarget: {diagnostics?.activeTargetId || '-'}</div>
           <div>edit: <b style={{ color: frozenState?.active ? TOKENS.green : TOKENS.pinkDeep }}>{String(!!frozenState?.active)}</b></div>
           {frozenState && (
