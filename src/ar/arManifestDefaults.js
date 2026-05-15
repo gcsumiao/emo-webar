@@ -1,8 +1,12 @@
 export const DEFAULT_MIND_TARGET_URL = '/assets/mindar/targets.mind';
 
+export const DEFAULT_SCENE_CATALOG_URL = '/assets/ar/mindar-scenes.json';
+
+export const DEFAULT_SCENE_ID = 'targets';
+
 export const DEFAULT_GLB_ASSET_ID = 'emo-model';
 
-export const DEFAULT_GLB_URL = '/assets/step06/models/yimao-final.glb';
+export const DEFAULT_GLB_URL = '/assets/step06/models/yimao_branch_grow_animated.glb';
 
 export const DEFAULT_TARGETS = [
   {
@@ -40,31 +44,40 @@ export const DEFAULT_TARGETS = [
 export const DEFAULT_GLB_CONFIG = {
   assetId: DEFAULT_GLB_ASSET_ID,
   src: DEFAULT_GLB_URL,
-  position: [0, 0, 0.08],
-  rotation: [0, 0, 0],
-  scale: [0.95, 0.95, 0.95],
+  position: [0, -0.1, 0.02],
+  rotation: [0, -90, 0],
+  scale: [0.24, 0.24, 0.24],
   visibleOnTarget: false,
-  showAfterSpriteIntro: true,
+  showAfterSpriteIntro: false,
   animation: {
+    playMode: 'all-clips-once',
+    clips: ['PolygonAction', 'Polygon_2Action'],
     introClip: null,
-    idleClip: 'Idle',
-    loopIdle: true,
+    idleClip: null,
+    fps: 24,
+    markers: [
+      { id: 'drop-bounce', frame: 1, audio: 'drop-bounce' },
+      { id: 'branch-pop', frame: 14, audio: 'branch-pop' },
+    ],
+    loopIdle: false,
     clampIntroWhenFinished: true,
-    crossFadeMs: 180,
+    crossFadeMs: 0,
     timeScale: 1,
   },
   transition: {
-    crossfadeMs: 180,
-    spriteHideDelayMs: 80,
-    flashMs: 120,
+    crossfadeMs: 0,
+    spriteHideDelayMs: 0,
+    flashMs: 0,
   },
 };
 
-export const DEFAULT_RENDER_MODE = 'sprite-only';
+export const DEFAULT_RENDER_MODE = 'gltf-only';
 
 export function createDefaultArManifest() {
   return {
     schemaVersion: 1,
+    sceneCatalogUrl: DEFAULT_SCENE_CATALOG_URL,
+    defaultSceneId: DEFAULT_SCENE_ID,
     mindTargetUrl: DEFAULT_MIND_TARGET_URL,
     assets: [
       {

@@ -89,6 +89,34 @@ function normalizeGlb(glbLike, fallbackGlb, targetIndex) {
   return glb;
 }
 
+function positiveInteger(value, fallback = 0) {
+  const next = Number(value);
+  return Number.isInteger(next) && next > 0 ? next : fallback;
+}
+
+function basenameFromUrl(url) {
+  if (!url || typeof url !== 'string') return '';
+  const cleanUrl = url.split(/[?#]/)[0];
+  const basename = cleanUrl.slice(cleanUrl.lastIndexOf('/') + 1);
+  try {
+    return decodeURIComponent(basename);
+  } catch {
+    return basename;
+  }
+}
+
+function sceneIdFromMindTargetUrl(url) {
+  const basename = basenameFromUrl(url);
+  if (!basename) return '';
+  const stem = basename.replace(/\.mind$/i, '');
+  if (stem === 'targets') return 'targets';
+  return stem.replace(/targets$/i, '') || stem;
+}
+
+function labelForScene(sceneId) {
+  return sceneId === 'targets' ? 'Default EMO targets' : sceneId;
+}
+
 function targetIndexFrom(targetIndexOrTarget) {
   if (isPlainObject(targetIndexOrTarget)) return Number(targetIndexOrTarget.targetIndex);
   return Number(targetIndexOrTarget);
@@ -110,41 +138,107 @@ export function resolveArAssetUrl(url) {
   return asset(url);
 }
 
-export function normalizeArManifest(raw) {
-  const defaults = createDefaultArManifest();
-  const source = isPlainObject(raw) ? raw : {};
-  const defaultTarget = mergeObject(defaults.defaultTarget, source.defaultTarget || {});
-  defaultTarget.renderMode = normalizeRenderMode(defaultTarget.renderMode);
-  defaultTarget.sprite = normalizeSprite(defaultTarget.sprite);
-  defaultTarget.glb = normalizeGlb(defaultTarget.glb, defaults.defaultTarget.glb, 0);
+function normalizeTarget(targetLike, orderIndex, {
+  defaultTarget,
+  fallbackTargetsByIndex,
+  scene,
+}) {
+  const targetSource = isPlainObject(targetLike) ? targetLike : {};
+  const targetIndex = Number.isFinite(Number(targetSource.targetIndex))
+    ? Number(targetSource.targetIndex)
+    : orderIndex;
+  if (!Number.isFinite(targetIndex)) return null;
 
-  const rawTargets = Array.isArray(source.targets) && source.targets.length ? source.targets : defaults.targets;
-  const fallbackTargetsByIndex = new Map(defaults.targets.map((target) => [target.targetIndex, target]));
-  const targets = rawTargets
+  const fallback = fallbackTargetsByIndex.get(targetIndex) || {};
+  const mergedTarget = mergeObject(defaultTarget, targetSource);
+  mergedTarget.targetIndex = targetIndex;
+  mergedTarget.targetId = String(targetSource.targetId || fallback.targetId || `${scene.sceneId}-${targetIndex}`);
+  mergedTarget.label = String(targetSource.label || fallback.label || mergedTarget.targetId);
+  mergedTarget.sceneId = scene.sceneId;
+  mergedTarget.sceneLabel = scene.label;
+  mergedTarget.mindTargetUrl = scene.mindTargetUrl;
+  mergedTarget.renderMode = normalizeRenderMode(targetSource.renderMode || defaultTarget.renderMode);
+  mergedTarget.sprite = normalizeSprite(mergeObject(defaultTarget.sprite, targetSource.sprite || {}));
+  mergedTarget.glb = normalizeGlb(targetSource.glb, defaultTarget.glb, targetIndex);
+  return mergedTarget;
+}
+
+function normalizeTargets(rawTargets, {
+  defaultTarget,
+  fallbackTargetsByIndex,
+  scene,
+}) {
+  return rawTargets
     .map((targetLike, orderIndex) => {
-      const targetSource = isPlainObject(targetLike) ? targetLike : {};
-      const targetIndex = Number.isFinite(Number(targetSource.targetIndex))
-        ? Number(targetSource.targetIndex)
-        : orderIndex;
-      const fallback = fallbackTargetsByIndex.get(targetIndex) || {};
-      const mergedTarget = mergeObject(defaultTarget, targetSource);
-      mergedTarget.targetIndex = targetIndex;
-      mergedTarget.targetId = String(targetSource.targetId || fallback.targetId || `target-${targetIndex}`);
-      mergedTarget.label = String(targetSource.label || fallback.label || mergedTarget.targetId);
-      mergedTarget.renderMode = normalizeRenderMode(targetSource.renderMode || defaultTarget.renderMode);
-      mergedTarget.sprite = normalizeSprite(mergeObject(defaultTarget.sprite, targetSource.sprite || {}));
-      mergedTarget.glb = normalizeGlb(targetSource.glb, defaultTarget.glb, targetIndex);
-      return mergedTarget;
+      return normalizeTarget(targetLike, orderIndex, {
+        defaultTarget,
+        fallbackTargetsByIndex,
+        scene,
+      });
     })
-    .filter((target) => Number.isFinite(target.targetIndex))
-    .sort((a, b) => a.targetIndex - b.targetIndex);
-
-  const assetMap = new Map();
-  [...(defaults.assets || []), ...(Array.isArray(source.assets) ? source.assets : [])]
-    .map(normalizeAsset)
     .filter(Boolean)
-    .forEach((item) => assetMap.set(item.id, item));
+    .sort((a, b) => a.targetIndex - b.targetIndex);
+}
 
+function generatedTargets(targetCount) {
+  return Array.from({ length: targetCount }, (_, targetIndex) => ({ targetIndex }));
+}
+
+function normalizeScene(sceneLike, orderIndex, context) {
+  const sceneSource = isPlainObject(sceneLike) ? sceneLike : {};
+  const rawMindTargetUrl = sceneSource.mindTargetUrl || sceneSource.mindTargetSrc || sceneSource.url || context.fallbackMindTargetUrl;
+  const sceneId = String(sceneSource.sceneId || sceneSource.id || sceneIdFromMindTargetUrl(rawMindTargetUrl) || `scene-${orderIndex}`);
+  const scene = {
+    ...sceneSource,
+    sceneId,
+    label: String(sceneSource.label || labelForScene(sceneId)),
+    mindTargetUrl: resolveArAssetUrl(rawMindTargetUrl),
+    targetCount: positiveInteger(sceneSource.targetCount),
+  };
+
+  const preserveManifestTargets = sceneId === context.defaultSceneId || rawMindTargetUrl === context.fallbackMindTargetUrl;
+  const rawSceneTargets = Array.isArray(sceneSource.targets) && sceneSource.targets.length
+    ? sceneSource.targets
+    : preserveManifestTargets && context.manifestTargets.length
+      ? context.manifestTargets
+      : generatedTargets(scene.targetCount);
+
+  const fallbackTargetsByIndex = preserveManifestTargets
+    ? context.fallbackTargetsByIndex
+    : new Map();
+  scene.targets = normalizeTargets(rawSceneTargets, {
+    defaultTarget: context.defaultTarget,
+    fallbackTargetsByIndex,
+    scene,
+  });
+  scene.targetCount = positiveInteger(scene.targetCount, scene.targets.length);
+  return scene;
+}
+
+function normalizeScenes(source, sceneCatalog, context) {
+  const catalogScenes = Array.isArray(sceneCatalog?.scenes) ? sceneCatalog.scenes : [];
+  const sourceScenes = Array.isArray(source.scenes) ? source.scenes : [];
+  const rawScenes = [...catalogScenes, ...sourceScenes];
+  const sceneMap = new Map();
+
+  if (!rawScenes.length) {
+    rawScenes.push({
+      sceneId: context.defaultSceneId,
+      label: labelForScene(context.defaultSceneId),
+      mindTargetUrl: context.fallbackMindTargetUrl,
+      targets: context.manifestTargets,
+    });
+  }
+
+  rawScenes.forEach((sceneLike, orderIndex) => {
+    const scene = normalizeScene(sceneLike, orderIndex, context);
+    sceneMap.set(scene.sceneId, scene);
+  });
+
+  return Array.from(sceneMap.values());
+}
+
+function addTargetAssets(assetMap, targets) {
   targets.forEach((target) => {
     const glb = target.glb;
     if (!glb?.assetId || !glb.src) return;
@@ -156,15 +250,74 @@ export function normalizeArManifest(raw) {
       });
     }
   });
+}
 
-  return {
+function getCatalogUrlFromSource(raw) {
+  const defaults = createDefaultArManifest();
+  const source = isPlainObject(raw) ? raw : {};
+  const catalogUrl = source.sceneCatalogUrl !== undefined
+    ? source.sceneCatalogUrl
+    : defaults.sceneCatalogUrl;
+  return catalogUrl ? resolveArAssetUrl(catalogUrl) : null;
+}
+
+export function normalizeArManifest(raw, { sceneCatalog = null, catalogWarning = '' } = {}) {
+  const defaults = createDefaultArManifest();
+  const source = isPlainObject(raw) ? raw : {};
+  const defaultSceneId = String(source.defaultSceneId || sceneCatalog?.defaultSceneId || defaults.defaultSceneId || 'targets');
+  const fallbackMindTargetUrl = source.mindTargetUrl || defaults.mindTargetUrl;
+  const defaultTarget = mergeObject(defaults.defaultTarget, source.defaultTarget || {});
+  defaultTarget.renderMode = normalizeRenderMode(defaultTarget.renderMode);
+  defaultTarget.sprite = normalizeSprite(defaultTarget.sprite);
+  defaultTarget.glb = normalizeGlb(defaultTarget.glb, defaults.defaultTarget.glb, 0);
+
+  const baseScene = {
+    sceneId: defaultSceneId,
+    label: labelForScene(defaultSceneId),
+    mindTargetUrl: resolveArAssetUrl(fallbackMindTargetUrl),
+  };
+  const rawTargets = Array.isArray(source.targets) && source.targets.length ? source.targets : defaults.targets;
+  const fallbackTargetsByIndex = new Map(defaults.targets.map((target) => [target.targetIndex, target]));
+  const manifestTargets = normalizeTargets(rawTargets, {
+    defaultTarget,
+    fallbackTargetsByIndex,
+    scene: baseScene,
+  });
+
+  const scenes = normalizeScenes(source, sceneCatalog, {
+    defaultTarget,
+    defaultSceneId,
+    fallbackMindTargetUrl,
+    fallbackTargetsByIndex,
+    manifestTargets,
+  });
+
+  const resolvedDefaultScene = scenes.find((scene) => scene.sceneId === defaultSceneId) || scenes[0] || null;
+  const targets = resolvedDefaultScene?.targets?.length ? resolvedDefaultScene.targets : manifestTargets;
+
+  const assetMap = new Map();
+  [...(defaults.assets || []), ...(Array.isArray(source.assets) ? source.assets : [])]
+    .map(normalizeAsset)
+    .filter(Boolean)
+    .forEach((item) => assetMap.set(item.id, item));
+
+  addTargetAssets(assetMap, targets);
+  scenes.forEach((scene) => addTargetAssets(assetMap, scene.targets || []));
+
+  const manifest = {
     ...source,
     schemaVersion: Number(source.schemaVersion) || defaults.schemaVersion,
-    mindTargetUrl: resolveArAssetUrl(source.mindTargetUrl || defaults.mindTargetUrl),
+    sceneCatalogUrl: getCatalogUrlFromSource(source),
+    defaultSceneId: resolvedDefaultScene?.sceneId || defaultSceneId,
+    mindTargetUrl: resolvedDefaultScene?.mindTargetUrl || resolveArAssetUrl(fallbackMindTargetUrl),
     assets: Array.from(assetMap.values()),
     defaultTarget,
+    scenes,
     targets,
   };
+
+  if (catalogWarning) manifest.__warning = catalogWarning;
+  return manifest;
 }
 
 export async function loadArManifest({ force = false } = {}) {
@@ -176,8 +329,20 @@ export async function loadArManifest({ force = false } = {}) {
       if (!response.ok) throw new Error(`AR manifest request failed: ${response.status}`);
       return response.json();
     })
-    .then((raw) => {
-      cachedManifest = normalizeArManifest(raw);
+    .then(async (raw) => {
+      let sceneCatalog = null;
+      let catalogWarning = '';
+      const catalogUrl = getCatalogUrlFromSource(raw);
+      if (catalogUrl) {
+        try {
+          const response = await fetch(catalogUrl, { cache: 'no-cache' });
+          if (!response.ok) throw new Error(`AR scene catalog request failed: ${response.status}`);
+          sceneCatalog = await response.json();
+        } catch (error) {
+          catalogWarning = String(error?.message || error);
+        }
+      }
+      cachedManifest = normalizeArManifest(raw, { sceneCatalog, catalogWarning });
       return cachedManifest;
     })
     .catch((error) => {
@@ -195,6 +360,28 @@ export async function loadArManifest({ force = false } = {}) {
 
 export function getCachedArManifest() {
   return cachedManifest;
+}
+
+export function getSceneCatalog(manifest) {
+  return clone(manifest?.scenes || []);
+}
+
+export function getSceneById(manifest, sceneId) {
+  const scenes = manifest?.scenes || [];
+  if (!scenes.length) return null;
+  const id = sceneId == null ? manifest?.defaultSceneId : String(sceneId);
+  return scenes.find((scene) => scene.sceneId === id) || scenes.find((scene) => scene.sceneId === manifest?.defaultSceneId) || scenes[0] || null;
+}
+
+export function getRuntimeSceneManifest(manifest, sceneId) {
+  const scene = getSceneById(manifest, sceneId);
+  if (!scene) return manifest;
+  return {
+    ...manifest,
+    mindTargetUrl: scene.mindTargetUrl || manifest.mindTargetUrl,
+    targets: Array.isArray(scene.targets) && scene.targets.length ? scene.targets : manifest.targets,
+    currentScene: clone(scene),
+  };
 }
 
 export function getTargetSpriteConfig(manifest, targetIndexOrTarget) {

@@ -50,9 +50,43 @@ img {
   inset: 0;
   width: 100vw;
   height: 100dvh;
-  z-index: 0;
+  z-index: 1;
   overflow: hidden;
-  background: #000;
+  background: transparent;
+}
+
+.ar-layer a-scene {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 1 !important;
+  background: transparent !important;
+}
+
+.ar-layer video,
+body > video,
+video[playsinline] {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  object-fit: cover !important;
+}
+
+.ar-layer canvas,
+.ar-layer .a-canvas,
+.ar-layer a-scene canvas,
+body > canvas,
+body > .a-canvas,
+canvas.a-canvas {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  display: block !important;
+  pointer-events: none !important;
+  background: transparent !important;
 }
 
 .ui-layer {

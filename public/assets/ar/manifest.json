@@ -1,35 +1,44 @@
 {
   "schemaVersion": 1,
+  "sceneCatalogUrl": "/assets/ar/mindar-scenes.json",
+  "defaultSceneId": "targets",
   "mindTargetUrl": "/assets/mindar/targets.mind",
   "assets": [
     {
       "id": "emo-model",
       "type": "model",
-      "src": "/assets/step06/models/yimao-final.glb"
+      "src": "/assets/step06/models/yimao_branch_grow_animated.glb"
     }
   ],
   "defaultTarget": {
-    "renderMode": "sprite-only",
+    "renderMode": "gltf-only",
     "glb": {
       "assetId": "emo-model",
-      "src": "/assets/step06/models/yimao-final.glb",
-      "position": [0, 0, 0.08],
-      "rotation": [0, 0, 0],
-      "scale": [0.95, 0.95, 0.95],
+      "src": "/assets/step06/models/yimao_branch_grow_animated.glb",
+      "position": [0, -0.1, 0.02],
+      "rotation": [0, -90, 0],
+      "scale": [0.24, 0.24, 0.24],
       "visibleOnTarget": false,
-      "showAfterSpriteIntro": true,
+      "showAfterSpriteIntro": false,
       "animation": {
+        "playMode": "all-clips-once",
+        "clips": ["PolygonAction", "Polygon_2Action"],
         "introClip": null,
-        "idleClip": "Idle",
-        "loopIdle": true,
+        "idleClip": null,
+        "fps": 24,
+        "markers": [
+          { "id": "drop-bounce", "frame": 1, "audio": "drop-bounce" },
+          { "id": "branch-pop", "frame": 14, "audio": "branch-pop" }
+        ],
+        "loopIdle": false,
         "clampIntroWhenFinished": true,
-        "crossFadeMs": 180,
+        "crossFadeMs": 0,
         "timeScale": 1
       },
       "transition": {
-        "crossfadeMs": 180,
-        "spriteHideDelayMs": 80,
-        "flashMs": 120
+        "crossfadeMs": 0,
+        "spriteHideDelayMs": 0,
+        "flashMs": 0
       }
     },
     "sprite": {}

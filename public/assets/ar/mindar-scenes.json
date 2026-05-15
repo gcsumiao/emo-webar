@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "defaultSceneId": "targets",
+  "scenes": [
+    {
+      "sceneId": "targets",
+      "label": "Default EMO targets",
+      "mindTargetUrl": "/assets/mindar/targets.mind",
+      "targetCount": 6
+    },
+    {
+      "sceneId": "抱枕",
+      "label": "抱枕",
+      "mindTargetUrl": "/assets/mindar/抱枕targets.mind",
+      "targetCount": 9
+    },
+    {
+      "sceneId": "杯垫",
+      "label": "杯垫",
+      "mindTargetUrl": "/assets/mindar/杯垫targets.mind",
+      "targetCount": 5
+    },
+    {
+      "sceneId": "便利贴",
+      "label": "便利贴",
+      "mindTargetUrl": "/assets/mindar/便利贴targets.mind",
+      "targetCount": 6
+    },
+    {
+      "sceneId": "冰箱贴",
+      "label": "冰箱贴",
+      "mindTargetUrl": "/assets/mindar/冰箱贴targets.mind",
+      "targetCount": 5
+    },
+    {
+      "sceneId": "地毯",
+      "label": "地毯",
+      "mindTargetUrl": "/assets/mindar/地毯targets.mind",
+      "targetCount": 4
+    },
+    {
+      "sceneId": "电箱",
+      "label": "电箱",
+      "mindTargetUrl": "/assets/mindar/电箱targets.mind",
+      "targetCount": 27
+    },
+    {
+      "sceneId": "飞盘",
+      "label": "飞盘",
+      "mindTargetUrl": "/assets/mindar/飞盘targets.mind",
+      "targetCount": 5
+    },
+    {
+      "sceneId": "挂件",
+      "label": "挂件",
+      "mindTargetUrl": "/assets/mindar/挂件targets.mind",
+      "targetCount": 12
+    },
+    {
+      "sceneId": "街景1",
+      "label": "街景1",
+      "mindTargetUrl": "/assets/mindar/街景1targets.mind",
+      "targetCount": 15
+    },
+    {
+      "sceneId": "街景2",
+      "label": "街景2",
+      "mindTargetUrl": "/assets/mindar/街景2targets.mind",
+      "targetCount": 13
+    },
+    {
+      "sceneId": "蜡烛",
+      "label": "蜡烛",
+      "mindTargetUrl": "/assets/mindar/蜡烛targets.mind",
+      "targetCount": 2
+    },
+    {
+      "sceneId": "毛绒布章",
+      "label": "毛绒布章",
+      "mindTargetUrl": "/assets/mindar/毛绒布章targets.mind",
+      "targetCount": 6
+    },
+    {
+      "sceneId": "毛绒挂件",
+      "label": "毛绒挂件",
+      "mindTargetUrl": "/assets/mindar/毛绒挂件targets.mind",
+      "targetCount": 19
+    },
+    {
+      "sceneId": "帽子",
+      "label": "帽子",
+      "mindTargetUrl": "/assets/mindar/帽子targets.mind",
+      "targetCount": 2
+    },
+    {
+      "sceneId": "盆栽",
+      "label": "盆栽",
+      "mindTargetUrl": "/assets/mindar/盆栽targets.mind",
+      "targetCount": 11
+    },
+    {
+      "sceneId": "气模",
+      "label": "气模",
+      "mindTargetUrl": "/assets/mindar/气模targets.mind",
+      "targetCount": 28
+    },
+    {
+      "sceneId": "气球",
+      "label": "气球",
+      "mindTargetUrl": "/assets/mindar/气球targets.mind",
+      "targetCount": 3
+    },
+    {
+      "sceneId": "树枝挂件",
+      "label": "树枝挂件",
+      "mindTargetUrl": "/assets/mindar/树枝挂件targets.mind",
+      "targetCount": 5
+    },
+    {
+      "sceneId": "水箱",
+      "label": "水箱",
+      "mindTargetUrl": "/assets/mindar/水箱targets.mind",
+      "targetCount": 16
+    },
+    {
+      "sceneId": "贴纸",
+      "label": "贴纸",
+      "mindTargetUrl": "/assets/mindar/贴纸targets.mind",
+      "targetCount": 6
+    },
+    {
+      "sceneId": "头套",
+      "label": "头套",
+      "mindTargetUrl": "/assets/mindar/头套targets.mind",
+      "targetCount": 5
+    },
+    {
+      "sceneId": "pvc挂件",
+      "label": "pvc挂件",
+      "mindTargetUrl": "/assets/mindar/pvc挂件targets.mind",
+      "targetCount": 10
+    }
+  ]
+}
