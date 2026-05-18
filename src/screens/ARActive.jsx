@@ -1,12 +1,14 @@
 import React from 'react';
 import { LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 import { arAudio } from '../lib/arAudio.js';
-import { createARPhoto } from '../lib/arCapture.js';
+import { createARPhoto, createFramedARPhoto } from '../lib/arCapture.js';
+import { asset } from '../lib/assetUrl.js';
 import { useViewport } from '../lib/viewport.js';
 import { clampScaleFactor, normalizeAngleDelta, pointerAngle, pointerDistance } from '../ar/frozenControls.js';
 import { getARRuntime, isKivicubeRuntime } from '../ar/arRuntime.js';
 
 const FLASH_MS = 240;
+const PHOTO_FRAME_URL = asset('/assets/site-ui/photo-frame.svg');
 const SINGLE_FINGER_YAW_SENSITIVITY = 0.16;
 const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
 const TWO_FINGER_YAW_SENSITIVITY = 0.18;
@@ -82,6 +84,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [arPhase, setArPhase] = React.useState('scanning-success');
   const [frozenState, setFrozenState] = React.useState(() => getARRuntime()?.getFrozenState?.() || null);
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
+  const [framedPhoto, setFramedPhoto] = React.useState(null);
   const [isGestureHintVisible, setIsGestureHintVisible] = React.useState(false);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({ lastDistance: null, lastCenter: null, lastAngle: null });
@@ -159,6 +162,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       if (current?.url) URL.revokeObjectURL(current.url);
       return null;
     });
+    setFramedPhoto((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      return null;
+    });
   }, []);
 
   const dismissGestureHint = React.useCallback(() => {
@@ -186,8 +193,15 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const photo = isKivicubeRuntime(runtime) && runtime?.takePhoto
         ? await dataUrlToPhoto(await runtime.takePhoto())
         : await createARPhoto();
+      let nextFramed = null;
+      try {
+        nextFramed = await createFramedARPhoto(photo, PHOTO_FRAME_URL);
+      } catch (frameErr) {
+        console.error('[EMO-AR] frame composition failed', frameErr);
+      }
       clearCapturedPhoto();
       setCapturedPhoto(photo);
+      setFramedPhoto(nextFramed);
       setArPhase('captured-frame');
     } catch (error) {
       console.error('[EMO-AR] capture failed', error);
@@ -205,15 +219,16 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, [clearCapturedPhoto]);
 
   const shareFrame = React.useCallback(async () => {
-    if (capturedPhoto?.url) {
+    const sharePhoto = framedPhoto || capturedPhoto;
+    if (sharePhoto?.url) {
       const fileData = {
         title: 'EMO AR',
         text: lang === 'en' ? 'I found EMO in AR.' : '我在 AR 里遇见了一毛。',
-        files: capturedPhoto.file ? [capturedPhoto.file] : [],
+        files: sharePhoto.file ? [sharePhoto.file] : [],
       };
       let canShareFile = false;
       try {
-        canShareFile = Boolean(capturedPhoto.file && navigator.canShare?.(fileData));
+        canShareFile = Boolean(sharePhoto.file && navigator.canShare?.(fileData));
       } catch {}
       if (canShareFile && navigator.share) {
         try { await navigator.share(fileData); } catch {}
@@ -221,8 +236,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       }
 
       const link = document.createElement('a');
-      link.href = capturedPhoto.url;
-      link.download = capturedPhoto.file?.name || 'emo-ar-photo.png';
+      link.href = sharePhoto.url;
+      link.download = sharePhoto.file?.name || 'emo-ar-photo.png';
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -239,7 +254,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       return;
     }
     try { await navigator.clipboard?.writeText?.(shareData.url); } catch {}
-  }, [capturedPhoto, lang]);
+  }, [capturedPhoto, framedPhoto, lang]);
 
   const resetFinalTransform = React.useCallback(() => {
     const next = getARRuntime()?.resetFinalTransform?.();
@@ -333,7 +348,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
-      {capturedPhoto?.url && (
+      {capturedPhoto?.url && !isCaptured && !isCapturing && (
         <img
           aria-hidden="true"
           src={capturedPhoto.url}
@@ -419,19 +434,12 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       )}
 
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLandscapePhone ? 8 : 14, pointerEvents: 'none', zIndex: 12 }}>
-        {!isCaptured && (arPhase === 'scanning-success' || arPhase === 'glb-entering' || isCapturing) && (
+        {!isCaptured && !isCapturing && (arPhase === 'scanning-success' || arPhase === 'glb-entering') && (
           <div style={{ padding: '10px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)', fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)', maxWidth: 'min(84vw, 360px)', textAlign: 'center' }}>
-            {arPhase === 'scanning-success' || arPhase === 'glb-entering'
-              ? t(lang, '一毛出现中…', 'EMO is appearing…')
-              : t(lang, '照片生成中…', 'Creating photo…')}
+            {t(lang, '一毛出现中…', 'EMO is appearing…')}
           </div>
         )}
-        {isCaptured ? (
-          <div style={{ display: 'flex', gap: 12, pointerEvents: 'auto' }}>
-            <button type="button" onClick={captureFrame} style={actionButtonStyle(lang)}>{t(lang, '重新拍照', 'Retake')}</button>
-            <button type="button" onClick={shareFrame} style={actionButtonStyle(lang)}>{t(lang, '分享好友', 'Share')}</button>
-          </div>
-        ) : isLive ? (
+        {isCaptured ? null : isLive ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, pointerEvents: 'auto' }}>
             <button
               type="button"
@@ -472,6 +480,20 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           </div>
         ) : null}
       </div>
+
+      {isCapturing && (
+        <CapturingOverlay backdropUrl={capturedPhoto?.url} lang={lang} />
+      )}
+
+      {isCaptured && framedPhoto?.url && (
+        <PolaroidPreviewOverlay
+          backdropUrl={capturedPhoto?.url}
+          framedPhotoUrl={framedPhoto.url}
+          lang={lang}
+          onRetake={captureFrame}
+          onShare={shareFrame}
+        />
+      )}
 
       {debugMode && (
         <div style={{ position: 'absolute', top: 'calc(var(--safe-top) + 72px)', right: 'calc(var(--safe-right) + 12px)', zIndex: 18, padding: '8px 10px', borderRadius: 10, background: 'rgba(0,0,0,0.62)', border: '0.5px solid rgba(255,255,255,0.18)', fontFamily: FONT_MONO, fontSize: 9.5, lineHeight: 1.45, color: '#fff', textAlign: 'left', pointerEvents: 'none', maxWidth: 248 }}>
@@ -529,18 +551,269 @@ function resetButtonStyle(enabled, active = false) {
   };
 }
 
-function actionButtonStyle(lang) {
-  return {
-    minWidth: 112,
-    height: 42,
-    borderRadius: 999,
-    border: 'none',
-    background: TOKENS.emoPink,
-    color: '#fff',
-    fontFamily: langFont(lang),
-    fontSize: 13,
-    fontWeight: 800,
-    boxShadow: '0 10px 28px rgba(0,0,0,0.16)',
-    cursor: 'pointer',
-  };
+function CapturingOverlay({ backdropUrl, lang }) {
+  return (
+    <div
+      aria-live="polite"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 34,
+        overflow: 'hidden',
+        background: '#000',
+        pointerEvents: 'auto',
+      }}
+    >
+      {backdropUrl && (
+        <img
+          aria-hidden="true"
+          src={backdropUrl}
+          alt=""
+          draggable={false}
+          style={{
+            position: 'absolute',
+            inset: '-12%',
+            width: '124%',
+            height: '124%',
+            objectFit: 'cover',
+            filter: 'blur(20px) brightness(1.05) saturate(1.05)',
+          }}
+        />
+      )}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'radial-gradient(80% 60% at 50% 50%, rgba(252,213,222,0.18) 0%, rgba(0,0,0,0) 70%)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%,-50%)',
+          width: 168,
+          height: 168,
+          borderRadius: 28,
+          background: 'rgba(40,38,40,0.86)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 14,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
+        }}
+      >
+        <div
+          aria-hidden="true"
+          style={{
+            width: 58,
+            height: 58,
+            borderRadius: 999,
+            border: '3.5px solid rgba(255,255,255,0.18)',
+            borderTopColor: 'rgba(255,255,255,0.92)',
+            animation: 'capture-spin 1s linear infinite',
+          }}
+        />
+        <div
+          style={{
+            fontFamily: langFont(lang),
+            fontSize: 15,
+            fontWeight: 600,
+            color: '#fff',
+            letterSpacing: '0.06em',
+          }}
+        >
+          {t(lang, '拍照中', 'Capturing')}
+        </div>
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 90,
+          textAlign: 'center',
+          fontFamily: FONT_MONO,
+          fontSize: 10,
+          color: 'rgba(255,255,255,0.55)',
+          letterSpacing: '0.18em',
+        }}
+      >
+        {t(lang, '正在生成你的拍立得 · GENERATING POLAROID', 'GENERATING POLAROID · CREATING YOUR KEEPSAKE')}
+      </div>
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 38,
+          display: 'flex',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 68,
+            height: 68,
+            borderRadius: 999,
+            border: '3px solid rgba(255,255,255,0.5)',
+            background: 'rgba(255,255,255,0.35)',
+            opacity: 0.7,
+          }}
+        />
+      </div>
+      <style>{`
+        @keyframes capture-spin { to { transform: rotate(360deg); } }
+      `}</style>
+    </div>
+  );
+}
+
+function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onRetake, onShare }) {
+  return (
+    <div
+      data-interactive="true"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 34,
+        overflow: 'hidden',
+        background: '#000',
+        pointerEvents: 'auto',
+      }}
+    >
+      {backdropUrl && (
+        <img
+          aria-hidden="true"
+          src={backdropUrl}
+          alt=""
+          draggable={false}
+          style={{
+            position: 'absolute',
+            inset: '-12%',
+            width: '124%',
+            height: '124%',
+            objectFit: 'cover',
+            filter: 'blur(22px) brightness(1.05) saturate(1.05)',
+          }}
+        />
+      )}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(255,247,240,0.12)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          width: 'min(78vw, 320px)',
+          aspectRatio: '1080 / 1752',
+          transform: 'translate(-50%, -52%) rotate(-1.2deg)',
+          animation: 'polaroid-in 700ms cubic-bezier(.22,1,.36,1) both',
+          filter: 'drop-shadow(0 24px 36px rgba(0,0,0,0.45)) drop-shadow(0 6px 12px rgba(0,0,0,0.25))',
+          pointerEvents: 'none',
+        }}
+      >
+        <img
+          src={framedPhotoUrl}
+          alt=""
+          draggable={false}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            display: 'block',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: 16,
+          right: 16,
+          bottom: `calc(var(--safe-bottom) + 38px)`,
+          display: 'flex',
+          gap: 10,
+          pointerEvents: 'auto',
+        }}
+      >
+        <ActionPill
+          variant="ghost"
+          lang={lang}
+          zh="重新拍照"
+          en="Retake"
+          onClick={onRetake}
+          icon={(
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M2 7a5 5 0 1 0 1.5-3.5M2 2v3h3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" fill="none"/>
+            </svg>
+          )}
+        />
+        <ActionPill
+          variant="primary"
+          lang={lang}
+          zh="分享好友"
+          en="Share"
+          onClick={onShare}
+          icon={(
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M7 1.5v8M4 4.5l3-3 3 3M2 9v3h10V9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+          )}
+        />
+      </div>
+      <style>{`
+        @keyframes polaroid-in {
+          0%   { opacity: 0; transform: translate(-50%, -52%) rotate(-1.2deg) scale(0.6); }
+          60%  { opacity: 1; transform: translate(-50%, -52%) rotate(1.4deg) scale(1.04); }
+          100% { opacity: 1; transform: translate(-50%, -52%) rotate(-1.2deg) scale(1); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function ActionPill({ variant = 'primary', lang, zh, en, onClick, icon }) {
+  const primary = variant === 'primary';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        padding: '14px 16px',
+        borderRadius: 999,
+        border: 'none',
+        background: primary ? TOKENS.ink : 'rgba(255,255,255,0.92)',
+        color: primary ? '#fff' : TOKENS.ink,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        cursor: 'pointer',
+        boxShadow: primary ? '0 10px 28px rgba(0,0,0,0.22)' : '0 8px 20px rgba(0,0,0,0.12)',
+      }}
+    >
+      {icon}
+      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+        <span style={{ fontFamily: langFont(lang), fontSize: 14, fontWeight: 700, letterSpacing: '0.02em' }}>
+          {t(lang, zh, en)}
+        </span>
+        <span style={{ fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: '0.18em', opacity: 0.55, textTransform: 'uppercase' }}>
+          {lang === 'en' ? zh : en}
+        </span>
+      </span>
+    </button>
+  );
 }
