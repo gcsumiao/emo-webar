@@ -205,6 +205,15 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     window.__setProtoState?.('scan');
   }, [clearCapturedPhoto]);
 
+  const goHome = React.useCallback(async () => {
+    window.clearTimeout(flashTimerRef.current);
+    clearCapturedPhoto();
+    const runtime = getARRuntime();
+    const next = await (runtime?.hideFinalObject?.() || null);
+    if (next) setFrozenState(next);
+    window.__setProtoState?.('landing');
+  }, [clearCapturedPhoto]);
+
   const shareFrame = React.useCallback(async () => {
     const sharePhoto = framedPhoto || capturedPhoto;
     if (sharePhoto?.url) {
@@ -464,6 +473,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           backdropUrl={capturedPhoto?.url}
           framedPhotoUrl={framedPhoto.url}
           lang={lang}
+          onHome={goHome}
           onRetake={captureFrame}
           onShare={shareFrame}
         />
@@ -636,7 +646,7 @@ function CapturingOverlay({ backdropUrl, lang }) {
   );
 }
 
-function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onRetake, onShare }) {
+function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onHome, onRetake, onShare }) {
   return (
     <div
       data-interactive="true"
@@ -673,6 +683,37 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onRetake, o
           background: 'rgba(255,247,240,0.12)',
         }}
       />
+      <button
+        type="button"
+        aria-label={t(lang, '返回首页', 'Back home')}
+        title={t(lang, '返回首页', 'Back home')}
+        onClick={onHome}
+        style={{
+          position: 'absolute',
+          top: 'calc(var(--safe-top) + 18px)',
+          left: 'calc(var(--safe-left) + 18px)',
+          zIndex: 38,
+          width: 44,
+          height: 44,
+          borderRadius: 999,
+          border: '0.5px solid rgba(255,255,255,0.58)',
+          background: 'rgba(255,255,255,0.88)',
+          color: TOKENS.ink,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          cursor: 'pointer',
+        }}
+      >
+        <svg width="19" height="19" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M3.25 8.75 10 3l6.75 5.75" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M5.2 8.25v7.2c0 .55.45 1 1 1h7.6c.55 0 1-.45 1-1v-7.2" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M8.25 16.35v-4.1c0-.42.34-.75.75-.75h2c.41 0 .75.33.75.75v4.1" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
       <div
         style={{
           position: 'absolute',
