@@ -116,9 +116,9 @@ The WebAR runtime does not add studio lighting, tone-mapping exposure, generated
 
 ## GLB Transform Space
 
-The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform that user gestures move, rotate, and scale during editing.
+The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform and internal GLB pivot that user gestures adjust during editing.
 
-Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: the pointer moves a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag moves the model and rotates an internal GLB pivot for 360-degree inspection: horizontal drag controls yaw, upward drag pitches the view to reveal the GLB bottom and back, and downward drag reveals the GLB top and back. Two-finger pinch only scales the model. The runtime clamps the projected GLB bounds and camera near-plane depth so the editable model cannot be dragged off screen or scaled into the camera.
+Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: long-press movement drives a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag only rotates an internal GLB pivot for 360-degree inspection. Two-finger pinch only scales the model. Single-finger long-press for about 450ms, then drag, moves the model. The runtime clamps the projected GLB bounds and camera near-plane depth so the editable model cannot be dragged off screen or scaled into the camera.
 
 The optional `glb.interaction` object controls the final editable GLB behavior. If omitted, these defaults are used:
 

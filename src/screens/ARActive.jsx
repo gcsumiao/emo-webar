@@ -11,6 +11,8 @@ const FLASH_MS = 240;
 const PHOTO_FRAME_URL = asset('/assets/site-ui/photo-frame.svg');
 const SINGLE_FINGER_YAW_SENSITIVITY = 0.16;
 const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
+const LONG_PRESS_MOVE_MS = 450;
+const LONG_PRESS_MOVE_TOLERANCE_PX = 8;
 const CUE_TAP = 'tap';
 const CUE_GESTURES = 'gestures';
 const CUE_HIDDEN = 'hidden';
@@ -102,6 +104,16 @@ function IconPinch({ size = 18, color = '#fff', sw = 1.6 }) {
     <svg width={size} height={size} viewBox="0 0 22 22" fill="none" aria-hidden="true">
       <path d="M4 9V4h5M18 13v5h-5" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
       <path d="M4.5 4.5l5 5M17.5 17.5l-5-5" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconHoldMove({ size = 18, color = '#fff', sw = 1.6 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <path d="M7.4 10.8V6.2a1.4 1.4 0 0 1 2.8 0v4.1M10.2 10.2V5.4a1.4 1.4 0 0 1 2.8 0v5M13 10.4V6.7a1.35 1.35 0 0 1 2.7 0v5.7" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <path d="M7.5 10.9 6.8 9.8a1.55 1.55 0 0 0-2.6 1.7l2.4 4.2c.8 1.4 2.2 2.3 3.8 2.3h3.2c2.3 0 4.1-1.8 4.1-4.1v-2.6" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.2 3.6h3.2M5.8 2v3.2M15.2 2h3.2M16.8.4v3.2" stroke={color} strokeWidth={sw * 0.9} strokeLinecap="round" />
     </svg>
   );
 }
@@ -256,13 +268,17 @@ function InteractionCueLayer({ cue, anchor, lang, isLandscapePhone }) {
   const isGestures = cue === CUE_GESTURES;
   const width = anchor.viewportWidth || 390;
   const height = anchor.viewportHeight || 844;
-  const upperPill = {
+  const rotatePill = {
     left: clampNumber(anchor.x + anchor.size * 0.18, 12, width - (lang === 'en' ? 156 : 116)),
     top: clampNumber(anchor.y - anchor.size * 0.42, isLandscapePhone ? 56 : 92, height - 184),
   };
-  const lowerPill = {
+  const scalePill = {
     left: clampNumber(anchor.x - anchor.size * 0.56, 12, width - (lang === 'en' ? 168 : 118)),
     top: clampNumber(anchor.y + anchor.size * 0.36, isLandscapePhone ? 88 : 126, height - (isLandscapePhone ? 122 : 196)),
+  };
+  const movePill = {
+    left: clampNumber(anchor.x + anchor.size * 0.12, 12, width - (lang === 'en' ? 184 : 126)),
+    top: clampNumber(anchor.y + anchor.size * 0.02, isLandscapePhone ? 76 : 112, height - (isLandscapePhone ? 128 : 204)),
   };
 
   return (
@@ -292,19 +308,30 @@ function InteractionCueLayer({ cue, anchor, lang, isLandscapePhone }) {
             zh="拖动 · 360°"
             en="Drag · 360°"
             style={{
-              left: upperPill.left,
-              top: upperPill.top,
+              left: rotatePill.left,
+              top: rotatePill.top,
             }}
           />
           <GestureTextChip
             icon={<IconPinch size={14} color="rgba(24,24,28,0.82)" sw={1.8} />}
             lang={lang}
             zh="双指 · 缩放"
-            en="Two-finger pinch"
+            en="Pinch · Scale"
             style={{
-              left: lowerPill.left,
-              top: lowerPill.top,
+              left: scalePill.left,
+              top: scalePill.top,
               animationDelay: '90ms',
+            }}
+          />
+          <GestureTextChip
+            icon={<IconHoldMove size={14} color="rgba(24,24,28,0.82)" sw={1.8} />}
+            lang={lang}
+            zh="长按 · 移动"
+            en="Long press · Move"
+            style={{
+              left: movePill.left,
+              top: movePill.top,
+              animationDelay: '180ms',
             }}
           />
         </>
@@ -338,7 +365,14 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [interactionCue, setInteractionCue] = React.useState(CUE_HIDDEN);
   const [hasInteractedWithGlb, setHasInteractedWithGlb] = React.useState(false);
   const pointersRef = React.useRef(new Map());
-  const gestureRef = React.useRef({ lastDistance: null, dragPointerId: null });
+  const gestureRef = React.useRef({
+    mode: 'idle',
+    lastDistance: null,
+    primaryPointerId: null,
+    dragPointerId: null,
+    startPoint: null,
+  });
+  const longPressTimerRef = React.useRef(null);
   const flashTimerRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
@@ -360,6 +394,48 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     setHasInteractedWithGlb(true);
     setCue(CUE_GESTURES);
   }, [setCue]);
+
+  const clearLongPressTimer = React.useCallback(() => {
+    window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  }, []);
+
+  const beginLongPressMove = React.useCallback((pointerId) => {
+    const gesture = gestureRef.current;
+    const point = pointersRef.current.get(pointerId);
+    if (
+      !point ||
+      pointersRef.current.size !== 1 ||
+      gesture.mode !== 'pendingLongPress' ||
+      gesture.primaryPointerId !== pointerId ||
+      !gesture.startPoint ||
+      pointerDistance(gesture.startPoint, point) > LONG_PRESS_MOVE_TOLERANCE_PX
+    ) {
+      return;
+    }
+
+    clearLongPressTimer();
+    const state = getARRuntime()?.beginFrozenDrag?.({
+      pointerId,
+      clientX: point.x,
+      clientY: point.y,
+    });
+    gestureRef.current = {
+      ...gestureRef.current,
+      mode: 'dragMove',
+      dragPointerId: pointerId,
+      lastDistance: null,
+    };
+    markGlbInteracted();
+    if (state) setFrozenState(state);
+  }, [clearLongPressTimer, markGlbInteracted]);
+
+  const scheduleLongPressMove = React.useCallback((pointerId) => {
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => {
+      beginLongPressMove(pointerId);
+    }, LONG_PRESS_MOVE_MS);
+  }, [beginLongPressMove, clearLongPressTimer]);
 
   // Drive the scanning-success -> glb-entering -> final-live transition on mount.
   React.useEffect(() => {
@@ -395,8 +471,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       cancelled = true;
       window.clearTimeout(retryTimer);
       window.clearTimeout(flashTimerRef.current);
+      clearLongPressTimer();
     };
-  }, []);
+  }, [clearLongPressTimer]);
 
   // On unmount, reset frozen object state so the scene is clean if user re-enters.
   React.useEffect(() => () => {
@@ -412,8 +489,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       setCue(hasInteractedWithGlb ? CUE_GESTURES : CUE_TAP);
       return;
     }
+    clearLongPressTimer();
     setCue(CUE_HIDDEN);
-  }, [arPhase, hasInteractedWithGlb, setCue]);
+  }, [arPhase, clearLongPressTimer, hasInteractedWithGlb, setCue]);
 
   // Keep the AR scene alive after image tracking is lost; the recognized image is only the trigger.
   React.useEffect(() => {
@@ -545,21 +623,36 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     if (!canEdit) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    const points = Array.from(pointersRef.current.values());
+    const point = { x: event.clientX, y: event.clientY };
+    pointersRef.current.set(event.pointerId, point);
+    const entries = Array.from(pointersRef.current.entries());
+    const points = entries.map(([, value]) => value);
     const runtime = getARRuntime();
     markGlbInteracted();
+
     if (points.length >= 2) {
+      clearLongPressTimer();
+      if (gestureRef.current.mode === 'dragMove') {
+        const state = runtime?.endFrozenDrag?.({ clampToViewport: true });
+        if (state) setFrozenState(state);
+      } else {
+        runtime?.endFrozenDrag?.({ clampToViewport: false });
+      }
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
+      gestureRef.current.mode = 'pinchScale';
+      gestureRef.current.primaryPointerId = null;
       gestureRef.current.dragPointerId = null;
-      runtime?.endFrozenDrag?.({ clampToViewport: false });
+      gestureRef.current.startPoint = null;
     } else {
+      clearLongPressTimer();
+      gestureRef.current.mode = 'pendingLongPress';
       gestureRef.current.lastDistance = null;
-      gestureRef.current.dragPointerId = event.pointerId;
-      const state = runtime?.beginFrozenDrag?.({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY });
-      if (state) setFrozenState(state);
+      gestureRef.current.primaryPointerId = event.pointerId;
+      gestureRef.current.dragPointerId = null;
+      gestureRef.current.startPoint = point;
+      scheduleLongPressMove(event.pointerId);
     }
-  }, [canEdit, markGlbInteracted]);
+  }, [canEdit, clearLongPressTimer, markGlbInteracted, scheduleLongPressMove]);
 
   const handlePointerMove = React.useCallback((event) => {
     if (!canEdit) return;
@@ -572,6 +665,17 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
     if (points.length >= 2) {
       markGlbInteracted();
+      if (gestureRef.current.mode !== 'pinchScale') {
+        clearLongPressTimer();
+        if (gestureRef.current.mode === 'dragMove') {
+          const state = getARRuntime()?.endFrozenDrag?.({ clampToViewport: true });
+          if (state) setFrozenState(state);
+        }
+        gestureRef.current.mode = 'pinchScale';
+        gestureRef.current.primaryPointerId = null;
+        gestureRef.current.dragPointerId = null;
+        gestureRef.current.startPoint = null;
+      }
       const distance = pointerDistance(points[0], points[1]);
       const runtime = getARRuntime();
       let updatedState = null;
@@ -587,27 +691,48 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const dy = next.y - prev.y;
       gestureRef.current.lastDistance = null;
       const runtime = getARRuntime();
-      let updatedState = runtime?.dragFrozenToScreenPoint?.({
-        pointerId: event.pointerId,
-        clientX: event.clientX,
-        clientY: event.clientY,
-        clampToViewport: false,
-      }) || null;
-      if (dx || dy) {
+      let updatedState = null;
+      if (gestureRef.current.mode === 'dragMove' && gestureRef.current.dragPointerId === event.pointerId) {
+        updatedState = runtime?.dragFrozenToScreenPoint?.({
+          pointerId: event.pointerId,
+          clientX: event.clientX,
+          clientY: event.clientY,
+          clampToViewport: false,
+        }) || null;
         if (Math.hypot(dx, dy) > 0.4) markGlbInteracted();
-        updatedState = runtime?.rotateFrozenBy?.({
-          pointerDeltaX: dx,
-          pointerDeltaY: dy,
-          yawDelta: dx * SINGLE_FINGER_YAW_SENSITIVITY,
-          pitchDelta: dy * SINGLE_FINGER_PITCH_SENSITIVITY,
-        }) || updatedState;
+        if (updatedState) setFrozenState(updatedState);
+        return;
+      }
+
+      if (dx || dy) {
+        const movedFromStart = gestureRef.current.startPoint
+          ? pointerDistance(gestureRef.current.startPoint, next)
+          : 0;
+        if (gestureRef.current.mode === 'pendingLongPress' && movedFromStart > LONG_PRESS_MOVE_TOLERANCE_PX) {
+          clearLongPressTimer();
+          gestureRef.current.mode = 'rotate';
+          gestureRef.current.dragPointerId = null;
+        }
+        if (gestureRef.current.mode !== 'rotate' && gestureRef.current.mode !== 'pendingLongPress') {
+          gestureRef.current.mode = 'rotate';
+          gestureRef.current.dragPointerId = null;
+        }
+        if (gestureRef.current.mode === 'rotate') {
+          markGlbInteracted();
+          updatedState = runtime?.rotateFrozenBy?.({
+            pointerDeltaX: dx,
+            pointerDeltaY: dy,
+            yawDelta: dx * SINGLE_FINGER_YAW_SENSITIVITY,
+            pitchDelta: dy * SINGLE_FINGER_PITCH_SENSITIVITY,
+          }) || updatedState;
+        }
       }
       if (updatedState) setFrozenState(updatedState);
     }
-  }, [canEdit, markGlbInteracted]);
+  }, [canEdit, clearLongPressTimer, markGlbInteracted]);
 
   const handlePointerUp = React.useCallback((event) => {
-    const wasDragPointer = gestureRef.current.dragPointerId === event.pointerId;
+    const wasDragPointer = gestureRef.current.mode === 'dragMove' && gestureRef.current.dragPointerId === event.pointerId;
     pointersRef.current.delete(event.pointerId);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     const entries = Array.from(pointersRef.current.entries());
@@ -619,19 +744,30 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     }
     if (points.length >= 2) {
       markGlbInteracted();
+      clearLongPressTimer();
+      gestureRef.current.mode = 'pinchScale';
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
+      gestureRef.current.primaryPointerId = null;
       gestureRef.current.dragPointerId = null;
+      gestureRef.current.startPoint = null;
     } else if (points.length === 1 && canEdit) {
       const [nextPointerId, point] = entries[0];
+      clearLongPressTimer();
+      gestureRef.current.mode = 'pendingLongPress';
       gestureRef.current.lastDistance = null;
-      gestureRef.current.dragPointerId = nextPointerId;
-      const state = runtime?.beginFrozenDrag?.({ pointerId: nextPointerId, clientX: point.x, clientY: point.y });
-      if (state) setFrozenState(state);
-    } else {
-      gestureRef.current.lastDistance = null;
+      gestureRef.current.primaryPointerId = nextPointerId;
       gestureRef.current.dragPointerId = null;
+      gestureRef.current.startPoint = point;
+      scheduleLongPressMove(nextPointerId);
+    } else {
+      clearLongPressTimer();
+      gestureRef.current.mode = 'idle';
+      gestureRef.current.lastDistance = null;
+      gestureRef.current.primaryPointerId = null;
+      gestureRef.current.dragPointerId = null;
+      gestureRef.current.startPoint = null;
     }
-  }, [canEdit, markGlbInteracted]);
+  }, [canEdit, clearLongPressTimer, markGlbInteracted, scheduleLongPressMove]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -666,7 +802,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         <div
           data-interactive="true"
           data-ar-edit-surface="true"
-          aria-label="Drag to move and rotate EMO; pinch to scale"
+          aria-label="Drag one finger to rotate EMO; pinch to scale; long press and drag to move"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -761,7 +897,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>phase: <b style={{ color: TOKENS.green }}>{arPhase}</b></div>
           <div>ar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
           <div>glb: <b style={{ color: TOKENS.green }}>{diagnostics?.glbPhase || '-'}</b> · mode {diagnostics?.contentMode || '-'}</div>
-          <div>gesture: single-finger move/rotate + pinch scale</div>
+          <div>gesture: single-finger rotate · two-finger scale · long-press move</div>
           <div>activeTarget: {diagnostics?.activeTargetId || '-'}</div>
           <div>edit: <b style={{ color: frozenState?.active ? TOKENS.green : TOKENS.pinkDeep }}>{String(!!frozenState?.active)}</b></div>
           {frozenState && (

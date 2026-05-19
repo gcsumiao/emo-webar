@@ -61,7 +61,7 @@ Runtime state is exposed through `window.__mindar`:
 - `freezeCurrentTarget()` copies the current anchored model into an editable scene-level frozen object.
 - `unfreezeCurrentTarget()` hides the frozen object and restores live anchored content.
 - `beginFrozenDrag({ pointerId, clientX, clientY })`, `dragFrozenToScreenPoint(...)`, and `endFrozenDrag({ clampToViewport })` move a transparent drag proxy on a fixed camera-depth plane, then sync the frozen object to it.
-- `rotateFrozenBy({ yawDelta, pitchDelta })` rotates the frozen parent object for 360-degree GLB inspection without touching animated mesh internals.
+- `rotateFrozenBy({ yawDelta, pitchDelta })` rotates the internal GLB pivot for 360-degree inspection without touching animated mesh internals.
 - `scaleFrozenBy({ scaleFactor })` scales the frozen object and clamps it inside the visible AR edit area.
 - `resetFrozenTransform()` restores the editable final GLB to the transform captured when the final animation frame first became live.
 - `getFrozenState()` returns the current frozen transform and source target.
@@ -76,12 +76,13 @@ Live final mode uses no mode switch. When the GLB reaches its final animation fr
 
 - **Tap prompt**: `tap me` in English mode or `点我` in Chinese mode. The prompt hides after the first touch on the editable GLB surface.
 
-After that first touch, two white gesture pills remain visible during the editable final AR state:
+After that first touch, three white gesture pills remain visible during the editable final AR state:
 
-- **Move / rotate**: drag the middle camera area with one finger. The pointer moves a transparent proxy object, the animated GLB parent follows it, horizontal drag yaws the model through 360 degrees, upward drag reveals the GLB bottom, and downward drag reveals the GLB top.
-- **Scale**: pinch with two fingers. Two-finger gestures do not rotate or translate the model.
+- **Rotate**: drag the middle camera area with one finger. Single-finger drag only rotates the internal GLB pivot for 360-degree inspection; it does not move the model.
+- **Scale**: pinch with two fingers. Two-finger gestures only scale the model; they do not rotate or translate it.
+- **Move**: long-press one finger for about 450ms, then drag. The pointer moves a transparent proxy object on a fixed camera-depth plane, and the animated GLB parent follows it.
 
-The gesture pills are language-specific: English mode shows only `Drag · 360°` and `Two-finger pinch`; Chinese mode shows only `拖动 · 360°` and `双指 · 缩放`. The editable final AR state intentionally avoids the older GLB outer circle, rotating arrows, scaling corner marks, and white dot guide elements.
+The gesture pills are language-specific: English mode shows only `Drag · 360°`, `Pinch · Scale`, and `Long press · Move`; Chinese mode shows only `拖动 · 360°`, `双指 · 缩放`, and `长按 · 移动`. The editable final AR state intentionally avoids the older GLB outer circle, rotating arrows, scaling corner marks, and white dot guide elements.
 
 A reset control sits beside the shutter in editable final mode. It shows `TAP TO RESET` in English mode or `一键还原` in Chinese mode, and calls `resetFrozenTransform()` to restore the GLB to the final-frame transform captured before user drag, rotation, or scale gestures.
 
@@ -93,7 +94,7 @@ The main Vite WebAR experience now plays the animated Step 06 GLB directly after
 
 1. Recognition chooses a scene pack, then MindAR recognizes one of that pack's image targets.
 2. Targets configured with `renderMode: "gltf-only"` load `assets/step06/models/yimao_animation_ultra_fast_growth.glb`.
-3. The runtime centers the projected frame-70 mesh at screen center, applies frame 1 before reveal, hides the `Polygon` and `Polygon_2` branch/leaf nodes until frame 52, plays the `Scene` clip from frame 1 to frame 70, clamps the final pose, and keeps the frozen GLB object for bounded proxy-drag move, single-finger 360 inspection, two-finger scale, and capture.
+3. The runtime centers the projected frame-70 mesh at screen center, applies frame 1 before reveal, hides the `Polygon` and `Polygon_2` branch/leaf nodes until frame 52, plays the `Scene` clip from frame 1 to frame 70, clamps the final pose, and keeps the frozen GLB object for long-press proxy-drag move, single-finger 360 inspection, two-finger scale, and capture.
 4. The active Step 06 path does not request the old PNG frame sequence.
 
 The runtime intentionally avoids extra studio lights, tone-mapping exposure, generated environment maps, or material brightness overrides for the Step 06 GLB. The model should display from its own textures and material values.
