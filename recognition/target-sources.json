@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "sourceRootCandidates": [
+    "../emo-checklist-source-archive"
+  ],
+  "scenes": [
+    {
+      "sceneId": "targets",
+      "files": [
+        "一毛AR材料/3.一毛识别图库/3.实际场景照片-jpg/一毛气模-实拍图01.jpg",
+        "一毛AR材料/3.一毛识别图库/3.实际场景照片-jpg/一毛气模-实拍图02.jpg",
+        "一毛AR材料/3.一毛识别图库/3.实际场景照片-jpg/产品-抱枕.jpg",
+        "一毛AR材料/3.一毛识别图库/3.实际场景照片-jpg/产品-毛绒挂件01.jpg",
+        "一毛AR材料/3.一毛识别图库/3.实际场景照片-jpg/产品-毛绒挂件02.JPG",
+        "1.识别图素材/1.最终版识别图源文件-png/一毛-正视图.png"
+      ]
+    },
+    { "sceneId": "抱枕", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["抱枕"] },
+    { "sceneId": "杯垫", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["杯垫"] },
+    { "sceneId": "便利贴", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["便签贴"] },
+    { "sceneId": "冰箱贴", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["冰箱贴"] },
+    { "sceneId": "地毯", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["地毯"] },
+    { "sceneId": "电箱", "folder": "一毛AR材料/3.一毛识别图库/电箱", "prefixes": [""] },
+    { "sceneId": "飞盘", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["飞盘"] },
+    { "sceneId": "挂件", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["圆形挂包", "吊牌"] },
+    {
+      "sceneId": "街景1",
+      "groups": [
+        { "folder": "一毛AR材料/3.一毛识别图库/卷帘门", "prefixes": [""] },
+        { "folder": "一毛AR材料/3.一毛识别图库/其他", "prefixes": ["20220905联合村", "斑马线", "吉庆街"] }
+      ]
+    },
+    {
+      "sceneId": "街景2",
+      "groups": [
+        { "folder": "一毛AR材料/3.一毛识别图库/其他", "prefixes": ["电子屏", "黄鹤楼", "集装箱", "绿城大楼"] }
+      ]
+    },
+    { "sceneId": "蜡烛", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["蜡烛"] },
+    { "sceneId": "毛绒布章", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["毛绒布章", "戟绒章"] },
+    { "sceneId": "毛绒挂件", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["毛绒挂件-灰色", "毛绒挂件-粉色", "毛绒挂件-蓝色"] },
+    { "sceneId": "帽子", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["帽子"] },
+    { "sceneId": "盆栽", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["盆栽"] },
+    { "sceneId": "气模", "folder": "一毛AR材料/3.一毛识别图库/气模", "prefixes": [""] },
+    { "sceneId": "气球", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["气球"] },
+    { "sceneId": "树枝挂件", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["树枝挂件"] },
+    { "sceneId": "水箱", "folder": "一毛AR材料/3.一毛识别图库/水箱", "prefixes": [""] },
+    { "sceneId": "贴纸", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["贴纸"] },
+    { "sceneId": "头套", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["头套"] },
+    { "sceneId": "pvc挂件", "folder": "一毛AR材料/3.一毛识别图库/产品", "prefixes": ["PVC挂件"] }
+  ],
+  "unusedSourcePrefixes": [
+    "一毛AR材料/3.一毛识别图库/其他/沙发"
+  ]
+}
