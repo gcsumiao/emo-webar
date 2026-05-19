@@ -61,6 +61,7 @@ Runtime state is exposed through `window.__mindar`:
 - `freezeCurrentTarget()` copies the current anchored model into an editable scene-level frozen object.
 - `unfreezeCurrentTarget()` hides the frozen object and restores live anchored content.
 - `beginFrozenDrag({ pointerId, clientX, clientY })`, `dragFrozenToScreenPoint(...)`, and `endFrozenDrag({ clampToViewport })` move a transparent drag proxy on a fixed camera-depth plane, then sync the frozen object to it.
+- `rotateFrozenBy({ yawDelta, pitchDelta })` rotates the frozen parent object for 360-degree GLB inspection without touching animated mesh internals.
 - `scaleFrozenBy({ scaleFactor })` scales the frozen object and clamps it inside the visible AR edit area.
 - `getFrozenState()` returns the current frozen transform and source target.
 
@@ -73,7 +74,7 @@ After scan success, Step 06 shows the configured animated GLB inside `#frozen-ar
 Live final mode uses no persistent gesture icons or mode switch. Small staged toast hints explain the direct gestures the first time the model becomes editable:
 
 - **Move**: drag the middle camera area with one finger. The pointer moves a transparent proxy object, and the animated GLB parent follows it.
-- **Scale**: pinch with two fingers. Rotation is intentionally disabled so the animated GLB does not deform or lose its visible pose.
+- **Rotate / scale**: use two fingers. Pinch scales the model, horizontal drag or twist yaws it through 360 degrees, and vertical drag pitches it within a safe top/bottom viewing range.
 
 When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 
@@ -83,7 +84,7 @@ The main Vite WebAR experience now plays the animated Step 06 GLB directly after
 
 1. Recognition chooses a scene pack, then MindAR recognizes one of that pack's image targets.
 2. Targets configured with `renderMode: "gltf-only"` load `assets/step06/models/yimao_animation_ultra_fast_growth.glb`.
-3. The runtime applies frame 1 before reveal, hides the `Polygon` and `Polygon_2` branch/leaf nodes until frame 52, centers the projected mesh near the screen middle, plays the `Scene` clip once, clamps the final pose, and keeps the frozen GLB object for bounded proxy-drag move, scale, and capture.
+3. The runtime centers the projected frame-70 mesh at screen center, applies frame 1 before reveal, hides the `Polygon` and `Polygon_2` branch/leaf nodes until frame 52, plays the `Scene` clip from frame 1 to frame 70, clamps the final pose, and keeps the frozen GLB object for bounded proxy-drag move, two-finger rotate/scale, and capture.
 4. The active Step 06 path does not request the old PNG frame sequence.
 
 The runtime intentionally avoids extra studio lights, tone-mapping exposure, generated environment maps, or material brightness overrides for the Step 06 GLB. The model should display from its own textures and material values.

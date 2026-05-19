@@ -108,7 +108,7 @@ Target found/lost callbacks receive payloads that include:
 
 ## Step 06 GLB Flow
 
-Step 06 now uses `assets/step06/models/yimao_animation_ultra_fast_growth.glb` directly after scan success. The runtime applies the configured start frame before showing the GLB, centers the projected mesh near the middle of the screen, plays the configured animation clip once, clamps the final pose, and keeps the frozen GLB object editable for move, scale, capture, retake, and rescan.
+Step 06 now uses `assets/step06/models/yimao_animation_ultra_fast_growth.glb` directly after scan success. The runtime uses the configured end frame to center the final projected mesh in the middle of the screen, then plays the configured animation window once and clamps that final pose. The frozen GLB object remains editable for move, 360-degree inspection, scale, capture, retake, and rescan.
 
 The old PNG frame sequence is no longer part of the active Step 06 path.
 
@@ -116,9 +116,9 @@ The WebAR runtime does not add studio lighting, tone-mapping exposure, generated
 
 ## GLB Transform Space
 
-The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform that user gestures move and scale during editing.
+The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform that user gestures move, rotate, and scale during editing.
 
-Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: the pointer moves a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag moves the model. Two-finger pinch scales it. The runtime clamps the projected GLB bounds so the editable model cannot be dragged off screen.
+Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: the pointer moves a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag moves the model. Two-finger pinch scales it, horizontal/twist motion yaws it through 360 degrees, and vertical motion pitches it within a safe clamp. The runtime clamps the projected GLB bounds so the editable model cannot be dragged off screen.
 
 The runtime drag API accepts pointer positions and applies the same default bounds check on drag end:
 
@@ -126,6 +126,8 @@ The runtime drag API accepts pointer positions and applies the same default boun
 window.__mindar.beginFrozenDrag({ pointerId, clientX, clientY })
 window.__mindar.dragFrozenToScreenPoint({ pointerId, clientX, clientY })
 window.__mindar.endFrozenDrag({ clampToViewport: true })
+window.__mindar.rotateFrozenBy({ yawDelta, pitchDelta })
+window.__mindar.scaleFrozenBy({ scaleFactor })
 ```
 
 ## GLB Animation
@@ -148,6 +150,7 @@ The manifest can reference `introClip` and `idleClip`, or use `playMode: "all-cl
     "clips": ["Scene"],
     "fps": 24,
     "startFrame": 1,
+    "endFrame": 70,
     "hiddenNodesUntilFrame": ["Polygon", "Polygon_2"],
     "revealHiddenNodesFrame": 52,
     "markers": [
@@ -160,7 +163,7 @@ The manifest can reference `introClip` and `idleClip`, or use `playMode: "all-cl
 }
 ```
 
-Marker `frame` values are converted with `frame / fps`; Step 06 starts the `Scene` clip at frame 1 (`0.0417s`), plays `drop-bounce.mp3` immediately at that start frame, and plays `branch-pop.mp3` at frame 52 (`2.1667s`). `hiddenNodesUntilFrame` keeps the branch and leaf nodes hidden until `revealHiddenNodesFrame`, preventing them from flashing before their growth animation. If configured clip names do not exist, the model still appears and the runtime emits a missing-animation diagnostic instead of crashing.
+Marker `frame` values are converted with `frame / fps`; Step 06 starts the `Scene` clip at frame 1 (`0.0417s`), plays `drop-bounce.mp3` immediately at that start frame, plays `branch-pop.mp3` at frame 52 (`2.1667s`), and stops/clamps playback at frame 70 (`2.9167s`). `hiddenNodesUntilFrame` keeps the branch and leaf nodes hidden until `revealHiddenNodesFrame`, preventing them from flashing before their growth animation. If configured clip names do not exist, the model still appears and the runtime emits a missing-animation diagnostic instead of crashing.
 
 ## Runtime Debug API
 
@@ -170,4 +173,4 @@ The local MindAR runtime exposes:
 window.__mindar.getFinalModelDebug()
 ```
 
-`getFinalModelDebug()` reports the active GLB source, ready state, bounds, and animation clip names. Runtime diagnostics also include projected mesh center and target NDC values for checking initial screen placement.
+`getFinalModelDebug()` reports the active GLB source, ready state, bounds, animation clip names, animation frame window, final yaw/pitch, and projected mesh center for checking final screen placement.

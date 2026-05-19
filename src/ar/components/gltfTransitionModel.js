@@ -187,6 +187,49 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
         ? Math.max(0, Number(options.startTimeSec))
         : frame / fps;
     },
+    _getEndFrame(options = {}) {
+      const animation = this.config.animation || {};
+      const frame = Number(options.endFrame ?? animation.endFrame ?? animation.finalFrame ?? animation.stopFrame);
+      return Number.isFinite(frame) ? Math.max(0, frame) : null;
+    },
+    _getEndTimeSec(options = {}) {
+      const time = Number(options.endTimeSec ?? options.stopTimeSec);
+      if (Number.isFinite(time)) return Math.max(0, time);
+      const frame = this._getEndFrame(options);
+      return frame == null ? null : frame / this._getFps(options);
+    },
+    _getPlaybackEndTimeSec(actions, options = {}) {
+      const actionList = Array.isArray(actions) ? actions : [actions];
+      const durations = actionList
+        .map((action) => Number(action?.getClip?.().duration))
+        .filter(Number.isFinite);
+      const maxDuration = durations.length ? Math.max(...durations) : 0;
+      const configuredEnd = this._getEndTimeSec(options);
+      const fallbackEnd = maxDuration > 0 ? maxDuration : this._getStartTimeSec(options);
+      const endTimeSec = configuredEnd == null
+        ? fallbackEnd
+        : maxDuration > 0
+          ? Math.min(configuredEnd, maxDuration)
+          : configuredEnd;
+      return Math.max(this._getStartTimeSec(options), endTimeSec);
+    },
+    _clampActionsAtTime(actions, timeSec) {
+      const actionList = Array.isArray(actions) ? actions : [actions];
+      actionList.forEach((action) => {
+        if (!action) return;
+        const duration = Number(action.getClip?.().duration);
+        action.enabled = true;
+        action.paused = false;
+        action.time = Math.min(Math.max(0, timeSec), Number.isFinite(duration) && duration > 0 ? duration : timeSec);
+      });
+      this.mixer?.update?.(0);
+      this._syncHiddenNodesAtTime(timeSec);
+      actionList.forEach((action) => {
+        if (action) action.paused = true;
+      });
+      this.model?.updateMatrixWorld?.(true);
+      this.bounds = this._readBounds(this.model);
+    },
     _getHiddenNodeNames() {
       const animation = this.config.animation || {};
       const names = animation.hiddenNodesUntilFrame || animation.hiddenNodes || [];
@@ -330,12 +373,20 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
         .filter(Boolean)
         .sort((a, b) => a.timeSec - b.timeSec);
     },
-    _startMarkers(markers, timeScale = 1, startTimeSec = 0) {
+    _startMarkers(markers, timeScale = 1, startTimeSec = 0, endTimeSec = null) {
       const normalized = this._normalizeMarkers(markers);
+      const startSec = Math.max(0, numberOr(startTimeSec, 0));
+      const endSec = Number(endTimeSec);
       this.markerRun = normalized.length
-        ? { markers: normalized, fired: new Set(), elapsedSec: Math.max(0, numberOr(startTimeSec, 0)), timeScale: Math.abs(numberOr(timeScale, 1)) || 1 }
+        ? {
+          markers: normalized,
+          fired: new Set(),
+          elapsedSec: startSec,
+          endTimeSec: Number.isFinite(endSec) ? Math.max(startSec, endSec) : null,
+          timeScale: Math.abs(numberOr(timeScale, 1)) || 1,
+        }
         : null;
-      this._syncHiddenNodesAtTime(Math.max(0, numberOr(startTimeSec, 0)));
+      this._syncHiddenNodesAtTime(startSec);
       this._flushMarkers();
     },
     _stopMarkers() {
@@ -344,8 +395,12 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
     _flushMarkers(elapsedOverride = null) {
       const run = this.markerRun;
       if (!run) return;
-      const elapsedSec = Number.isFinite(elapsedOverride) ? elapsedOverride : run.elapsedSec;
+      const rawElapsedSec = Number.isFinite(elapsedOverride) ? elapsedOverride : run.elapsedSec;
+      const elapsedSec = Number.isFinite(run.endTimeSec)
+        ? Math.min(rawElapsedSec, run.endTimeSec)
+        : rawElapsedSec;
       run.markers.forEach((marker) => {
+        if (Number.isFinite(run.endTimeSec) && marker.timeSec > run.endTimeSec) return;
         if (run.fired.has(marker.id) || elapsedSec < marker.timeSec) return;
         run.fired.add(marker.id);
         this._triggerMarker(marker);
@@ -403,6 +458,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       const fadeMs = numberOr(options.crossFadeMs, numberOr(this.config.animation?.crossFadeMs, 180));
       const timeScale = numberOr(options.timeScale, numberOr(this.config.animation?.timeScale, 1));
       const startTimeSec = this._getStartTimeSec(options);
+      const endTimeSec = this._getPlaybackEndTimeSec(action, options);
       this.actions.forEach((other) => {
         if (other !== action) other.fadeOut?.(fadeMs / 1000);
       });
@@ -412,7 +468,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       action.reset();
       action.time = Math.min(startTimeSec, action.getClip?.().duration || startTimeSec);
       this._syncHiddenNodesAtTime(startTimeSec);
-      this._startMarkers(options.markers, timeScale, startTimeSec);
+      this._startMarkers(options.markers, timeScale, startTimeSec, endTimeSec);
       if (once) {
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = options.clampWhenFinished !== false;
@@ -424,14 +480,28 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       action.play();
       if (!once) return Promise.resolve(true);
       return new Promise((resolve) => {
+        let settled = false;
+        let timeout = null;
         const finish = (event) => {
           if (event.action !== action) return;
-          this.mixer?.removeEventListener?.('finished', finish);
-          this._flushMarkers(Infinity);
-          this._stopMarkers();
-          this.el.emit('gltf-animation-finished', { name });
-          resolve(true);
+          done(true);
         };
+        const done = (result) => {
+          if (settled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          this.mixer?.removeEventListener?.('finished', finish);
+          this._clampActionsAtTime(action, endTimeSec);
+          this._flushMarkers(endTimeSec);
+          this._stopMarkers();
+          this.el.emit('gltf-animation-finished', { name, endFrame: this._getEndFrame(options), endTimeSec });
+          resolve(result);
+        };
+        const remainingDuration = Math.max(0, endTimeSec - startTimeSec);
+        const durationMs = remainingDuration > 0
+          ? (remainingDuration / (Math.abs(timeScale) || 1)) * 1000 + 50
+          : 50;
+        timeout = window.setTimeout(() => done(true), durationMs);
         this.mixer?.addEventListener?.('finished', finish);
       });
     },
@@ -452,6 +522,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       const fadeMs = numberOr(options.crossFadeMs, numberOr(this.config.animation?.crossFadeMs, 0));
       const timeScale = numberOr(options.timeScale, numberOr(this.config.animation?.timeScale, 1));
       const startTimeSec = this._getStartTimeSec(options);
+      const endTimeSec = this._getPlaybackEndTimeSec(entries.map(({ action }) => action), options);
       entries.forEach(({ action }) => {
         action.enabled = true;
         action.paused = false;
@@ -464,12 +535,12 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
         action.play();
       });
       this._syncHiddenNodesAtTime(startTimeSec);
-      this._startMarkers(options.markers || this.config.animation?.markers, timeScale, startTimeSec);
+      this._startMarkers(options.markers || this.config.animation?.markers, timeScale, startTimeSec, endTimeSec);
 
       return new Promise((resolve) => {
         const remaining = new Set(entries.map(({ action }) => action));
         let settled = false;
-        const maxDuration = Math.max(...entries.map(({ action }) => action.getClip?.().duration || 0));
+        let timeout = null;
         const finish = (event) => {
           if (!remaining.has(event.action)) return;
           remaining.delete(event.action);
@@ -480,16 +551,22 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
           settled = true;
           window.clearTimeout(timeout);
           this.mixer?.removeEventListener?.('finished', finish);
-          this._flushMarkers(Infinity);
+          this._clampActionsAtTime(entries.map(({ action }) => action), endTimeSec);
+          this._flushMarkers(endTimeSec);
           this._stopMarkers();
-          this.el.emit('gltf-animation-finished', { name: 'all-clips', clips: entries.map(({ name }) => name) });
+          this.el.emit('gltf-animation-finished', {
+            name: 'all-clips',
+            clips: entries.map(({ name }) => name),
+            endFrame: this._getEndFrame(options),
+            endTimeSec,
+          });
           resolve(result);
         };
-        const remainingDuration = Math.max(0, maxDuration - startTimeSec);
-        const durationMs = maxDuration > 0
+        const remainingDuration = Math.max(0, endTimeSec - startTimeSec);
+        const durationMs = remainingDuration > 0
           ? (remainingDuration / (Math.abs(timeScale) || 1)) * 1000 + 250
           : 250;
-        const timeout = window.setTimeout(() => done(true), durationMs);
+        timeout = window.setTimeout(() => done(true), durationMs);
         this.mixer?.addEventListener?.('finished', finish);
       });
     },
@@ -501,6 +578,8 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
           crossFadeMs: animation.crossFadeMs,
           timeScale: animation.timeScale,
           markers: animation.markers,
+          endFrame: animation.endFrame,
+          endTimeSec: animation.endTimeSec,
         });
         return this.playIdle();
       }
@@ -513,6 +592,8 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
           crossFadeMs: animation.crossFadeMs,
           timeScale: animation.timeScale,
           markers: animation.markers,
+          endFrame: animation.endFrame,
+          endTimeSec: animation.endTimeSec,
         });
       } else if (introClip) {
         this.el.emit('gltf-animation-missing', { name: introClip });

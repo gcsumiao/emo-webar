@@ -46,7 +46,7 @@ export const DEFAULT_GLB_CONFIG = {
   src: DEFAULT_GLB_URL,
   position: [0, 0, 0.02],
   rotation: [0, -90, 0],
-  scale: [0.18, 0.18, 0.18],
+  scale: [0.135, 0.135, 0.135],
   visibleOnTarget: false,
   showAfterSpriteIntro: false,
   animation: {
@@ -56,6 +56,7 @@ export const DEFAULT_GLB_CONFIG = {
     idleClip: null,
     fps: 24,
     startFrame: 1,
+    endFrame: 70,
     hiddenNodesUntilFrame: ['Polygon', 'Polygon_2'],
     revealHiddenNodesFrame: 52,
     markers: [

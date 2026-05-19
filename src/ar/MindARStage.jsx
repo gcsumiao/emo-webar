@@ -21,7 +21,7 @@ const FROZEN_SPRITE_SCALE_MAX = 2.4;
 const FINAL_BASE_RENDER_DEPTH = Math.abs(FROZEN_SPRITE_POSITION.z);
 const FINAL_NEAR_DEPTH_MULTIPLIER = 1.2;
 const DROP_ENTER_MARGIN_RATIO = 0.16;
-const GLB_INITIAL_CENTER_NDC = { x: 0, y: 0.1 };
+const GLB_INITIAL_CENTER_NDC = { x: 0, y: 0 };
 
 function ensureSpriteRegistry() {
   if (!window.__spriteRegistry) {
@@ -124,6 +124,16 @@ function clampPitchDegrees(value) {
 function clampNumber(value, min, max) {
   if (min > max) return (min + max) / 2;
   return Math.max(min, Math.min(max, value));
+}
+
+function readAnimationStartFrame(animation = {}) {
+  const frame = Number(animation.initialFrame ?? animation.startFrame);
+  return Number.isFinite(frame) ? Math.max(0, frame) : 0;
+}
+
+function readAnimationEndFrame(animation = {}) {
+  const frame = Number(animation.endFrame ?? animation.finalFrame ?? animation.stopFrame);
+  return Number.isFinite(frame) ? Math.max(0, frame) : null;
 }
 
 function mergeTransformConfig(glb, transformOverride = {}) {
@@ -259,6 +269,10 @@ function createDiagnostics() {
     markerNdc: null,
     meshCenterNdc: null,
     glbProjectedSize: null,
+    animationStartFrame: null,
+    animationEndFrame: null,
+    finalYaw: null,
+    finalPitch: null,
     debugMarkerWorld: null,
     cameraNear: null,
     finalRenderDepth: null,
@@ -793,6 +807,12 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const getCurrentRenderMode = () => getTargetRenderMode(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
       const getCurrentSpriteConfig = () => spriteConfigForTarget(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
       const getCurrentGlbConfig = () => getTargetGlbConfig(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
+      const readAnimationDiagnostics = (glb = getCurrentGlbConfig()) => ({
+        animationStartFrame: glb?.animation ? readAnimationStartFrame(glb.animation) : null,
+        animationEndFrame: glb?.animation ? readAnimationEndFrame(glb.animation) : null,
+        finalYaw: frozenState.rotation.y,
+        finalPitch: frozenState.rotation.x,
+      });
 
       const cloneFrozenState = () => ({
         active: frozenState.active,
@@ -817,6 +837,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           position: { ...frozenState.position },
           rotation: { ...frozenState.rotation },
           scale: { ...frozenState.scale },
+          ...readAnimationDiagnostics(),
           ...readRenderDiagnostics('frozen-transform'),
         });
         return true;
@@ -983,6 +1004,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           visible: Boolean(frozenModel?.object3D?.visible),
           bounds: comp?.getBounds?.() || null,
           animations: comp?.getAnimationNames?.() || [],
+          meshCenterNdc: readMeshCenterProjection(),
+          ...readAnimationDiagnostics(),
         };
       };
 
@@ -1037,6 +1060,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           modelError: '',
           lastError: '',
           glbScale: glb.scale || null,
+          ...readAnimationDiagnostics(glb),
           lastEvent: `glb-preload:${idx}`,
         });
         return { idx, glb, modelAttr, modelSrc };
@@ -1053,9 +1077,9 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         frozenState.active = true;
         frozenState.contentMode = renderMode === 'gltf-only' ? null : (frozenState.contentMode || 'sprite');
         frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
-        frozenState.position = frozenState.position || { ...FROZEN_SPRITE_POSITION };
-        frozenState.rotation = frozenState.rotation || { ...FROZEN_SPRITE_ROTATION };
-        frozenState.scale = frozenState.scale || { ...FROZEN_SPRITE_SCALE };
+        frozenState.position = { ...FROZEN_SPRITE_POSITION };
+        frozenState.rotation = { ...FROZEN_SPRITE_ROTATION };
+        frozenState.scale = { ...FROZEN_SPRITE_SCALE };
         setLiveContentVisible(false);
         applyFrozenState();
         pushDiagnostics({
@@ -1084,26 +1108,40 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           return cloneFrozenState();
         }
 
-        comp.applyAnimationFrame?.(glb.animation?.initialFrame ?? glb.animation?.startFrame ?? 0, {
-          clips: glb.animation?.clips,
-          fps: glb.animation?.fps,
-        });
+        const animation = glb.animation || {};
+        const animationStartFrame = readAnimationStartFrame(animation);
+        const animationEndFrame = readAnimationEndFrame(animation);
+        const animationFrameOptions = {
+          clips: animation.clips,
+          fps: animation.fps,
+        };
+        comp.applyAnimationFrame?.(animationEndFrame ?? animationStartFrame, animationFrameOptions);
         frozenState.contentMode = 'gltf';
         activeFinalMode = 'gltf';
         applyFrozenState();
         frozenModel.setAttribute('visible', 'true');
         debugGlbMarker?.setAttribute('visible', 'true');
         configureDebugGlbMarker();
-        centerFrozenModelAtNdc(GLB_INITIAL_CENTER_NDC, { lastEvent: `glb-centered-before-show:${idx}` });
+        centerFrozenModelAtNdc(GLB_INITIAL_CENTER_NDC, { lastEvent: `glb-centered-final-frame:${idx}` });
+        comp.applyAnimationFrame?.(animationStartFrame, animationFrameOptions);
         pushRenderDiagnostics(`glb-before-show:${idx}`);
         await comp.show?.({ crossfadeMs: glb.transition?.crossfadeMs });
-        centerFrozenModelAtNdc(GLB_INITIAL_CENTER_NDC, { lastEvent: `glb-centered-after-show:${idx}` });
         pushRenderDiagnostics(`glb-after-show:${idx}`);
-        pushDiagnostics({ glbPhase: 'visible', frozenModelLoaded: true, modelReady: true, modelSrc, lastEvent: `glb-visible:${idx}` });
+        pushDiagnostics({
+          glbPhase: 'visible',
+          frozenModelLoaded: true,
+          modelReady: true,
+          modelSrc,
+          ...readAnimationDiagnostics(glb),
+          lastEvent: `glb-visible:${idx}`,
+        });
         await comp.playIntroThenIdle?.();
+        centerFrozenModelAtNdc(GLB_INITIAL_CENTER_NDC, { lastEvent: `glb-centered-after-end:${idx}` });
         const clipNames = comp.getAnimationNames?.() || [];
         pushDiagnostics({
           glbPhase: clipNames.length ? 'idle' : 'visible',
+          meshCenterNdc: readMeshCenterProjection(),
+          ...readAnimationDiagnostics(glb),
           lastEvent: clipNames.length ? `glb-idle:${idx}` : `glb-no-clips:${idx}`,
         });
 

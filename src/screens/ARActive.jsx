@@ -4,14 +4,17 @@ import { arAudio } from '../lib/arAudio.js';
 import { createARPhoto, createFramedARPhoto } from '../lib/arCapture.js';
 import { asset } from '../lib/assetUrl.js';
 import { useViewport } from '../lib/viewport.js';
-import { clampScaleFactor, pointerDistance } from '../ar/frozenControls.js';
+import { clampScaleFactor, normalizeAngleDelta, pointerAngle, pointerDistance } from '../ar/frozenControls.js';
 import { getARRuntime, isKivicubeRuntime } from '../ar/arRuntime.js';
 
 const FLASH_MS = 240;
 const PHOTO_FRAME_URL = asset('/assets/site-ui/photo-frame.svg');
+const TWO_FINGER_YAW_SENSITIVITY = 0.18;
+const TWO_FINGER_PITCH_SENSITIVITY = 0.14;
+const TWO_FINGER_TWIST_SENSITIVITY = 0.75;
 const GESTURE_HINTS = [
   { zh: '拖动移动', en: 'Drag to move' },
-  { zh: '捏合缩放', en: 'Pinch to scale' },
+  { zh: '双指旋转缩放', en: 'Two fingers rotate + scale' },
 ];
 
 function formatVector(value, digits = 2) {
@@ -38,6 +41,13 @@ function formatLayerInfo(value) {
   const canvas = value.canvas;
   const video = value.video;
   return `c${value.canvasCount || 0}:${canvas?.z || '-'} ${canvas?.width || 0}x${canvas?.height || 0} / v${value.videoCount || 0}:${video?.z || '-'} ${video?.width || 0}x${video?.height || 0}`;
+}
+
+function pointerCenter(a, b) {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  };
 }
 
 function readDebugFlag() {
@@ -72,7 +82,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [framedPhoto, setFramedPhoto] = React.useState(null);
   const [isGestureHintVisible, setIsGestureHintVisible] = React.useState(false);
   const pointersRef = React.useRef(new Map());
-  const gestureRef = React.useRef({ lastDistance: null, dragPointerId: null });
+  const gestureRef = React.useRef({ lastDistance: null, lastCenter: null, lastAngle: null, dragPointerId: null });
   const flashTimerRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
@@ -251,10 +261,14 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     const runtime = getARRuntime();
     if (points.length >= 2) {
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
+      gestureRef.current.lastCenter = pointerCenter(points[0], points[1]);
+      gestureRef.current.lastAngle = pointerAngle(points[0], points[1]);
       gestureRef.current.dragPointerId = null;
       runtime?.endFrozenDrag?.({ clampToViewport: false });
     } else {
       gestureRef.current.lastDistance = null;
+      gestureRef.current.lastCenter = null;
+      gestureRef.current.lastAngle = null;
       gestureRef.current.dragPointerId = event.pointerId;
       const state = runtime?.beginFrozenDrag?.({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY });
       if (state) setFrozenState(state);
@@ -272,17 +286,34 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
     if (points.length >= 2) {
       const distance = pointerDistance(points[0], points[1]);
+      const center = pointerCenter(points[0], points[1]);
+      const angle = pointerAngle(points[0], points[1]);
       const runtime = getARRuntime();
       let updatedState = null;
       if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
         updatedState = runtime?.scaleFrozenBy?.({ scaleFactor }) || updatedState;
       }
+      if (gestureRef.current.lastCenter) {
+        const dx = center.x - gestureRef.current.lastCenter.x;
+        const dy = center.y - gestureRef.current.lastCenter.y;
+        const twistDelta = gestureRef.current.lastAngle == null
+          ? 0
+          : normalizeAngleDelta(angle - gestureRef.current.lastAngle);
+        updatedState = runtime?.rotateFrozenBy?.({
+          yawDelta: (dx * TWO_FINGER_YAW_SENSITIVITY) + (twistDelta * TWO_FINGER_TWIST_SENSITIVITY),
+          pitchDelta: -dy * TWO_FINGER_PITCH_SENSITIVITY,
+        }) || updatedState;
+      }
       if (updatedState) setFrozenState(updatedState);
       gestureRef.current.lastDistance = distance;
+      gestureRef.current.lastCenter = center;
+      gestureRef.current.lastAngle = angle;
       gestureRef.current.dragPointerId = null;
     } else if (points.length === 1) {
       gestureRef.current.lastDistance = null;
+      gestureRef.current.lastCenter = null;
+      gestureRef.current.lastAngle = null;
       const runtime = getARRuntime();
       const moved = runtime?.dragFrozenToScreenPoint?.({
         pointerId: event.pointerId,
@@ -307,15 +338,21 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     }
     if (points.length >= 2) {
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
+      gestureRef.current.lastCenter = pointerCenter(points[0], points[1]);
+      gestureRef.current.lastAngle = pointerAngle(points[0], points[1]);
       gestureRef.current.dragPointerId = null;
     } else if (points.length === 1 && canEdit) {
       const [nextPointerId, point] = entries[0];
       gestureRef.current.lastDistance = null;
+      gestureRef.current.lastCenter = null;
+      gestureRef.current.lastAngle = null;
       gestureRef.current.dragPointerId = nextPointerId;
       const state = runtime?.beginFrozenDrag?.({ pointerId: nextPointerId, clientX: point.x, clientY: point.y });
       if (state) setFrozenState(state);
     } else {
       gestureRef.current.lastDistance = null;
+      gestureRef.current.lastCenter = null;
+      gestureRef.current.lastAngle = null;
       gestureRef.current.dragPointerId = null;
       if (points.length === 0 && canEdit) {
         setIsGestureHintVisible(false);
@@ -356,7 +393,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         <div
           data-interactive="true"
           data-ar-edit-surface="true"
-          aria-label="Drag to move EMO; pinch to scale"
+          aria-label="Drag to move EMO; use two fingers to rotate and scale"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -464,7 +501,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>phase: <b style={{ color: TOKENS.green }}>{arPhase}</b></div>
           <div>ar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
           <div>glb: <b style={{ color: TOKENS.green }}>{diagnostics?.glbPhase || '-'}</b> · mode {diagnostics?.contentMode || '-'}</div>
-          <div>gesture: drag proxy move + pinch scale</div>
+          <div>gesture: drag proxy move + two-finger rotate/scale</div>
           <div>activeTarget: {diagnostics?.activeTargetId || '-'}</div>
           <div>edit: <b style={{ color: frozenState?.active ? TOKENS.green : TOKENS.pinkDeep }}>{String(!!frozenState?.active)}</b></div>
           {frozenState && (
@@ -482,6 +519,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>glbNdc: {formatVector(diagnostics?.glbNdc, 2)}</div>
           <div>meshNdc: {formatVector(diagnostics?.meshCenterNdc, 2)}</div>
           <div>targetNdc: {formatVector(diagnostics?.glbCenterTargetNdc, 2)}</div>
+          <div>animFrames: {formatNumber(diagnostics?.animationStartFrame, 0)} to {formatNumber(diagnostics?.animationEndFrame, 0)}</div>
+          <div>yaw/pitch: {formatNumber(diagnostics?.finalYaw, 1)} / {formatNumber(diagnostics?.finalPitch, 1)}</div>
           <div>glbProj: {formatNumber(diagnostics?.glbProjectedSize?.width, 2)} x {formatNumber(diagnostics?.glbProjectedSize?.height, 2)}</div>
           <div>markerNdc: {formatVector(diagnostics?.markerNdc, 2)}</div>
           <div>marker: {formatVector(diagnostics?.debugMarkerWorld, 2)}</div>
