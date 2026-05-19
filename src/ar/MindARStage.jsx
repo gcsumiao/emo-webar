@@ -637,10 +637,18 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const readRenderDiagnostics = (lastEvent = 'render-diagnostics') => {
         const THREE = getThree();
         syncRenderMatrices();
+        const projectionDiagnostics = frozenState.active
+          ? {
+              glbNdc: projectedVector(frozenModel?.object3D),
+              meshCenterNdc: readMeshCenterProjection(),
+              glbProjectedSize: readMeshProjectedSize(),
+            }
+          : {};
         if (!isDebugMode) {
           return {
             cameraNear: readCameraNear(),
             finalRenderDepth: getFinalRenderDepth(),
+            ...projectionDiagnostics,
             lastEvent,
           };
         }
@@ -654,11 +662,9 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           cameraNear: readCameraNear(),
           finalRenderDepth: getFinalRenderDepth(),
           glbWorld,
-          glbNdc: projectedVector(frozenModel?.object3D),
+          ...projectionDiagnostics,
           glbCenterTargetNdc: { ...GLB_INITIAL_CENTER_NDC },
           markerNdc: projectedVector(debugGlbMarker?.object3D),
-          meshCenterNdc: readMeshCenterProjection(),
-          glbProjectedSize: readMeshProjectedSize(),
           debugMarkerWorld: markerWorld,
           layerInfo: readLayerInfo(),
           lastEvent,

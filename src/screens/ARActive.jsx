@@ -11,10 +11,14 @@ const FLASH_MS = 240;
 const PHOTO_FRAME_URL = asset('/assets/site-ui/photo-frame.svg');
 const SINGLE_FINGER_YAW_SENSITIVITY = 0.16;
 const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
-const GESTURE_HINTS = [
-  { zh: '单指移动/旋转', en: 'Drag to move + rotate' },
-  { zh: '双指缩放', en: 'Pinch to scale' },
-];
+const COACHMARK_MS = 1500;
+const TAP_REVEAL_MS = 2500;
+const CUE_IDLE = 'idle';
+const CUE_COACHMARK = 'coachmark';
+const CUE_REVEALED = 'revealed';
+const CUE_ROTATING = 'rotating';
+const CUE_SCALING = 'scaling';
+const CUE_HIDDEN = 'hidden';
 
 function formatVector(value, digits = 2) {
   if (!value) return '-';
@@ -50,6 +54,450 @@ function readDebugFlag() {
   }
 }
 
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) return min;
+  if (max < min) return (min + max) / 2;
+  return Math.min(max, Math.max(min, value));
+}
+
+function resolveInteractionAnchor(diagnostics, viewport, isLandscapePhone) {
+  const width = viewport.width || 390;
+  const height = viewport.height || 844;
+  const center = diagnostics?.meshCenterNdc || diagnostics?.glbNdc;
+  const rawX = Number(center?.x);
+  const rawY = Number(center?.y);
+  const fallbackY = height * (isLandscapePhone ? 0.5 : 0.46);
+  const centerX = Number.isFinite(rawX) ? ((rawX + 1) / 2) * width : width / 2;
+  const centerY = Number.isFinite(rawY) ? ((1 - rawY) / 2) * height : fallbackY;
+  const projected = diagnostics?.glbProjectedSize;
+  const projectedWidth = Number(projected?.width) * width / 2;
+  const projectedHeight = Number(projected?.height) * height / 2;
+  const projectedSize = Math.max(projectedWidth, projectedHeight);
+  const defaultSize = isLandscapePhone ? 142 : 190;
+  const cueSize = clampNumber(
+    projectedSize > 24 ? projectedSize : defaultSize,
+    isLandscapePhone ? 108 : 132,
+    isLandscapePhone ? 214 : 260
+  );
+  const minX = cueSize / 2 + 16;
+  const maxX = width - cueSize / 2 - 16;
+  const minY = cueSize / 2 + (isLandscapePhone ? 54 : 92);
+  const maxY = height - cueSize / 2 - (isLandscapePhone ? 86 : 154);
+
+  return {
+    x: clampNumber(centerX, minX, maxX),
+    y: clampNumber(centerY, minY, maxY),
+    size: cueSize,
+  };
+}
+
+function IconRotate360({ size = 18, color = '#fff', sw = 1.6 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <path d="M3.5 11a7.5 7.5 0 0 1 13-5.2M18.5 11a7.5 7.5 0 0 1-13 5.2" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <path d="M16.6 3.4v3h-3M5.4 18.6v-3h3" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconPinch({ size = 18, color = '#fff', sw = 1.6 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <path d="M4 9V4h5M18 13v5h-5" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.5 4.5l5 5M17.5 17.5l-5-5" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconExpand({ size = 18, color = '#fff', sw = 1.6 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <path d="M3 8V3h5M19 14v5h-5M14 3h5v5M8 19H3v-5" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function GestureTextChip({ icon, lang, zh, en, caption, style = {} }) {
+  const main = t(lang, zh, en);
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '7px 11px 7px 9px',
+        borderRadius: 999,
+        background: 'rgba(0,0,0,0.54)',
+        border: '0.5px solid rgba(255,255,255,0.16)',
+        color: '#fff',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        boxShadow: '0 6px 18px rgba(0,0,0,0.2)',
+        animation: 'ar-cue-pop 340ms cubic-bezier(.22,1,.36,1) both',
+        ...style,
+      }}
+    >
+      {icon}
+      <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+        <span
+          style={{
+            fontFamily: langFont(lang),
+            fontSize: 10.5,
+            fontWeight: 700,
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {main}
+        </span>
+        <span
+          style={{
+            fontFamily: FONT_MONO,
+            fontSize: 7.5,
+            fontWeight: 800,
+            color: 'rgba(255,255,255,0.62)',
+            letterSpacing: 0,
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {caption}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function GestureHintRail({ lang, isLandscapePhone }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: '50%',
+        bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 86 : 126}px)`,
+        transform: 'translateX(-50%)',
+        width: 'fit-content',
+        maxWidth: 'min(82vw, 360px)',
+        minHeight: 36,
+        padding: '7px 12px 7px 10px',
+        borderRadius: 999,
+        background: 'rgba(255,255,255,0.16)',
+        border: '0.5px solid rgba(255,255,255,0.22)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        color: '#fff',
+        boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+      }}
+    >
+      <div
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: 999,
+          background: 'rgba(255,255,255,0.18)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flex: '0 0 auto',
+        }}
+      >
+        <IconExpand size={12} />
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 7,
+          flexWrap: 'wrap',
+          fontFamily: langFont(lang),
+          fontSize: 11,
+          fontWeight: 700,
+          lineHeight: 1.15,
+          textShadow: '0 1px 3px rgba(0,0,0,0.36)',
+          minWidth: 0,
+        }}
+      >
+        <span>{t(lang, '点击一毛开始互动', 'Tap EMO to play')}</span>
+        <span
+          style={{
+            fontFamily: FONT_MONO,
+            fontSize: 8.5,
+            fontWeight: 700,
+            opacity: 0.68,
+            letterSpacing: 0,
+          }}
+        >
+          TAP TO PLAY
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function InteractionCueLayer({ cue, anchor, lang, isLandscapePhone }) {
+  if (cue === CUE_HIDDEN) return null;
+  const isCoachmark = cue === CUE_COACHMARK;
+  const isIdle = cue === CUE_IDLE;
+  const isRevealed = cue === CUE_REVEALED;
+  const isRotating = cue === CUE_ROTATING;
+  const isScaling = cue === CUE_SCALING;
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 16,
+        pointerEvents: 'none',
+      }}
+    >
+      <style>{`
+        @keyframes ar-cue-breathe {
+          0%, 100% { opacity: 0.46; transform: scale(0.98); }
+          50% { opacity: 0.9; transform: scale(1.035); }
+        }
+        @keyframes ar-cue-pop {
+          0% { opacity: 0; transform: scale(0.82) translateY(8px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes ar-cue-orbit {
+          to { transform: rotate(360deg); }
+        }
+        @keyframes ar-cue-fade {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+      `}</style>
+
+      {isCoachmark && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(circle at 50% 45%, rgba(0,0,0,0.04) 0%, rgba(0,0,0,0.22) 72%)',
+            animation: 'ar-cue-fade 260ms ease-out both',
+          }}
+        />
+      )}
+
+      <div
+        style={{
+          position: 'absolute',
+          left: anchor.x,
+          top: anchor.y,
+          width: anchor.size,
+          height: anchor.size,
+          transform: 'translate(-50%, -50%)',
+        }}
+      >
+        {(isCoachmark || isIdle) && (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                inset: '-6%',
+                borderRadius: '50%',
+                border: `1.5px dashed ${isCoachmark ? 'rgba(255,255,255,0.72)' : 'rgba(255,255,255,0.52)'}`,
+                boxShadow: isCoachmark ? `0 0 24px ${TOKENS.pink}44` : 'none',
+                animation: 'ar-cue-breathe 2.4s ease-in-out infinite',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                top: 2,
+                right: 5,
+                transform: 'translate(28%, -20%)',
+                width: 28,
+                height: 28,
+                borderRadius: 999,
+                background: 'rgba(0,0,0,0.48)',
+                border: '0.5px solid rgba(255,255,255,0.18)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 6px 16px rgba(0,0,0,0.22)',
+              }}
+            >
+              <IconRotate360 size={14} />
+            </div>
+          </>
+        )}
+
+        {isRotating && (
+          <>
+            <svg
+              viewBox="0 0 120 120"
+              style={{
+                position: 'absolute',
+                inset: '-13%',
+                width: '126%',
+                height: '126%',
+                overflow: 'visible',
+              }}
+            >
+              <circle cx="60" cy="60" r="52" stroke="rgba(255,255,255,0.18)" strokeWidth="1" fill="none" strokeDasharray="3 6" />
+              <g style={{ transformOrigin: '60px 60px', animation: 'ar-cue-orbit 1.2s linear infinite' }}>
+                <circle cx="60" cy="60" r="52" stroke={TOKENS.pink} strokeWidth="2.2" fill="none" strokeLinecap="round" strokeDasharray="74 253" />
+              </g>
+            </svg>
+            <div
+              style={{
+                position: 'absolute',
+                left: -13,
+                top: '52%',
+                width: 40,
+                height: 40,
+                borderRadius: 999,
+                background: 'radial-gradient(closest-side, rgba(255,255,255,0.56), rgba(255,255,255,0))',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: 2,
+                top: '56%',
+                width: 14,
+                height: 14,
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.92)',
+                boxShadow: '0 0 0 5px rgba(255,255,255,0.18)',
+              }}
+            />
+            <svg style={{ position: 'absolute', left: 20, top: '47%', width: 64, height: 32 }} viewBox="0 0 64 32">
+              <path d="M 2 17 Q 28 2, 56 16" stroke={TOKENS.pink} strokeWidth="2.2" fill="none" strokeLinecap="round" />
+              <path d="M 51 10 L 59 16 L 51 22" stroke={TOKENS.pink} strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </>
+        )}
+
+        {isScaling && (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                inset: '-8%',
+                borderRadius: '50%',
+                border: `1px solid ${TOKENS.pink}88`,
+                boxShadow: `0 0 26px ${TOKENS.pink}33`,
+              }}
+            />
+            {[
+              { x: -0.38, y: -0.38, rot: 0 },
+              { x: 0.38, y: -0.38, rot: 90 },
+              { x: 0.38, y: 0.38, rot: 180 },
+              { x: -0.38, y: 0.38, rot: 270 },
+            ].map((point, index) => (
+              <svg
+                key={index}
+                width="24"
+                height="24"
+                viewBox="0 0 22 22"
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  transform: `translate(${anchor.size * point.x - 12}px, ${anchor.size * point.y - 12}px) rotate(${point.rot}deg)`,
+                }}
+              >
+                <path d="M2 8V2h6M8 2L2 8" stroke={TOKENS.pink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              </svg>
+            ))}
+            <div
+              style={{
+                position: 'absolute',
+                left: -26,
+                top: -24,
+                width: 16,
+                height: 16,
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.92)',
+                boxShadow: '0 0 0 6px rgba(255,255,255,0.18)',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                right: -26,
+                bottom: -24,
+                width: 16,
+                height: 16,
+                borderRadius: 999,
+                background: 'rgba(255,255,255,0.92)',
+                boxShadow: '0 0 0 6px rgba(255,255,255,0.18)',
+              }}
+            />
+          </>
+        )}
+      </div>
+
+      {isRevealed && (
+        <div
+          style={{
+            position: 'absolute',
+            right: 'calc(var(--safe-right) + 16px)',
+            bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 76 : 126}px)`,
+            maxWidth: 'calc(100vw - 32px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            flexWrap: 'wrap',
+            gap: 6,
+            animation: 'ar-cue-pop 340ms cubic-bezier(.22,1,.36,1) both',
+          }}
+        >
+          <GestureTextChip
+            icon={<IconRotate360 size={13} />}
+            lang={lang}
+            zh="拖动旋转"
+            en="Drag to rotate"
+            caption="DRAG"
+            style={{ position: 'relative' }}
+          />
+          <GestureTextChip
+            icon={<IconPinch size={13} />}
+            lang={lang}
+            zh="捏合缩放"
+            en="Pinch to scale"
+            caption="PINCH"
+            style={{ position: 'relative', animationDelay: '90ms' }}
+          />
+        </div>
+      )}
+
+      {(isCoachmark || isIdle) && (
+        <GestureHintRail lang={lang} isLandscapePhone={isLandscapePhone} />
+      )}
+
+      {isCoachmark && (
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              right: 'calc(var(--safe-right) + 16px)',
+              top: 'calc(var(--safe-top) + 66px)',
+              fontFamily: FONT_MONO,
+              fontSize: 8.5,
+              color: 'rgba(255,255,255,0.62)',
+              letterSpacing: 0,
+              textShadow: '0 1px 3px rgba(0,0,0,0.34)',
+            }}
+          >
+            1.5s · TAP TO SKIP
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 async function dataUrlToPhoto(dataUrl) {
   const res = await fetch(dataUrl);
   const blob = await res.blob();
@@ -72,12 +520,59 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [frozenState, setFrozenState] = React.useState(() => getARRuntime()?.getFrozenState?.() || null);
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
   const [framedPhoto, setFramedPhoto] = React.useState(null);
-  const [isGestureHintVisible, setIsGestureHintVisible] = React.useState(false);
+  const [interactionCue, setInteractionCue] = React.useState(CUE_HIDDEN);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({ lastDistance: null, dragPointerId: null });
   const flashTimerRef = React.useRef(null);
+  const cueTimerRef = React.useRef(null);
+  const interactionCueRef = React.useRef(CUE_HIDDEN);
+  const hasShownCoachmarkRef = React.useRef(false);
+  const hasCompletedGestureRef = React.useRef(false);
+  const gestureHadMotionRef = React.useRef(false);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
+  const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
+  const interactionAnchor = React.useMemo(
+    () => resolveInteractionAnchor(diagnostics, viewport, isLandscapePhone),
+    [diagnostics, isLandscapePhone, viewport]
+  );
+  const isActiveGestureCue = interactionCue === CUE_ROTATING || interactionCue === CUE_SCALING;
+
+  const clearCueTimer = React.useCallback(() => {
+    window.clearTimeout(cueTimerRef.current);
+    cueTimerRef.current = null;
+  }, []);
+
+  const setCue = React.useCallback((nextCue) => {
+    interactionCueRef.current = nextCue;
+    setInteractionCue(nextCue);
+  }, []);
+
+  const scheduleCue = React.useCallback((nextCue, delayMs) => {
+    clearCueTimer();
+    cueTimerRef.current = window.setTimeout(() => {
+      if (!hasCompletedGestureRef.current) setCue(nextCue);
+    }, delayMs);
+  }, [clearCueTimer, setCue]);
+
+  const showTapReveal = React.useCallback(() => {
+    if (hasCompletedGestureRef.current) return;
+    setCue(CUE_REVEALED);
+    scheduleCue(CUE_IDLE, TAP_REVEAL_MS);
+  }, [scheduleCue, setCue]);
+
+  const hideInteractionCue = React.useCallback(() => {
+    clearCueTimer();
+    setCue(CUE_HIDDEN);
+  }, [clearCueTimer, setCue]);
+
+  const markGestureCompleted = React.useCallback(() => {
+    if (!hasCompletedGestureRef.current) {
+      hasCompletedGestureRef.current = true;
+    }
+    gestureHadMotionRef.current = true;
+    clearCueTimer();
+  }, [clearCueTimer]);
 
   // Drive the scanning-success -> glb-entering -> final-live transition on mount.
   React.useEffect(() => {
@@ -125,10 +620,30 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, [capturedPhoto]);
 
   React.useEffect(() => {
-    if (arPhase === 'final-live') {
-      setIsGestureHintVisible(false);
+    if (arPhase !== 'final-live') {
+      hideInteractionCue();
+      return;
     }
-  }, [arPhase]);
+    if (hasCompletedGestureRef.current) {
+      setCue(CUE_HIDDEN);
+      return;
+    }
+    if (!hasShownCoachmarkRef.current) {
+      hasShownCoachmarkRef.current = true;
+      setCue(CUE_COACHMARK);
+      scheduleCue(CUE_IDLE, COACHMARK_MS);
+      return;
+    }
+    setCue(CUE_IDLE);
+  }, [arPhase, hideInteractionCue, scheduleCue, setCue]);
+
+  React.useEffect(() => {
+    interactionCueRef.current = interactionCue;
+  }, [interactionCue]);
+
+  React.useEffect(() => () => {
+    clearCueTimer();
+  }, [clearCueTimer]);
 
   // Keep the AR scene alive after image tracking is lost; the recognized image is only the trigger.
   React.useEffect(() => {
@@ -142,7 +657,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const isCapturing = arPhase === 'capturing-frame';
   const isLive = arPhase === 'final-live' || isCaptured;
   const canEdit = arPhase === 'final-live';
-  const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
 
   const clearCapturedPhoto = React.useCallback(() => {
     setCapturedPhoto((current) => {
@@ -153,10 +667,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       if (current?.url) URL.revokeObjectURL(current.url);
       return null;
     });
-  }, []);
-
-  const dismissGestureHint = React.useCallback(() => {
-    setIsGestureHintVisible(false);
   }, []);
 
   const captureFrame = React.useCallback(async () => {
@@ -170,7 +680,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     }
     if (arPhase !== 'final-live') return;
 
-    dismissGestureHint();
+    hideInteractionCue();
     setArPhase('capturing-frame');
     try {
       arAudio.playShutter();
@@ -194,7 +704,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       console.error('[EMO-AR] capture failed', error);
       setArPhase('final-live');
     }
-  }, [arPhase, clearCapturedPhoto, dismissGestureHint]);
+  }, [arPhase, clearCapturedPhoto, hideInteractionCue]);
 
   const exitAR = React.useCallback(async () => {
     window.clearTimeout(flashTimerRef.current);
@@ -255,22 +765,25 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const handlePointerDown = React.useCallback((event) => {
     if (!canEdit) return;
     event.preventDefault();
-    setIsGestureHintVisible(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const points = Array.from(pointersRef.current.values());
     const runtime = getARRuntime();
     if (points.length >= 2) {
+      clearCueTimer();
+      setCue(CUE_SCALING);
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
       gestureRef.current.dragPointerId = null;
       runtime?.endFrozenDrag?.({ clampToViewport: false });
     } else {
+      gestureHadMotionRef.current = false;
+      showTapReveal();
       gestureRef.current.lastDistance = null;
       gestureRef.current.dragPointerId = event.pointerId;
       const state = runtime?.beginFrozenDrag?.({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY });
       if (state) setFrozenState(state);
     }
-  }, [canEdit]);
+  }, [canEdit, clearCueTimer, setCue, showTapReveal]);
 
   const handlePointerMove = React.useCallback((event) => {
     if (!canEdit) return;
@@ -282,10 +795,14 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     const points = Array.from(pointersRef.current.values());
 
     if (points.length >= 2) {
+      setCue(CUE_SCALING);
       const distance = pointerDistance(points[0], points[1]);
       const runtime = getARRuntime();
       let updatedState = null;
       if (gestureRef.current.lastDistance) {
+        if (Math.abs(distance - gestureRef.current.lastDistance) > 0.4) {
+          markGestureCompleted();
+        }
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
         updatedState = runtime?.scaleFrozenBy?.({ scaleFactor }) || updatedState;
       }
@@ -304,6 +821,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         clampToViewport: false,
       }) || null;
       if (dx || dy) {
+        if (Math.hypot(dx, dy) > 0.4) {
+          setCue(CUE_ROTATING);
+          markGestureCompleted();
+        }
         updatedState = runtime?.rotateFrozenBy?.({
           yawDelta: dx * SINGLE_FINGER_YAW_SENSITIVITY,
           pitchDelta: dy * SINGLE_FINGER_PITCH_SENSITIVITY,
@@ -311,7 +832,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       }
       if (updatedState) setFrozenState(updatedState);
     }
-  }, [canEdit]);
+  }, [canEdit, markGestureCompleted, setCue]);
 
   const handlePointerUp = React.useCallback((event) => {
     const wasDragPointer = gestureRef.current.dragPointerId === event.pointerId;
@@ -325,6 +846,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       if (state) setFrozenState(state);
     }
     if (points.length >= 2) {
+      setCue(CUE_SCALING);
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
       gestureRef.current.dragPointerId = null;
     } else if (points.length === 1 && canEdit) {
@@ -337,10 +859,14 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       gestureRef.current.lastDistance = null;
       gestureRef.current.dragPointerId = null;
       if (points.length === 0 && canEdit) {
-        setIsGestureHintVisible(false);
+        if (hasCompletedGestureRef.current || gestureHadMotionRef.current) {
+          hideInteractionCue();
+        } else if (interactionCueRef.current !== CUE_REVEALED) {
+          setCue(CUE_IDLE);
+        }
       }
     }
-  }, [canEdit]);
+  }, [canEdit, hideInteractionCue, setCue]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -394,39 +920,13 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         />
       )}
 
-      {canEdit && isGestureHintVisible && (
-        <div
-          aria-live="polite"
-          style={{
-            position: 'absolute',
-            left: '50%',
-            bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 88 : 166}px)`,
-            transform: 'translateX(-50%)',
-            zIndex: 16,
-            maxWidth: 'min(82vw, 360px)',
-            padding: '10px 14px',
-            borderRadius: 16,
-            background: 'rgba(0,0,0,0.44)',
-            border: '0.5px solid rgba(255,255,255,0.18)',
-            backdropFilter: 'blur(14px)',
-            WebkitBackdropFilter: 'blur(14px)',
-            color: '#fff',
-            fontFamily: langFont(lang),
-            fontSize: 11.5,
-            fontWeight: 700,
-            lineHeight: 1.25,
-            textAlign: 'center',
-            pointerEvents: 'none',
-            boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 3,
-          }}
-        >
-          {GESTURE_HINTS.map((hint) => (
-            <div key={hint.zh}>{t(lang, hint.zh, hint.en)}</div>
-          ))}
-        </div>
+      {canEdit && !isCaptured && !isCapturing && (
+        <InteractionCueLayer
+          cue={interactionCue}
+          anchor={interactionAnchor}
+          lang={lang}
+          isLandscapePhone={isLandscapePhone}
+        />
       )}
 
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLandscapePhone ? 8 : 14, pointerEvents: 'none', zIndex: 12 }}>
@@ -440,7 +940,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             <button
               type="button"
               onClick={captureFrame}
-              onPointerDown={dismissGestureHint}
+              onPointerDown={hideInteractionCue}
               disabled={!isLive || isCapturing}
               style={{
                 pointerEvents: 'auto',
@@ -451,7 +951,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
                 background: 'rgba(255,255,255,0.18)',
                 cursor: isLive && !isCapturing ? 'pointer' : 'default',
                 boxShadow: '0 0 0 3px rgba(255,255,255,0.24), 0 10px 28px rgba(0,0,0,0.42)',
-                opacity: isLive && !isCapturing ? 1 : 0.55,
+                opacity: isActiveGestureCue ? 0.58 : isLive && !isCapturing ? 1 : 0.55,
+                transform: `scale(${isActiveGestureCue ? 0.92 : 1})`,
+                transition: 'transform 220ms cubic-bezier(.22,1,.36,1), opacity 220ms ease',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
