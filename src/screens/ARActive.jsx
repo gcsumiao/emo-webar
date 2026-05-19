@@ -184,7 +184,7 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
         onPointerDown={(event) => {
           event.stopPropagation();
         }}
-        aria-label={t(lang, '一键还原', 'Tap to reset')}
+        aria-label={t(lang, '一键还原', 'Reset')}
         style={{
           width: isLandscapePhone ? 54 : 68,
           height: isLandscapePhone ? 54 : 68,
@@ -215,7 +215,7 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
           whiteSpace: 'nowrap',
         }}
       >
-        {t(lang, '一键还原', 'TAP TO RESET')}
+        {t(lang, '一键还原', 'Reset')}
       </div>
     </div>
   );
@@ -376,6 +376,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [framedPhoto, setFramedPhoto] = React.useState(null);
   const [interactionCue, setInteractionCue] = React.useState(CUE_HIDDEN);
   const [isInteracting, setIsInteracting] = React.useState(false);
+  const [hasInteractedOnce, setHasInteractedOnce] = React.useState(false);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({
     mode: 'idle',
@@ -404,6 +405,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   const markGlbInteracted = React.useCallback(() => {
     setIsInteracting(true);
+    setHasInteractedOnce(true);
   }, []);
 
   const endGlbInteraction = React.useCallback(() => {
@@ -501,13 +503,17 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   React.useEffect(() => {
     if (arPhase === 'final-live') {
-      setCue(isInteracting ? CUE_GESTURES : CUE_TAP);
+      if (isInteracting) {
+        setCue(CUE_GESTURES);
+      } else {
+        setCue(hasInteractedOnce ? CUE_HIDDEN : CUE_TAP);
+      }
       return;
     }
     clearLongPressTimer();
     setIsInteracting(false);
     setCue(CUE_HIDDEN);
-  }, [arPhase, clearLongPressTimer, isInteracting, setCue]);
+  }, [arPhase, clearLongPressTimer, hasInteractedOnce, isInteracting, setCue]);
 
   // Keep the AR scene alive after image tracking is lost; the recognized image is only the trigger.
   React.useEffect(() => {
