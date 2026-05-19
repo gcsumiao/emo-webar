@@ -164,16 +164,16 @@ function GestureTextChip({ icon, lang, zh, en, style = {} }) {
 }
 
 function ResetControl({ lang, isLandscapePhone, onReset }) {
+  const controlSize = isLandscapePhone ? 54 : 68;
+
   return (
     <div
       style={{
         position: 'absolute',
         right: 'calc(var(--safe-right) + 20px)',
         bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: isLandscapePhone ? 6 : 8,
+        width: controlSize,
+        height: controlSize,
         pointerEvents: 'auto',
         zIndex: 13,
       }}
@@ -186,8 +186,8 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
         }}
         aria-label={t(lang, '一键还原', 'Reset')}
         style={{
-          width: isLandscapePhone ? 54 : 68,
-          height: isLandscapePhone ? 54 : 68,
+          width: controlSize,
+          height: controlSize,
           borderRadius: 999,
           border: '0.5px solid rgba(255,255,255,0.14)',
           background: 'rgba(48,48,50,0.78)',
@@ -205,6 +205,10 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
       </button>
       <div
         style={{
+          position: 'absolute',
+          top: `calc(100% + ${isLandscapePhone ? 6 : 8}px)`,
+          left: '50%',
+          transform: 'translateX(-50%)',
           fontFamily: lang === 'en' ? FONT_MONO : langFont(lang),
           fontSize: lang === 'en' ? 9.5 : 11,
           fontWeight: lang === 'en' ? 800 : 700,
