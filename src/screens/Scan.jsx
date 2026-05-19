@@ -14,6 +14,7 @@ const SCAN_FRAME_BOUNDS = {
   viewBoxWidth: 1080,
   viewBoxHeight: 1920,
 };
+const SCAN_WINDOW_HORIZONTAL_PADDING_RATIO = 0.12;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -38,10 +39,11 @@ function getScanFrameMetrics(size) {
 
 function getScanWindowRect(cx, cy, size) {
   const { outlineWidth, outlineHeight } = getScanFrameMetrics(size);
+  const horizontalPadding = outlineWidth * SCAN_WINDOW_HORIZONTAL_PADDING_RATIO;
   return {
-    left: cx - outlineWidth / 2,
+    left: cx - outlineWidth / 2 - horizontalPadding,
     top: cy - outlineHeight / 2,
-    width: outlineWidth,
+    width: outlineWidth + horizontalPadding * 2,
     height: outlineHeight,
   };
 }
