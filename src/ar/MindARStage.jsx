@@ -753,9 +753,14 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         startPosition: null,
       };
       let glbScaleSafetyLimit = Infinity;
+      let initialGlbFrozenState = null;
 
       const resetGlbScaleSafetyLimit = () => {
         glbScaleSafetyLimit = Infinity;
+      };
+
+      const clearInitialGlbFrozenState = () => {
+        initialGlbFrozenState = null;
       };
 
       const rememberGlbScaleSafetyLimit = (scale) => {
@@ -969,6 +974,12 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         scale: { ...frozenState.scale },
       });
 
+      const rememberInitialGlbFrozenState = () => {
+        initialGlbFrozenState = frozenState.active && frozenState.contentMode === 'gltf'
+          ? cloneFrozenState()
+          : null;
+      };
+
       const applyFrozenState = () => {
         if (!frozenObject?.object3D) return false;
         const pitchRange = frozenState.contentMode === 'gltf'
@@ -1130,6 +1141,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         debugGlbMarker?.setAttribute('visible', 'false');
         resetGlbPivotTransform();
         resetGlbScaleSafetyLimit();
+        clearInitialGlbFrozenState();
         activeFinalMode = activeFinalMode === 'gltf' ? null : activeFinalMode;
         pushDiagnostics({ glbPhase: 'hidden', lastEvent: 'glb-hidden' });
       };
@@ -1228,6 +1240,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         if (!configured) return cloneFrozenState();
         const { glb, modelSrc } = configured;
 
+        clearInitialGlbFrozenState();
         frozenState.active = true;
         frozenState.contentMode = renderMode === 'gltf-only' ? null : (frozenState.contentMode || 'sprite');
         frozenState.sourceTarget = sourceTarget ? cloneTarget(sourceTarget) : null;
@@ -1295,6 +1308,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         refreshGlbInteractionPivot();
         applyFrozenState();
         centerFrozenModelAtNdc(GLB_INITIAL_CENTER_NDC, { lastEvent: `glb-centered-after-end:${idx}` });
+        rememberInitialGlbFrozenState();
         const clipNames = comp.getAnimationNames?.() || [];
         pushDiagnostics({
           glbPhase: clipNames.length ? 'idle' : 'visible',
@@ -1533,6 +1547,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         debugGlbMarker?.setAttribute('visible', 'false');
         resetGlbPivotTransform();
         resetGlbScaleSafetyLimit();
+        clearInitialGlbFrozenState();
         applyFrozenState();
         return cloneFrozenState();
       };
@@ -1768,6 +1783,27 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return cloneFrozenState();
       };
 
+      const resetFrozenTransform = () => {
+        if (!initialGlbFrozenState || !frozenState.active || frozenState.contentMode !== 'gltf') {
+          return cloneFrozenState();
+        }
+        dragProxyState.active = false;
+        dragProxyState.pointerId = null;
+        dragProxyState.plane = null;
+        dragProxyState.startPoint = null;
+        dragProxyState.startPosition = null;
+        frozenState.active = initialGlbFrozenState.active;
+        frozenState.contentMode = initialGlbFrozenState.contentMode;
+        frozenState.sourceTarget = initialGlbFrozenState.sourceTarget ? cloneTarget(initialGlbFrozenState.sourceTarget) : null;
+        frozenState.position = { ...initialGlbFrozenState.position };
+        frozenState.rotation = { ...initialGlbFrozenState.rotation };
+        frozenState.scale = { ...initialGlbFrozenState.scale };
+        resetGlbScaleSafetyLimit();
+        applyFrozenState();
+        pushDiagnostics({ lastEvent: 'frozen-reset' });
+        return cloneFrozenState();
+      };
+
       const setFrozenTransform = (transform = {}) => {
         if (!frozenState.active) return cloneFrozenState();
         if (transform.position) frozenState.position = parseVector(transform.position, frozenState.position);
@@ -1941,6 +1977,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         playGlbIdle,
         restartScan,
         setFrozenTransform,
+        resetFrozenTransform,
         getFrozenState: cloneFrozenState,
         beginFrozenDrag,
         dragFrozenToScreenPoint,

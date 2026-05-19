@@ -63,6 +63,7 @@ Runtime state is exposed through `window.__mindar`:
 - `beginFrozenDrag({ pointerId, clientX, clientY })`, `dragFrozenToScreenPoint(...)`, and `endFrozenDrag({ clampToViewport })` move a transparent drag proxy on a fixed camera-depth plane, then sync the frozen object to it.
 - `rotateFrozenBy({ yawDelta, pitchDelta })` rotates the frozen parent object for 360-degree GLB inspection without touching animated mesh internals.
 - `scaleFrozenBy({ scaleFactor })` scales the frozen object and clamps it inside the visible AR edit area.
+- `resetFrozenTransform()` restores the editable final GLB to the transform captured when the final animation frame first became live.
 - `getFrozenState()` returns the current frozen transform and source target.
 
 The scan and AR screens currently treat any configured target as an EMO hit. Spatial AR content lives under the MindAR anchor, so it follows the detected image's position, rotation, and scale. MindAR supports multiple targets in one compiled `.mind` pack; multiple packs require a scene selection step through `switchScene(sceneId)` or `applyRecognitionResult()`.
@@ -71,10 +72,18 @@ The scan and AR screens currently treat any configured target as an EMO hit. Spa
 
 After scan success, Step 06 shows the configured animated GLB inside `#frozen-ar-object`. The frozen object remains editable even if the physical target moves out of view.
 
-Live final mode uses no persistent gesture icons or mode switch. Small staged toast hints explain the direct gestures the first time the model becomes editable:
+Live final mode uses no mode switch. When the GLB reaches its final animation frame and becomes editable, the UI shows a small dashed-arrow prompt near the model:
+
+- **Tap prompt**: `tap me` in English mode or `点我` in Chinese mode. The prompt hides after the first touch on the editable GLB surface.
+
+After that first touch, two white gesture pills remain visible during the editable final AR state:
 
 - **Move / rotate**: drag the middle camera area with one finger. The pointer moves a transparent proxy object, the animated GLB parent follows it, horizontal drag yaws the model through 360 degrees, upward drag reveals the GLB bottom, and downward drag reveals the GLB top.
 - **Scale**: pinch with two fingers. Two-finger gestures do not rotate or translate the model.
+
+The gesture pills are language-specific: English mode shows only `Drag · 360°` and `Two-finger pinch`; Chinese mode shows only `拖动 · 360°` and `双指 · 缩放`. The editable final AR state intentionally avoids the older GLB outer circle, rotating arrows, scaling corner marks, and white dot guide elements.
+
+A reset control sits beside the shutter in editable final mode. It shows `TAP TO RESET` in English mode or `一键还原` in Chinese mode, and calls `resetFrozenTransform()` to restore the GLB to the final-frame transform captured before user drag, rotation, or scale gestures.
 
 When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 
