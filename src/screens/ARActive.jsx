@@ -1079,7 +1079,7 @@ function CapturingOverlay({ backdropUrl, lang }) {
 function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, framedPhotoWidth, framedPhotoHeight, lang, onHome, onRetake, onShare }) {
   const aspectRatio = framedPhotoWidth && framedPhotoHeight
     ? `${framedPhotoWidth} / ${framedPhotoHeight}`
-    : '1080 / 1920';
+    : '1080 / 2200';
   return (
     <div
       data-interactive="true"

@@ -119,19 +119,26 @@ export async function createFramedARPhoto(photo, frameUrl = null) {
     frameUrl ? loadImage(frameUrl).catch(() => null) : Promise.resolve(null),
   ]);
 
-  const width = photoImage.naturalWidth || photo.width || 1080;
-  const height = photoImage.naturalHeight || photo.height || 1920;
+  const photoWidth = photoImage.naturalWidth || photo.width || 1080;
+  const photoHeight = photoImage.naturalHeight || photo.height || 1920;
+  const canvasWidth = photoWidth;
+  const canvasHeight = sourceReady(frameImage) && frameImage.naturalWidth > 0
+    ? Math.round(photoWidth * (frameImage.naturalHeight / frameImage.naturalWidth))
+    : photoHeight;
+
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) throw new Error('Canvas 2D context is unavailable.');
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  drawCover(ctx, photoImage, 0, 0, width, height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  drawCover(ctx, photoImage, 0, 0, photoWidth, photoHeight);
   if (sourceReady(frameImage)) {
-    ctx.drawImage(frameImage, 0, 0, width, height);
+    ctx.drawImage(frameImage, 0, 0, canvasWidth, canvasHeight);
   }
 
   return canvasToPhoto(canvas, 'emo-ar-framed', 'framed');
