@@ -20,10 +20,15 @@ body,
   color: var(--cream);
   font-family: "Gantari", "Source Han Sans CN", "Noto Sans SC", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -33,7 +38,9 @@ button {
 
 img {
   user-select: none;
+  -webkit-user-select: none;
   -webkit-user-drag: none;
+  -webkit-touch-callout: none;
 }
 
 .app-shell {
@@ -71,6 +78,9 @@ video[playsinline] {
   width: 100vw !important;
   height: 100dvh !important;
   object-fit: cover !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 
 .ar-layer canvas,
@@ -87,6 +97,9 @@ canvas.a-canvas {
   display: block !important;
   pointer-events: none !important;
   background: transparent !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 
 .ui-layer {
@@ -94,11 +107,23 @@ canvas.a-canvas {
   inset: 0;
   z-index: 10;
   pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .ui-layer button,
 .ui-layer [data-interactive="true"] {
   pointer-events: auto;
+}
+
+[data-ar-edit-surface="true"],
+[data-ar-gesture-ui="true"] {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .screen-container {

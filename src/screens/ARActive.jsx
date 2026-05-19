@@ -286,11 +286,15 @@ function InteractionCueLayer({ cue, anchor, lang, isLandscapePhone }) {
   return (
     <div
       aria-hidden="true"
+      data-ar-gesture-ui="true"
       style={{
         position: 'absolute',
         inset: 0,
         zIndex: 16,
         pointerEvents: 'none',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
       }}
     >
       <style>{`
@@ -532,6 +536,46 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const isLive = arPhase === 'final-live' || isCaptured;
   const canEdit = arPhase === 'final-live';
   const shouldShowInteractionCue = !isCaptured && !isCapturing && canEdit;
+
+  const isArNativeSelectionTarget = React.useCallback((target) => {
+    if (typeof Element === 'undefined' || !(target instanceof Element)) return false;
+    if (target.closest('button, a, input, textarea, select, [contenteditable="true"], [data-allow-native-callout="true"]')) {
+      return false;
+    }
+    return Boolean(target.closest('[data-ar-edit-surface="true"], [data-ar-gesture-ui="true"], .ar-layer'));
+  }, []);
+
+  const clearArSelection = React.useCallback(() => {
+    const selection = document.getSelection?.();
+    if (!selection?.rangeCount) return;
+    const anchorNode = selection.anchorNode;
+    const anchorElement = anchorNode?.nodeType === 1 ? anchorNode : anchorNode?.parentElement;
+    if (!anchorElement || isArNativeSelectionTarget(anchorElement)) {
+      selection.removeAllRanges();
+    }
+  }, [isArNativeSelectionTarget]);
+
+  const preventArNativeSelection = React.useCallback((event) => {
+    if (!isArNativeSelectionTarget(event.target)) return;
+    event.preventDefault();
+    clearArSelection();
+  }, [clearArSelection, isArNativeSelectionTarget]);
+
+  const preventEditSurfaceTouchDefault = React.useCallback((event) => {
+    if (isArNativeSelectionTarget(event.target)) event.preventDefault();
+  }, [isArNativeSelectionTarget]);
+
+  React.useEffect(() => {
+    if (!canEdit) return undefined;
+    document.addEventListener('contextmenu', preventArNativeSelection, true);
+    document.addEventListener('selectstart', preventArNativeSelection, true);
+    document.addEventListener('selectionchange', clearArSelection, true);
+    return () => {
+      document.removeEventListener('contextmenu', preventArNativeSelection, true);
+      document.removeEventListener('selectstart', preventArNativeSelection, true);
+      document.removeEventListener('selectionchange', clearArSelection, true);
+    };
+  }, [canEdit, clearArSelection, preventArNativeSelection]);
 
   const clearCapturedPhoto = React.useCallback(() => {
     setCapturedPhoto((current) => {
@@ -835,6 +879,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+          onContextMenu={preventArNativeSelection}
+          onDragStart={preventArNativeSelection}
+          onTouchStart={preventEditSurfaceTouchDefault}
+          onTouchMove={preventEditSurfaceTouchDefault}
           style={{
             position: 'absolute',
             inset: 0,
@@ -842,6 +890,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
             pointerEvents: 'auto',
             touchAction: 'none',
             cursor: 'grab',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            WebkitTouchCallout: 'none',
+            WebkitTapHighlightColor: 'transparent',
           }}
         />
       )}
