@@ -16,5 +16,27 @@ services:
       timeout: 5s
       retries: 12
 
+  recognition-service:
+    build:
+      context: ./recognition-service
+    container_name: emo-ar-recognition-service
+    environment:
+      AR_RECOGNITION_DATA_DIR: /app/data
+      AR_RECOGNITION_OPENCV_METADATA: /app/data/opencv-metadata.json
+      AR_RECOGNITION_OPENCV_INDEX: /app/data/opencv-index.npz
+      AR_RECOGNITION_MAX_IMAGE_BYTES: ${AR_RECOGNITION_MAX_IMAGE_BYTES:-4000000}
+      AR_OPENCV_FEATURE: ${AR_OPENCV_FEATURE:-AKAZE}
+      AR_OPENCV_MIN_CONFIDENCE: ${AR_OPENCV_MIN_CONFIDENCE:-0.42}
+      AR_OPENCV_MIN_MARGIN: ${AR_OPENCV_MIN_MARGIN:-0.03}
+      AR_OPENCV_MIN_GOOD_MATCHES: ${AR_OPENCV_MIN_GOOD_MATCHES:-18}
+      AR_OPENCV_MIN_INLIERS: ${AR_OPENCV_MIN_INLIERS:-8}
+      AR_OPENCV_MIN_INLIER_RATIO: ${AR_OPENCV_MIN_INLIER_RATIO:-0.20}
+    ports:
+      - "${AR_RECOGNITION_SERVICE_PORT:-8000}:8000"
+    volumes:
+      - ./recognition-service/data:/app/data
+      - .:/workspace:ro
+      - ${AR_RECOGNITION_SOURCE_ROOT_HOST:-../emo-checklist-source-archive}:/source:ro
+
 volumes:
   emo-ar-postgres:

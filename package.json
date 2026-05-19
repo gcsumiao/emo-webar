@@ -11,6 +11,9 @@
     "mindar:catalog:check": "node scripts/build_mindar_scene_catalog.mjs --check",
     "recognition:index": "node scripts/build_recognition_index.mjs",
     "recognition:index:check": "node scripts/build_recognition_index.mjs --check",
+    "recognition:opencv:index": "docker compose run --rm recognition-service python -m app.build_index --repo-root /workspace --source-root /source --output-dir /app/data",
+    "recognition:opencv:index:check": "docker compose run --rm recognition-service python -m app.build_index --repo-root /workspace --source-root /source --output-dir /app/data --check",
+    "recognition:service": "docker compose up recognition-service",
     "db:migrate": "node scripts/db_migrate.mjs",
     "db:seed:scenes": "node scripts/seed_ar_scenes.mjs"
   },
