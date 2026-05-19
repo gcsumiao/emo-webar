@@ -73,8 +73,8 @@ After scan success, Step 06 shows the configured animated GLB inside `#frozen-ar
 
 Live final mode uses no persistent gesture icons or mode switch. Small staged toast hints explain the direct gestures the first time the model becomes editable:
 
-- **Move**: drag the middle camera area with one finger. The pointer moves a transparent proxy object, and the animated GLB parent follows it.
-- **Rotate / scale**: use two fingers. Pinch scales the model, horizontal drag or twist yaws it through 360 degrees, and vertical drag pitches it within a safe top/bottom viewing range.
+- **Move / rotate**: drag the middle camera area with one finger. The pointer moves a transparent proxy object, the animated GLB parent follows it, horizontal drag yaws the model through 360 degrees, upward drag reveals the GLB bottom, and downward drag reveals the GLB top.
+- **Scale**: pinch with two fingers. Two-finger gestures do not rotate or translate the model.
 
 When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 
@@ -84,7 +84,7 @@ The main Vite WebAR experience now plays the animated Step 06 GLB directly after
 
 1. Recognition chooses a scene pack, then MindAR recognizes one of that pack's image targets.
 2. Targets configured with `renderMode: "gltf-only"` load `assets/step06/models/yimao_animation_ultra_fast_growth.glb`.
-3. The runtime centers the projected frame-70 mesh at screen center, applies frame 1 before reveal, hides the `Polygon` and `Polygon_2` branch/leaf nodes until frame 52, plays the `Scene` clip from frame 1 to frame 70, clamps the final pose, and keeps the frozen GLB object for bounded proxy-drag move, two-finger rotate/scale, and capture.
+3. The runtime centers the projected frame-70 mesh at screen center, applies frame 1 before reveal, hides the `Polygon` and `Polygon_2` branch/leaf nodes until frame 52, plays the `Scene` clip from frame 1 to frame 70, clamps the final pose, and keeps the frozen GLB object for bounded proxy-drag move, single-finger 360 inspection, two-finger scale, and capture.
 4. The active Step 06 path does not request the old PNG frame sequence.
 
 The runtime intentionally avoids extra studio lights, tone-mapping exposure, generated environment maps, or material brightness overrides for the Step 06 GLB. The model should display from its own textures and material values.

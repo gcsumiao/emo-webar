@@ -118,7 +118,7 @@ The WebAR runtime does not add studio lighting, tone-mapping exposure, generated
 
 The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform that user gestures move, rotate, and scale during editing.
 
-Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: the pointer moves a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag moves the model. Two-finger pinch scales it, horizontal/twist motion yaws it through 360 degrees, and vertical motion pitches it within a safe clamp. The runtime clamps the projected GLB bounds so the editable model cannot be dragged off screen.
+Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: the pointer moves a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag moves the model and rotates the frozen parent for 360-degree inspection: horizontal drag controls yaw, upward drag pitches the view to reveal the GLB bottom, and downward drag reveals the GLB top. Two-finger pinch only scales the model. The runtime clamps the projected GLB bounds so the editable model cannot be dragged off screen.
 
 The runtime drag API accepts pointer positions and applies the same default bounds check on drag end:
 
