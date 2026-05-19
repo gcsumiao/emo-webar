@@ -752,6 +752,18 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         startPoint: null,
         startPosition: null,
       };
+      let glbScaleSafetyLimit = Infinity;
+
+      const resetGlbScaleSafetyLimit = () => {
+        glbScaleSafetyLimit = Infinity;
+      };
+
+      const rememberGlbScaleSafetyLimit = (scale) => {
+        const next = Number(scale);
+        if (Number.isFinite(next) && next > 0) {
+          glbScaleSafetyLimit = Math.min(glbScaleSafetyLimit, next);
+        }
+      };
 
       const resetGlbPivotTransform = () => {
         if (!frozenGlbPivot?.object3D || !frozenGlbModelOffset?.object3D) return false;
@@ -868,6 +880,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           const nextScale = Math.max(minScale, frozenState.scale.x * fitFactor);
           if (Number.isFinite(nextScale) && nextScale < frozenState.scale.x) {
             frozenState.scale = { x: nextScale, y: nextScale, z: nextScale };
+            if (frozenState.contentMode === 'gltf') rememberGlbScaleSafetyLimit(nextScale);
             applyFrozenObjectTransform();
             modelBounds = readModelProjectionBounds() || modelBounds;
             changed = true;
@@ -905,6 +918,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         const nextScale = Math.max(getScaleMin(), frozenState.scale.x * fitFactor);
         if (!Number.isFinite(nextScale) || nextScale >= frozenState.scale.x - 0.0001) return false;
         frozenState.scale = { x: nextScale, y: nextScale, z: nextScale };
+        rememberGlbScaleSafetyLimit(nextScale);
         applyFrozenObjectTransform();
         return true;
       };
@@ -1115,6 +1129,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         frozenModel?.setAttribute('visible', 'false');
         debugGlbMarker?.setAttribute('visible', 'false');
         resetGlbPivotTransform();
+        resetGlbScaleSafetyLimit();
         activeFinalMode = activeFinalMode === 'gltf' ? null : activeFinalMode;
         pushDiagnostics({ glbPhase: 'hidden', lastEvent: 'glb-hidden' });
       };
@@ -1219,6 +1234,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         frozenState.position = { ...FROZEN_SPRITE_POSITION };
         frozenState.rotation = { ...FROZEN_SPRITE_ROTATION };
         frozenState.scale = { ...FROZEN_SPRITE_SCALE };
+        resetGlbScaleSafetyLimit();
         setLiveContentVisible(false);
         applyFrozenState();
         pushDiagnostics({
@@ -1491,6 +1507,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         frozenState.scale = transform.scale
           ? parseVector(transform.scale, FROZEN_SPRITE_SCALE)
           : { ...FROZEN_SPRITE_SCALE };
+        resetGlbScaleSafetyLimit();
         setLiveContentVisible(false);
         if (activeFinalMode === 'gltf') {
           frozenModel?.setAttribute('visible', 'true');
@@ -1515,6 +1532,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         frozenModel?.setAttribute('visible', 'false');
         debugGlbMarker?.setAttribute('visible', 'false');
         resetGlbPivotTransform();
+        resetGlbScaleSafetyLimit();
         applyFrozenState();
         return cloneFrozenState();
       };
@@ -1775,6 +1793,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
 
       const rotateFrozenBy = ({ yawDelta = 0, pitchDelta = 0, pointerDeltaX = null, pointerDeltaY = null } = {}) => {
         if (!frozenState.active) return cloneFrozenState();
+        resetGlbScaleSafetyLimit();
         const interaction = readInteractionConfig();
         const resolvedYawDelta = Number.isFinite(Number(pointerDeltaX))
           ? Number(pointerDeltaX) * (Number(interaction.yawSensitivity) || 0)
@@ -1796,7 +1815,11 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         if (!frozenState.active) return cloneFrozenState();
         const factor = Number.isFinite(Number(scaleFactor)) ? Number(scaleFactor) : 1;
         const minScale = frozenState.contentMode === 'gltf' ? getScaleMin() : FROZEN_SPRITE_SCALE_MIN;
-        const maxScale = frozenState.contentMode === 'gltf' ? getScaleMax() : FROZEN_SPRITE_SCALE_MAX;
+        const configuredMaxScale = frozenState.contentMode === 'gltf' ? getScaleMax() : FROZEN_SPRITE_SCALE_MAX;
+        if (factor < 0.999) resetGlbScaleSafetyLimit();
+        const maxScale = frozenState.contentMode === 'gltf' && factor > 1.001 && Number.isFinite(glbScaleSafetyLimit)
+          ? Math.min(configuredMaxScale, Math.max(minScale, glbScaleSafetyLimit))
+          : configuredMaxScale;
         const next = Math.max(minScale, Math.min(maxScale, frozenState.scale.x * factor));
         frozenState.scale = { x: next, y: next, z: next };
         applyFrozenState();
