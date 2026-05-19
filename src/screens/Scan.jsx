@@ -15,16 +15,34 @@ const SCAN_FRAME_BOUNDS = {
   viewBoxHeight: 1920,
 };
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function getScanFrameMetrics(size) {
   const targetWidth = size * 1.22;
   const scale = targetWidth / SCAN_FRAME_BOUNDS.width;
+  const outlineWidth = SCAN_FRAME_BOUNDS.width * scale;
+  const outlineHeight = SCAN_FRAME_BOUNDS.height * scale;
   return {
     scale,
     frameWidth: SCAN_FRAME_BOUNDS.viewBoxWidth * scale,
     frameHeight: SCAN_FRAME_BOUNDS.viewBoxHeight * scale,
     frameCenterX: (SCAN_FRAME_BOUNDS.x + SCAN_FRAME_BOUNDS.width / 2) * scale,
     frameCenterY: (SCAN_FRAME_BOUNDS.y + SCAN_FRAME_BOUNDS.height / 2) * scale,
-    outlineHalfHeight: (SCAN_FRAME_BOUNDS.height / 2) * scale,
+    outlineWidth,
+    outlineHeight,
+    outlineHalfHeight: outlineHeight / 2,
+  };
+}
+
+function getScanWindowRect(cx, cy, size) {
+  const { outlineWidth, outlineHeight } = getScanFrameMetrics(size);
+  return {
+    left: cx - outlineWidth / 2,
+    top: cy - outlineHeight / 2,
+    width: outlineWidth,
+    height: outlineHeight,
   };
 }
 
@@ -49,10 +67,72 @@ function ScanFrameViewfinder({ cx, cy, size }) {
   );
 }
 
-function ScanSweepOverlay({ active = true }) {
+function ScanWindowOverlay({ cx, cy, size, active = true }) {
+  const rect = getScanWindowRect(cx, cy, size);
+  const cornerLength = clamp(rect.width * 0.085, 24, 42);
+  const cornerStroke = clamp(rect.width * 0.008, 3, 5);
+  const cornerRadius = cornerStroke;
+  const cornerColor = 'rgba(246, 168, 190, 0.96)';
+  const cornerBase = {
+    position: 'absolute',
+    width: cornerLength,
+    height: cornerLength,
+    boxSizing: 'border-box',
+    borderColor: cornerColor,
+    filter: 'drop-shadow(0 0 12px rgba(246,168,190,0.46))',
+  };
+  const sweepInset = Math.max(cornerStroke, 2);
+
   return (
-    <div aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'hidden', opacity: active ? 1 : 0, transition: 'opacity 220ms ease', pointerEvents: 'none' }}>
-      <div style={{ position: 'absolute', left: 0, right: 0, height: 4, marginTop: -2, borderRadius: 999, background: 'rgba(255,255,255,0.9)', boxShadow: '0 0 18px rgba(255,255,255,0.86), 0 0 42px rgba(242,156,176,0.58)', animation: 'scan-sweep 2.8s ease-in-out infinite' }} />
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        opacity: active ? 1 : 0,
+        transition: 'opacity 220ms ease',
+        pointerEvents: 'none',
+        zIndex: 3,
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          boxShadow: '0 0 0 9999px rgba(6, 10, 16, 0.36)',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left: rect.left + sweepInset,
+          top: rect.top + sweepInset,
+          width: rect.width - sweepInset * 2,
+          height: rect.height - sweepInset * 2,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            height: 4,
+            marginTop: -2,
+            borderRadius: 999,
+            background: 'linear-gradient(90deg, rgba(246,168,190,0), rgba(255,255,255,0.95) 14%, rgba(246,168,190,0.98) 50%, rgba(255,255,255,0.95) 86%, rgba(246,168,190,0))',
+            boxShadow: '0 0 18px rgba(255,255,255,0.86), 0 0 42px rgba(242,156,176,0.58)',
+            animation: 'scan-sweep 2.8s ease-in-out infinite',
+          }}
+        />
+      </div>
+      <div style={{ ...cornerBase, left: rect.left, top: rect.top, borderTop: `${cornerStroke}px solid`, borderLeft: `${cornerStroke}px solid`, borderTopLeftRadius: cornerRadius }} />
+      <div style={{ ...cornerBase, left: rect.left + rect.width - cornerLength, top: rect.top, borderTop: `${cornerStroke}px solid`, borderRight: `${cornerStroke}px solid`, borderTopRightRadius: cornerRadius }} />
+      <div style={{ ...cornerBase, left: rect.left, top: rect.top + rect.height - cornerLength, borderBottom: `${cornerStroke}px solid`, borderLeft: `${cornerStroke}px solid`, borderBottomLeftRadius: cornerRadius }} />
+      <div style={{ ...cornerBase, left: rect.left + rect.width - cornerLength, top: rect.top + rect.height - cornerLength, borderBottom: `${cornerStroke}px solid`, borderRight: `${cornerStroke}px solid`, borderBottomRightRadius: cornerRadius }} />
     </div>
   );
 }
@@ -216,7 +296,7 @@ export function Scan({ lang = 'zh', setLang }) {
       <div style={{ position: 'absolute', inset: 0, opacity: isLocked ? 0 : 1, transition: 'opacity 320ms ease-out', pointerEvents: 'none' }}>
         <ScanFrameViewfinder cx={geometry.scanCenterX} cy={geometry.scanCenterY} size={geometry.scanSize} />
       </div>
-      <ScanSweepOverlay active={!isLocked} />
+      <ScanWindowOverlay cx={geometry.scanCenterX} cy={geometry.scanCenterY} size={geometry.scanSize} active={!isLocked} />
       <div className="top-controls">
         <FrostButton onClick={() => window.__setProtoState?.('landing')}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" /></svg>
