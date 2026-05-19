@@ -136,15 +136,14 @@ function GestureTextChip({ icon, lang, zh, en, style = {} }) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: 7,
-        padding: '8px 12px 8px 10px',
+        padding: '7px 11px 7px 9px',
         borderRadius: 999,
-        background: 'rgba(255,255,255,0.94)',
-        border: '0.5px solid rgba(0,0,0,0.06)',
-        color: 'rgba(24,24,28,0.9)',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-        boxShadow: '0 8px 22px rgba(0,0,0,0.14)',
-        animation: 'ar-cue-pop 340ms cubic-bezier(.22,1,.36,1) both',
+        background: 'rgba(255,255,255,0.55)',
+        border: '0.5px solid rgba(255,255,255,0.28)',
+        color: 'rgba(24,24,28,0.78)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.10)',
         whiteSpace: 'nowrap',
         ...style,
       }}
@@ -169,14 +168,14 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
     <div
       style={{
         position: 'absolute',
-        left: `calc(50% + ${isLandscapePhone ? 48 : 64}px)`,
-        top: isLandscapePhone ? 0 : 2,
-        transform: 'translateX(-50%)',
+        right: 'calc(var(--safe-right) + 20px)',
+        bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: isLandscapePhone ? 6 : 8,
         pointerEvents: 'auto',
+        zIndex: 13,
       }}
     >
       <button
@@ -187,8 +186,8 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
         }}
         aria-label={t(lang, '一键还原', 'Tap to reset')}
         style={{
-          width: isLandscapePhone ? 46 : 54,
-          height: isLandscapePhone ? 46 : 54,
+          width: isLandscapePhone ? 54 : 68,
+          height: isLandscapePhone ? 54 : 68,
           borderRadius: 999,
           border: '0.5px solid rgba(255,255,255,0.14)',
           background: 'rgba(48,48,50,0.78)',
@@ -202,7 +201,7 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
           cursor: 'pointer',
         }}
       >
-        <IconResetArrow size={isLandscapePhone ? 21 : 24} />
+        <IconResetArrow size={isLandscapePhone ? 24 : 28} />
       </button>
       <div
         style={{
@@ -225,8 +224,8 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
 function TapPrompt({ anchor, lang, isLandscapePhone }) {
   const width = anchor.viewportWidth || 390;
   const height = anchor.viewportHeight || 844;
-  const left = clampNumber(anchor.x - anchor.size * 0.54, 18, width - 132);
-  const top = clampNumber(anchor.y + anchor.size * 0.2, isLandscapePhone ? 72 : 104, height - (isLandscapePhone ? 130 : 210));
+  const left = clampNumber(anchor.x - anchor.size * 0.88, 14, width - 132);
+  const top = clampNumber(anchor.y + anchor.size * 0.4, isLandscapePhone ? 80 : 116, height - (isLandscapePhone ? 130 : 210));
 
   return (
     <div
@@ -237,7 +236,6 @@ function TapPrompt({ anchor, lang, isLandscapePhone }) {
         width: 124,
         height: 82,
         color: 'rgba(255,255,255,0.94)',
-        animation: 'ar-cue-pop 340ms cubic-bezier(.22,1,.36,1) both',
       }}
     >
       <svg width="124" height="82" viewBox="0 0 124 82" fill="none" aria-hidden="true" style={{ position: 'absolute', inset: 0, overflow: 'visible' }}>
@@ -269,16 +267,16 @@ function InteractionCueLayer({ cue, anchor, lang, isLandscapePhone }) {
   const width = anchor.viewportWidth || 390;
   const height = anchor.viewportHeight || 844;
   const rotatePill = {
-    left: clampNumber(anchor.x + anchor.size * 0.18, 12, width - (lang === 'en' ? 156 : 116)),
-    top: clampNumber(anchor.y - anchor.size * 0.42, isLandscapePhone ? 56 : 92, height - 184),
+    left: clampNumber(anchor.x - (lang === 'en' ? 60 : 48), 12, width - (lang === 'en' ? 156 : 116)),
+    top: clampNumber(anchor.y - anchor.size * 0.72, isLandscapePhone ? 48 : 76, height - 184),
   };
   const scalePill = {
-    left: clampNumber(anchor.x - anchor.size * 0.56, 12, width - (lang === 'en' ? 168 : 118)),
-    top: clampNumber(anchor.y + anchor.size * 0.36, isLandscapePhone ? 88 : 126, height - (isLandscapePhone ? 122 : 196)),
+    left: clampNumber(anchor.x - anchor.size * 0.95, 12, width - (lang === 'en' ? 168 : 118)),
+    top: clampNumber(anchor.y + anchor.size * 0.05, isLandscapePhone ? 76 : 116, height - (isLandscapePhone ? 122 : 196)),
   };
   const movePill = {
-    left: clampNumber(anchor.x + anchor.size * 0.12, 12, width - (lang === 'en' ? 184 : 126)),
-    top: clampNumber(anchor.y + anchor.size * 0.02, isLandscapePhone ? 76 : 112, height - (isLandscapePhone ? 128 : 204)),
+    left: clampNumber(anchor.x + anchor.size * 0.55, 12, width - (lang === 'en' ? 184 : 126)),
+    top: clampNumber(anchor.y + anchor.size * 0.45, isLandscapePhone ? 96 : 140, height - (isLandscapePhone ? 128 : 204)),
   };
 
   return (
@@ -298,44 +296,58 @@ function InteractionCueLayer({ cue, anchor, lang, isLandscapePhone }) {
         }
       `}</style>
 
-      {isTap && <TapPrompt anchor={anchor} lang={lang} isLandscapePhone={isLandscapePhone} />}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          opacity: isTap ? 1 : 0,
+          transition: 'opacity 220ms ease',
+          pointerEvents: 'none',
+        }}
+      >
+        <TapPrompt anchor={anchor} lang={lang} isLandscapePhone={isLandscapePhone} />
+      </div>
 
-      {isGestures && (
-        <>
-          <GestureTextChip
-            icon={<IconRotate360 size={14} color="rgba(24,24,28,0.82)" sw={1.8} />}
-            lang={lang}
-            zh="拖动 · 360°"
-            en="Drag · 360°"
-            style={{
-              left: rotatePill.left,
-              top: rotatePill.top,
-            }}
-          />
-          <GestureTextChip
-            icon={<IconPinch size={14} color="rgba(24,24,28,0.82)" sw={1.8} />}
-            lang={lang}
-            zh="双指 · 缩放"
-            en="Pinch · Scale"
-            style={{
-              left: scalePill.left,
-              top: scalePill.top,
-              animationDelay: '90ms',
-            }}
-          />
-          <GestureTextChip
-            icon={<IconHoldMove size={14} color="rgba(24,24,28,0.82)" sw={1.8} />}
-            lang={lang}
-            zh="长按 · 移动"
-            en="Long press · Move"
-            style={{
-              left: movePill.left,
-              top: movePill.top,
-              animationDelay: '180ms',
-            }}
-          />
-        </>
-      )}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          opacity: isGestures ? 1 : 0,
+          transition: 'opacity 220ms ease',
+          pointerEvents: 'none',
+        }}
+      >
+        <GestureTextChip
+          icon={<IconRotate360 size={14} color="rgba(24,24,28,0.72)" sw={1.8} />}
+          lang={lang}
+          zh="拖动 · 360°"
+          en="Drag · 360°"
+          style={{
+            left: rotatePill.left,
+            top: rotatePill.top,
+          }}
+        />
+        <GestureTextChip
+          icon={<IconPinch size={14} color="rgba(24,24,28,0.72)" sw={1.8} />}
+          lang={lang}
+          zh="双指 · 缩放"
+          en="Pinch · Scale"
+          style={{
+            left: scalePill.left,
+            top: scalePill.top,
+          }}
+        />
+        <GestureTextChip
+          icon={<IconHoldMove size={14} color="rgba(24,24,28,0.72)" sw={1.8} />}
+          lang={lang}
+          zh="长按 · 移动"
+          en="Long press · Move"
+          style={{
+            left: movePill.left,
+            top: movePill.top,
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -363,7 +375,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
   const [framedPhoto, setFramedPhoto] = React.useState(null);
   const [interactionCue, setInteractionCue] = React.useState(CUE_HIDDEN);
-  const [hasInteractedWithGlb, setHasInteractedWithGlb] = React.useState(false);
+  const [isInteracting, setIsInteracting] = React.useState(false);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({
     mode: 'idle',
@@ -391,9 +403,12 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, [setCue]);
 
   const markGlbInteracted = React.useCallback(() => {
-    setHasInteractedWithGlb(true);
-    setCue(CUE_GESTURES);
-  }, [setCue]);
+    setIsInteracting(true);
+  }, []);
+
+  const endGlbInteraction = React.useCallback(() => {
+    setIsInteracting(false);
+  }, []);
 
   const clearLongPressTimer = React.useCallback(() => {
     window.clearTimeout(longPressTimerRef.current);
@@ -451,7 +466,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const target = runtime.getLastTarget?.() || runtime.getActiveTargets?.()?.[0] || null;
       const targetIndex = target?.targetIndex;
       setArPhase('scanning-success');
-      setHasInteractedWithGlb(false);
+      setIsInteracting(false);
       flashTimerRef.current = window.setTimeout(() => {
         if (cancelled) return;
         setArPhase('glb-entering');
@@ -486,12 +501,13 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
   React.useEffect(() => {
     if (arPhase === 'final-live') {
-      setCue(hasInteractedWithGlb ? CUE_GESTURES : CUE_TAP);
+      setCue(isInteracting ? CUE_GESTURES : CUE_TAP);
       return;
     }
     clearLongPressTimer();
+    setIsInteracting(false);
     setCue(CUE_HIDDEN);
-  }, [arPhase, clearLongPressTimer, hasInteractedWithGlb, setCue]);
+  }, [arPhase, clearLongPressTimer, isInteracting, setCue]);
 
   // Keep the AR scene alive after image tracking is lost; the recognized image is only the trigger.
   React.useEffect(() => {
@@ -766,8 +782,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       gestureRef.current.primaryPointerId = null;
       gestureRef.current.dragPointerId = null;
       gestureRef.current.startPoint = null;
+      endGlbInteraction();
     }
-  }, [canEdit, clearLongPressTimer, markGlbInteracted, scheduleLongPressMove]);
+  }, [canEdit, clearLongPressTimer, endGlbInteraction, markGlbInteracted, scheduleLongPressMove]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'transparent' }}>
@@ -837,45 +854,39 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           </div>
         )}
         {isCaptured ? null : isLive ? (
-          <div style={{ position: 'relative', width: isLandscapePhone ? 178 : 232, height: isLandscapePhone ? 72 : 88, pointerEvents: 'auto' }}>
-            <button
-              type="button"
-              onClick={captureFrame}
-              onPointerDown={hideInteractionCue}
-              disabled={!isLive || isCapturing}
-              style={{
-                pointerEvents: 'auto',
-                position: 'absolute',
-                left: '50%',
-                top: 0,
-                transform: 'translateX(-50%)',
-                width: isLandscapePhone ? 54 : 68,
-                height: isLandscapePhone ? 54 : 68,
-                borderRadius: 999,
-                border: '5px solid rgba(255,255,255,0.94)',
-                background: 'rgba(255,255,255,0.18)',
-                cursor: isLive && !isCapturing ? 'pointer' : 'default',
-                boxShadow: '0 0 0 3px rgba(255,255,255,0.24), 0 10px 28px rgba(0,0,0,0.42)',
-                opacity: isLive && !isCapturing ? 1 : 0.55,
-                transition: 'transform 220ms cubic-bezier(.22,1,.36,1), opacity 220ms ease',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 0,
-              }}
-            >
-              <div style={{ width: isLandscapePhone ? 34 : 46, height: isLandscapePhone ? 34 : 46, borderRadius: 999, background: '#fff' }} />
-            </button>
-            {canEdit && (
-              <ResetControl
-                lang={lang}
-                isLandscapePhone={isLandscapePhone}
-                onReset={resetFrozenTransform}
-              />
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={captureFrame}
+            disabled={!isLive || isCapturing}
+            style={{
+              pointerEvents: 'auto',
+              width: isLandscapePhone ? 54 : 68,
+              height: isLandscapePhone ? 54 : 68,
+              borderRadius: 999,
+              border: '5px solid rgba(255,255,255,0.94)',
+              background: 'rgba(255,255,255,0.18)',
+              cursor: isLive && !isCapturing ? 'pointer' : 'default',
+              boxShadow: '0 0 0 3px rgba(255,255,255,0.24), 0 10px 28px rgba(0,0,0,0.42)',
+              opacity: isLive && !isCapturing ? 1 : 0.55,
+              transition: 'transform 220ms cubic-bezier(.22,1,.36,1), opacity 220ms ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 0,
+            }}
+          >
+            <div style={{ width: isLandscapePhone ? 34 : 46, height: isLandscapePhone ? 34 : 46, borderRadius: 999, background: '#fff' }} />
+          </button>
         ) : null}
       </div>
+
+      {isLive && !isCaptured && canEdit && (
+        <ResetControl
+          lang={lang}
+          isLandscapePhone={isLandscapePhone}
+          onReset={resetFrozenTransform}
+        />
+      )}
 
       {isCapturing && (
         <CapturingOverlay backdropUrl={capturedPhoto?.url} lang={lang} />
