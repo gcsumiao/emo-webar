@@ -8,6 +8,7 @@ import { clampScaleFactor, pointerDistance } from '../ar/frozenControls.js';
 import { getARRuntime, isKivicubeRuntime } from '../ar/arRuntime.js';
 
 const FLASH_MS = 240;
+const APPEARING_PROMPT_MS = 1000;
 const PHOTO_FRAME_URL = asset('/assets/site-ui/photo-frame.svg');
 const SINGLE_FINGER_YAW_SENSITIVITY = 0.16;
 const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
@@ -383,6 +384,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [capturedPhoto, setCapturedPhoto] = React.useState(null);
   const [framedPhoto, setFramedPhoto] = React.useState(null);
   const [interactionCue, setInteractionCue] = React.useState(CUE_HIDDEN);
+  const [showAppearingPrompt, setShowAppearingPrompt] = React.useState(false);
   const [isInteracting, setIsInteracting] = React.useState(false);
   const [hasInteractedOnce, setHasInteractedOnce] = React.useState(false);
   const pointersRef = React.useRef(new Map());
@@ -395,6 +397,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   });
   const longPressTimerRef = React.useRef(null);
   const flashTimerRef = React.useRef(null);
+  const appearingPromptTimerRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
   const isLandscapePhone = viewport.orientation === 'landscape' && !viewport.isTablet && viewport.height < 520;
@@ -410,6 +413,12 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const hideInteractionCue = React.useCallback(() => {
     setCue(CUE_HIDDEN);
   }, [setCue]);
+
+  const hideAppearingPrompt = React.useCallback(() => {
+    window.clearTimeout(appearingPromptTimerRef.current);
+    appearingPromptTimerRef.current = null;
+    setShowAppearingPrompt(false);
+  }, []);
 
   const markGlbInteracted = React.useCallback(() => {
     setIsInteracting(true);
@@ -476,10 +485,17 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       const target = runtime.getLastTarget?.() || runtime.getActiveTargets?.()?.[0] || null;
       const targetIndex = target?.targetIndex;
       setArPhase('scanning-success');
+      hideAppearingPrompt();
       setIsInteracting(false);
       flashTimerRef.current = window.setTimeout(() => {
         if (cancelled) return;
         setArPhase('glb-entering');
+        setShowAppearingPrompt(true);
+        window.clearTimeout(appearingPromptTimerRef.current);
+        appearingPromptTimerRef.current = window.setTimeout(() => {
+          setShowAppearingPrompt(false);
+          appearingPromptTimerRef.current = null;
+        }, APPEARING_PROMPT_MS);
         arAudio.cueARIntro();
         const arPromise = runtime.showFinalModel?.(targetIndex).catch?.(() => null) || Promise.resolve();
         Promise.resolve(arPromise).then(async () => {
@@ -496,9 +512,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       cancelled = true;
       window.clearTimeout(retryTimer);
       window.clearTimeout(flashTimerRef.current);
+      window.clearTimeout(appearingPromptTimerRef.current);
       clearLongPressTimer();
     };
-  }, [clearLongPressTimer]);
+  }, [clearLongPressTimer, hideAppearingPrompt]);
 
   // On unmount, reset frozen object state so the scene is clean if user re-enters.
   React.useEffect(() => () => {
@@ -908,7 +925,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       )}
 
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isLandscapePhone ? 8 : 14, pointerEvents: 'none', zIndex: 12 }}>
-        {!isCaptured && !isCapturing && (arPhase === 'scanning-success' || arPhase === 'glb-entering') && (
+        {!isCaptured && !isCapturing && showAppearingPrompt && (
           <div style={{ padding: '10px 16px', borderRadius: 999, background: 'rgba(0,0,0,0.32)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '0.5px solid rgba(255,255,255,0.15)', fontFamily: langFont(lang), fontSize: 11, color: 'rgba(255,255,255,0.92)', maxWidth: 'min(84vw, 360px)', textAlign: 'center' }}>
             {t(lang, '一毛出现中…', 'EMO is appearing…')}
           </div>
