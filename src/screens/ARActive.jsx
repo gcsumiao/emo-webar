@@ -4,22 +4,14 @@ import { arAudio } from '../lib/arAudio.js';
 import { createARPhoto, createFramedARPhoto } from '../lib/arCapture.js';
 import { asset } from '../lib/assetUrl.js';
 import { useViewport } from '../lib/viewport.js';
-import { clampScaleFactor, normalizeAngleDelta, pointerAngle, pointerDistance } from '../ar/frozenControls.js';
+import { clampScaleFactor, pointerDistance } from '../ar/frozenControls.js';
 import { getARRuntime, isKivicubeRuntime } from '../ar/arRuntime.js';
 
 const FLASH_MS = 240;
 const PHOTO_FRAME_URL = asset('/assets/site-ui/photo-frame.svg');
-const SINGLE_FINGER_YAW_SENSITIVITY = 0.16;
-const SINGLE_FINGER_PITCH_SENSITIVITY = 0.12;
-const TWO_FINGER_YAW_SENSITIVITY = 0.18;
-const TWO_FINGER_PITCH_SENSITIVITY = 0.14;
-const TWO_FINGER_TWIST_SENSITIVITY = 0.75;
-
 const GESTURE_HINTS = [
-  { zh: '拖动旋转', en: 'Drag to rotate' },
-  { zh: '双指移动', en: 'Two fingers move' },
+  { zh: '拖动移动', en: 'Drag to move' },
   { zh: '捏合缩放', en: 'Pinch to scale' },
-  { zh: '点重置恢复位置', en: 'Reset restores position' },
 ];
 
 function formatVector(value, digits = 2) {
@@ -46,13 +38,6 @@ function formatLayerInfo(value) {
   const canvas = value.canvas;
   const video = value.video;
   return `c${value.canvasCount || 0}:${canvas?.z || '-'} ${canvas?.width || 0}x${canvas?.height || 0} / v${value.videoCount || 0}:${video?.z || '-'} ${video?.width || 0}x${video?.height || 0}`;
-}
-
-function pointerCenter(a, b) {
-  return {
-    x: (a.x + b.x) / 2,
-    y: (a.y + b.y) / 2,
-  };
 }
 
 function readDebugFlag() {
@@ -87,7 +72,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [framedPhoto, setFramedPhoto] = React.useState(null);
   const [isGestureHintVisible, setIsGestureHintVisible] = React.useState(false);
   const pointersRef = React.useRef(new Map());
-  const gestureRef = React.useRef({ lastDistance: null, lastCenter: null, lastAngle: null });
+  const gestureRef = React.useRef({ lastDistance: null, dragPointerId: null });
   const flashTimerRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const viewport = useViewport();
@@ -256,11 +241,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     try { await navigator.clipboard?.writeText?.(shareData.url); } catch {}
   }, [capturedPhoto, framedPhoto, lang]);
 
-  const resetFinalTransform = React.useCallback(() => {
-    const next = getARRuntime()?.resetFinalTransform?.();
-    if (next) setFrozenState(next);
-  }, []);
-
   const handlePointerDown = React.useCallback((event) => {
     if (!canEdit) return;
     event.preventDefault();
@@ -268,14 +248,16 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     event.currentTarget.setPointerCapture?.(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const points = Array.from(pointersRef.current.values());
+    const runtime = getARRuntime();
     if (points.length >= 2) {
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
-      gestureRef.current.lastCenter = pointerCenter(points[0], points[1]);
-      gestureRef.current.lastAngle = pointerAngle(points[0], points[1]);
+      gestureRef.current.dragPointerId = null;
+      runtime?.endFrozenDrag?.({ clampToViewport: false });
     } else {
       gestureRef.current.lastDistance = null;
-      gestureRef.current.lastCenter = null;
-      gestureRef.current.lastAngle = null;
+      gestureRef.current.dragPointerId = event.pointerId;
+      const state = runtime?.beginFrozenDrag?.({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY });
+      if (state) setFrozenState(state);
     }
   }, [canEdit]);
 
@@ -290,56 +272,51 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
     if (points.length >= 2) {
       const distance = pointerDistance(points[0], points[1]);
-      const center = pointerCenter(points[0], points[1]);
-      const angle = pointerAngle(points[0], points[1]);
       const runtime = getARRuntime();
       let updatedState = null;
       if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
         updatedState = runtime?.scaleFrozenBy?.({ scaleFactor }) || updatedState;
       }
-      if (gestureRef.current.lastCenter) {
-        const dx = center.x - gestureRef.current.lastCenter.x;
-        const dy = center.y - gestureRef.current.lastCenter.y;
-        const twistDelta = gestureRef.current.lastAngle == null
-          ? 0
-          : normalizeAngleDelta(angle - gestureRef.current.lastAngle);
-        const yawDelta = (dx * TWO_FINGER_YAW_SENSITIVITY) + (twistDelta * TWO_FINGER_TWIST_SENSITIVITY);
-        const pitchDelta = -dy * TWO_FINGER_PITCH_SENSITIVITY;
-        updatedState = runtime?.moveFrozenByScreenDelta?.({ dx, dy, clampToViewport: true }) || updatedState;
-        updatedState = runtime?.rotateFrozenBy?.({ yawDelta, pitchDelta }) || updatedState;
-      }
       if (updatedState) setFrozenState(updatedState);
       gestureRef.current.lastDistance = distance;
-      gestureRef.current.lastCenter = center;
-      gestureRef.current.lastAngle = angle;
+      gestureRef.current.dragPointerId = null;
     } else if (points.length === 1) {
-      const dx = next.x - prev.x;
-      const dy = next.y - prev.y;
       gestureRef.current.lastDistance = null;
-      gestureRef.current.lastCenter = null;
-      gestureRef.current.lastAngle = null;
       const runtime = getARRuntime();
-      const rotated = runtime?.rotateFrozenBy?.({
-        yawDelta: dx * SINGLE_FINGER_YAW_SENSITIVITY,
-        pitchDelta: -dy * SINGLE_FINGER_PITCH_SENSITIVITY,
+      const moved = runtime?.dragFrozenToScreenPoint?.({
+        pointerId: event.pointerId,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        clampToViewport: false,
       });
-      if (rotated) setFrozenState(rotated);
+      if (moved) setFrozenState(moved);
     }
   }, [canEdit]);
 
   const handlePointerUp = React.useCallback((event) => {
+    const wasDragPointer = gestureRef.current.dragPointerId === event.pointerId;
     pointersRef.current.delete(event.pointerId);
     event.currentTarget.releasePointerCapture?.(event.pointerId);
-    const points = Array.from(pointersRef.current.values());
+    const entries = Array.from(pointersRef.current.entries());
+    const points = entries.map(([, point]) => point);
+    const runtime = getARRuntime();
+    if (wasDragPointer) {
+      const state = runtime?.endFrozenDrag?.({ clampToViewport: true });
+      if (state) setFrozenState(state);
+    }
     if (points.length >= 2) {
       gestureRef.current.lastDistance = pointerDistance(points[0], points[1]);
-      gestureRef.current.lastCenter = pointerCenter(points[0], points[1]);
-      gestureRef.current.lastAngle = pointerAngle(points[0], points[1]);
+      gestureRef.current.dragPointerId = null;
+    } else if (points.length === 1 && canEdit) {
+      const [nextPointerId, point] = entries[0];
+      gestureRef.current.lastDistance = null;
+      gestureRef.current.dragPointerId = nextPointerId;
+      const state = runtime?.beginFrozenDrag?.({ pointerId: nextPointerId, clientX: point.x, clientY: point.y });
+      if (state) setFrozenState(state);
     } else {
       gestureRef.current.lastDistance = null;
-      gestureRef.current.lastCenter = null;
-      gestureRef.current.lastAngle = null;
+      gestureRef.current.dragPointerId = null;
       if (points.length === 0 && canEdit) {
         setIsGestureHintVisible(false);
       }
@@ -379,7 +356,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         <div
           data-interactive="true"
           data-ar-edit-surface="true"
-          aria-label="Drag to rotate EMO; use two fingers to move and scale"
+          aria-label="Drag to move EMO; pinch to scale"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -440,20 +417,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           </div>
         )}
         {isCaptured ? null : isLive ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, pointerEvents: 'auto' }}>
-            <button
-              type="button"
-              aria-label={t(lang, '重置人物位置', 'Reset EMO')}
-              title={t(lang, '重置', 'Reset')}
-              onClick={resetFinalTransform}
-              disabled={!isLive || isCapturing}
-              style={resetButtonStyle(isLive && !isCapturing)}
-            >
-              <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none">
-                <path d="M8.5 7.2A6.8 6.8 0 1 1 5.4 13" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
-                <path d="M8.5 3.8v3.4H5.1" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}>
             <button
               type="button"
               onClick={captureFrame}
@@ -464,10 +428,10 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
                 width: isLandscapePhone ? 54 : 68,
                 height: isLandscapePhone ? 54 : 68,
                 borderRadius: 999,
-                border: '3px solid #fff',
-                background: TOKENS.pink,
+                border: '5px solid rgba(255,255,255,0.94)',
+                background: 'rgba(255,255,255,0.18)',
                 cursor: isLive && !isCapturing ? 'pointer' : 'default',
-                boxShadow: '0 0 0 2px rgba(255,255,255,0.3), 0 10px 28px rgba(0,0,0,0.42)',
+                boxShadow: '0 0 0 3px rgba(255,255,255,0.24), 0 10px 28px rgba(0,0,0,0.42)',
                 opacity: isLive && !isCapturing ? 1 : 0.55,
                 display: 'flex',
                 alignItems: 'center',
@@ -475,7 +439,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
                 padding: 0,
               }}
             >
-              <div style={{ width: 20, height: 20, borderRadius: 999, background: '#fff' }} />
+              <div style={{ width: isLandscapePhone ? 34 : 46, height: isLandscapePhone ? 34 : 46, borderRadius: 999, background: '#fff' }} />
             </button>
           </div>
         ) : null}
@@ -500,7 +464,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>phase: <b style={{ color: TOKENS.green }}>{arPhase}</b></div>
           <div>ar: <b style={{ color: TOKENS.green }}>{diagnostics?.status || '-'}</b></div>
           <div>glb: <b style={{ color: TOKENS.green }}>{diagnostics?.glbPhase || '-'}</b> · mode {diagnostics?.contentMode || '-'}</div>
-          <div>gesture: rotate + two-finger move/scale + reset</div>
+          <div>gesture: drag proxy move + pinch scale</div>
           <div>activeTarget: {diagnostics?.activeTargetId || '-'}</div>
           <div>edit: <b style={{ color: frozenState?.active ? TOKENS.green : TOKENS.pinkDeep }}>{String(!!frozenState?.active)}</b></div>
           {frozenState && (
@@ -517,6 +481,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>near/depth: {formatNumber(diagnostics?.cameraNear, 2)} / {formatNumber(diagnostics?.finalRenderDepth, 2)}</div>
           <div>glbNdc: {formatVector(diagnostics?.glbNdc, 2)}</div>
           <div>meshNdc: {formatVector(diagnostics?.meshCenterNdc, 2)}</div>
+          <div>targetNdc: {formatVector(diagnostics?.glbCenterTargetNdc, 2)}</div>
           <div>glbProj: {formatNumber(diagnostics?.glbProjectedSize?.width, 2)} x {formatNumber(diagnostics?.glbProjectedSize?.height, 2)}</div>
           <div>markerNdc: {formatVector(diagnostics?.markerNdc, 2)}</div>
           <div>marker: {formatVector(diagnostics?.debugMarkerWorld, 2)}</div>
@@ -528,27 +493,6 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       )}
     </div>
   );
-}
-
-function resetButtonStyle(enabled, active = false) {
-  return {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    border: active ? '1px solid rgba(255,255,255,0.76)' : '1px solid rgba(255,255,255,0.36)',
-    background: active ? 'rgba(238,128,158,0.92)' : 'rgba(0,0,0,0.34)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    boxShadow: active
-      ? '0 0 0 2px rgba(255,255,255,0.22), 0 8px 22px rgba(0,0,0,0.28)'
-      : '0 8px 22px rgba(0,0,0,0.28)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 0,
-    cursor: enabled ? 'pointer' : 'default',
-    opacity: enabled ? 1 : 0.55,
-  };
 }
 
 function CapturingOverlay({ backdropUrl, lang }) {
@@ -662,11 +606,16 @@ function CapturingOverlay({ backdropUrl, lang }) {
             width: 68,
             height: 68,
             borderRadius: 999,
-            border: '3px solid rgba(255,255,255,0.5)',
-            background: 'rgba(255,255,255,0.35)',
-            opacity: 0.7,
+            border: '5px solid rgba(255,255,255,0.64)',
+            background: 'rgba(255,255,255,0.16)',
+            opacity: 0.72,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
-        />
+        >
+          <div style={{ width: 46, height: 46, borderRadius: 999, background: 'rgba(255,255,255,0.78)' }} />
+        </div>
       </div>
       <style>{`
         @keyframes capture-spin { to { transform: rotate(360deg); } }
@@ -718,10 +667,10 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onRetake, o
           left: '50%',
           top: '50%',
           width: 'min(78vw, 320px)',
-          aspectRatio: '1080 / 1752',
-          transform: 'translate(-50%, -52%) rotate(-1.2deg)',
+          aspectRatio: '1080 / 1920',
+          transform: 'translate(-50%, -52%)',
           animation: 'polaroid-in 700ms cubic-bezier(.22,1,.36,1) both',
-          filter: 'drop-shadow(0 24px 36px rgba(0,0,0,0.45)) drop-shadow(0 6px 12px rgba(0,0,0,0.25))',
+          filter: 'none',
           pointerEvents: 'none',
         }}
       >
@@ -763,7 +712,7 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onRetake, o
         <ActionPill
           variant="primary"
           lang={lang}
-          zh="分享好友"
+          zh="分享"
           en="Share"
           onClick={onShare}
           icon={(
@@ -775,9 +724,9 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onRetake, o
       </div>
       <style>{`
         @keyframes polaroid-in {
-          0%   { opacity: 0; transform: translate(-50%, -52%) rotate(-1.2deg) scale(0.6); }
-          60%  { opacity: 1; transform: translate(-50%, -52%) rotate(1.4deg) scale(1.04); }
-          100% { opacity: 1; transform: translate(-50%, -52%) rotate(-1.2deg) scale(1); }
+          0%   { opacity: 0; transform: translate(-50%, -52%) scale(0.6); }
+          60%  { opacity: 1; transform: translate(-50%, -52%) scale(1.04); }
+          100% { opacity: 1; transform: translate(-50%, -52%) scale(1); }
         }
       `}</style>
     </div>
@@ -785,7 +734,7 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onRetake, o
 }
 
 function ActionPill({ variant = 'primary', lang, zh, en, onClick, icon }) {
-  const primary = variant === 'primary';
+  const label = t(lang, zh, en);
   return (
     <button
       type="button"
@@ -795,23 +744,20 @@ function ActionPill({ variant = 'primary', lang, zh, en, onClick, icon }) {
         padding: '14px 16px',
         borderRadius: 999,
         border: 'none',
-        background: primary ? TOKENS.ink : 'rgba(255,255,255,0.92)',
-        color: primary ? '#fff' : TOKENS.ink,
+        background: TOKENS.ink,
+        color: '#fff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
         cursor: 'pointer',
-        boxShadow: primary ? '0 10px 28px rgba(0,0,0,0.22)' : '0 8px 20px rgba(0,0,0,0.12)',
+        boxShadow: '0 10px 28px rgba(0,0,0,0.22)',
       }}
     >
       {icon}
-      <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'baseline' }}>
         <span style={{ fontFamily: langFont(lang), fontSize: 14, fontWeight: 700, letterSpacing: '0.02em' }}>
-          {t(lang, zh, en)}
-        </span>
-        <span style={{ fontFamily: FONT_MONO, fontSize: 9.5, letterSpacing: '0.18em', opacity: 0.55, textTransform: 'uppercase' }}>
-          {lang === 'en' ? zh : en}
+          {label}
         </span>
       </span>
     </button>

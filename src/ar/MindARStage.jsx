@@ -21,6 +21,7 @@ const FROZEN_SPRITE_SCALE_MAX = 2.4;
 const FINAL_BASE_RENDER_DEPTH = Math.abs(FROZEN_SPRITE_POSITION.z);
 const FINAL_NEAR_DEPTH_MULTIPLIER = 1.2;
 const DROP_ENTER_MARGIN_RATIO = 0.16;
+const GLB_INITIAL_CENTER_NDC = { x: 0, y: 0.1 };
 
 function ensureSpriteRegistry() {
   if (!window.__spriteRegistry) {
@@ -227,6 +228,7 @@ function buildFrozenSpriteMarkup() {
         gltf-transition-model="configKey: ${PERSISTENT_GLB_CONFIG_KEY}"></a-entity>
       ${debugGlbMarker}
     </a-entity>
+    <a-entity id="frozen-drag-proxy" visible="false"></a-entity>
   `;
 }
 
@@ -253,6 +255,7 @@ function createDiagnostics() {
     glbScale: null,
     glbWorld: null,
     glbNdc: null,
+    glbCenterTargetNdc: null,
     markerNdc: null,
     meshCenterNdc: null,
     glbProjectedSize: null,
@@ -403,6 +406,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const frozenCharacter = container.querySelector('#frozen-sprite-character');
       const persistentSpriteContent = container.querySelector('#persistent-sprite-content');
       const frozenModel = container.querySelector('#frozen-ar-model');
+      const dragProxy = container.querySelector('#frozen-drag-proxy');
       const debugGlbMarker = container.querySelector('#debug-glb-marker');
       const anchors = targets.map((target) => ({
         target,
@@ -637,6 +641,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           finalRenderDepth: getFinalRenderDepth(),
           glbWorld,
           glbNdc: projectedVector(frozenModel?.object3D),
+          glbCenterTargetNdc: { ...GLB_INITIAL_CENTER_NDC },
           markerNdc: projectedVector(debugGlbMarker?.object3D),
           meshCenterNdc: readMeshCenterProjection(),
           glbProjectedSize: readMeshProjectedSize(),
@@ -667,6 +672,13 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         rotation: { ...FROZEN_SPRITE_ROTATION },
         scale: { ...FROZEN_SPRITE_SCALE },
       };
+      const dragProxyState = {
+        active: false,
+        pointerId: null,
+        plane: null,
+        startPoint: null,
+        startPosition: null,
+      };
 
       const applyFrozenObjectTransform = () => {
         if (!frozenObject?.object3D) return false;
@@ -682,6 +694,44 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         );
         frozenObject.object3D.scale.set(renderedScale.x, renderedScale.y, renderedScale.z);
         frozenObject.setAttribute('visible', frozenState.active ? 'true' : 'false');
+        return true;
+      };
+
+      const moveFrozenByNdcDelta = (deltaNdcX = 0, deltaNdcY = 0) => {
+        const THREE = getThree();
+        if (!THREE || !scene.camera) return false;
+        const depth = getFinalRenderDepth();
+        const ratio = getFinalDepthRatio();
+        const fovDeg = Number(scene.camera?.fov) || 60;
+        const fovRad = THREE.MathUtils?.degToRad
+          ? THREE.MathUtils.degToRad(fovDeg)
+          : fovDeg * Math.PI / 180;
+        const halfHeight = Math.tan(fovRad / 2) * depth;
+        const halfWidth = halfHeight * ((window.innerWidth || 390) / (window.innerHeight || 844));
+        frozenState.position = {
+          ...frozenState.position,
+          x: frozenState.position.x + (deltaNdcX * halfWidth) / ratio,
+          y: frozenState.position.y + (deltaNdcY * halfHeight) / ratio,
+        };
+        return true;
+      };
+
+      const centerFrozenModelAtNdc = (target = GLB_INITIAL_CENTER_NDC, options = {}) => {
+        if (!frozenState.active) return false;
+        const center = readMeshCenterProjection();
+        if (!center) return false;
+        const deltaNdcX = Number(target.x || 0) - center.x;
+        const deltaNdcY = Number(target.y || 0) - center.y;
+        if (Math.abs(deltaNdcX) < 0.001 && Math.abs(deltaNdcY) < 0.001) return false;
+        const changed = moveFrozenByNdcDelta(deltaNdcX, deltaNdcY);
+        if (!changed) return false;
+        applyFrozenObjectTransform();
+        if (options.clampToViewport !== false && clampFrozenToEditBounds()) applyFrozenObjectTransform();
+        pushDiagnostics({
+          glbCenterTargetNdc: { ...target },
+          meshCenterNdc: readMeshCenterProjection(),
+          ...readRenderDiagnostics(options.lastEvent || 'glb-centered'),
+        });
         return true;
       };
 
@@ -722,20 +772,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         const deltaNdcX = targetCenterX - modelBounds.centerX;
         const deltaNdcY = targetCenterY - modelBounds.centerY;
         if (Math.abs(deltaNdcX) < 0.001 && Math.abs(deltaNdcY) < 0.001) return changed;
-        const depth = getFinalRenderDepth();
-        const ratio = getFinalDepthRatio();
-        const fovDeg = Number(scene.camera?.fov) || 60;
-        const fovRad = THREE.MathUtils?.degToRad
-          ? THREE.MathUtils.degToRad(fovDeg)
-          : fovDeg * Math.PI / 180;
-        const halfHeight = Math.tan(fovRad / 2) * depth;
-        const halfWidth = halfHeight * ((window.innerWidth || 390) / (window.innerHeight || 844));
-        frozenState.position = {
-          ...frozenState.position,
-          x: frozenState.position.x + (deltaNdcX * halfWidth) / ratio,
-          y: frozenState.position.y + (deltaNdcY * halfHeight) / ratio,
-        };
-        return true;
+        return moveFrozenByNdcDelta(deltaNdcX, deltaNdcY) || changed;
       };
 
       const setRuntimeStatus = (nextStatus) => {
@@ -1047,14 +1084,20 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           return cloneFrozenState();
         }
 
+        comp.applyAnimationFrame?.(glb.animation?.initialFrame ?? glb.animation?.startFrame ?? 0, {
+          clips: glb.animation?.clips,
+          fps: glb.animation?.fps,
+        });
         frozenState.contentMode = 'gltf';
         activeFinalMode = 'gltf';
         applyFrozenState();
         frozenModel.setAttribute('visible', 'true');
         debugGlbMarker?.setAttribute('visible', 'true');
         configureDebugGlbMarker();
+        centerFrozenModelAtNdc(GLB_INITIAL_CENTER_NDC, { lastEvent: `glb-centered-before-show:${idx}` });
         pushRenderDiagnostics(`glb-before-show:${idx}`);
         await comp.show?.({ crossfadeMs: glb.transition?.crossfadeMs });
+        centerFrozenModelAtNdc(GLB_INITIAL_CENTER_NDC, { lastEvent: `glb-centered-after-show:${idx}` });
         pushRenderDiagnostics(`glb-after-show:${idx}`);
         pushDiagnostics({ glbPhase: 'visible', frozenModelLoaded: true, modelReady: true, modelSrc, lastEvent: `glb-visible:${idx}` });
         await comp.playIntroThenIdle?.();
@@ -1317,17 +1360,6 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return cloneFrozenState();
       };
 
-      const resetFinalTransform = () => {
-        frozenState.position = { ...FROZEN_SPRITE_POSITION };
-        frozenState.rotation = { ...FROZEN_SPRITE_ROTATION };
-        frozenState.scale = { ...FROZEN_SPRITE_SCALE };
-        liveYawOffset = 0;
-        applyLiveYaw();
-        applyFrozenState();
-        pushDiagnostics({ lastEvent: 'final-transform-reset' });
-        return cloneFrozenState();
-      };
-
       const restartScan = () => {
         const snapshot = resetSceneForScan();
         const sys = scene.systems && scene.systems['mindar-image-system'];
@@ -1465,6 +1497,75 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           target: target ? cloneTarget(target) : null,
           confidence: result.confidence ?? null,
         };
+      };
+
+      const screenPointToDragPlaneIntersection = ({ clientX = 0, clientY = 0 } = {}, plane) => {
+        const THREE = getThree();
+        if (!THREE || !scene.camera || !plane) return null;
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 390;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 844;
+        const ndc = new THREE.Vector2(
+          (Number(clientX) / viewportWidth) * 2 - 1,
+          -(Number(clientY) / viewportHeight) * 2 + 1
+        );
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(ndc, scene.camera);
+        const point = new THREE.Vector3();
+        return raycaster.ray.intersectPlane(plane, point) ? point : null;
+      };
+
+      const beginFrozenDrag = ({ pointerId = null, clientX = 0, clientY = 0 } = {}) => {
+        if (!frozenState.active || !frozenObject?.object3D) return cloneFrozenState();
+        const THREE = getThree();
+        if (!THREE || !scene.camera) return cloneFrozenState();
+        syncRenderMatrices();
+        const objectWorld = frozenObject.object3D.getWorldPosition(new THREE.Vector3());
+        const cameraForward = new THREE.Vector3();
+        scene.camera.getWorldDirection(cameraForward);
+        const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(cameraForward, objectWorld);
+        const startPoint = screenPointToDragPlaneIntersection({ clientX, clientY }, plane);
+        if (!startPoint) return cloneFrozenState();
+        dragProxyState.active = true;
+        dragProxyState.pointerId = pointerId;
+        dragProxyState.plane = plane;
+        dragProxyState.startPoint = startPoint.clone();
+        dragProxyState.startPosition = { ...frozenState.position };
+        if (dragProxy?.object3D) dragProxy.object3D.position.copy(objectWorld);
+        pushDiagnostics({ lastEvent: 'drag-proxy-start' });
+        return cloneFrozenState();
+      };
+
+      const dragFrozenToScreenPoint = ({ pointerId = null, clientX = 0, clientY = 0, clampToViewport = false } = {}) => {
+        if (!frozenState.active || !dragProxyState.active || !dragProxyState.plane || !dragProxyState.startPoint || !dragProxyState.startPosition) {
+          return cloneFrozenState();
+        }
+        if (dragProxyState.pointerId != null && pointerId != null && pointerId !== dragProxyState.pointerId) return cloneFrozenState();
+        const THREE = getThree();
+        const point = screenPointToDragPlaneIntersection({ clientX, clientY }, dragProxyState.plane);
+        if (!THREE || !point) return cloneFrozenState();
+        const delta = point.clone().sub(dragProxyState.startPoint);
+        const ratio = getFinalDepthRatio();
+        frozenState.position = {
+          ...dragProxyState.startPosition,
+          x: dragProxyState.startPosition.x + delta.x / ratio,
+          y: dragProxyState.startPosition.y + delta.y / ratio,
+        };
+        if (dragProxy?.object3D) dragProxy.object3D.position.copy(point);
+        if (clampToViewport) applyFrozenState();
+        else applyFrozenObjectTransform();
+        return cloneFrozenState();
+      };
+
+      const endFrozenDrag = ({ clampToViewport = true } = {}) => {
+        if (!dragProxyState.active) return cloneFrozenState();
+        dragProxyState.active = false;
+        dragProxyState.pointerId = null;
+        dragProxyState.plane = null;
+        dragProxyState.startPoint = null;
+        dragProxyState.startPosition = null;
+        if (clampToViewport) applyFrozenState();
+        pushDiagnostics({ lastEvent: 'drag-proxy-end' });
+        return cloneFrozenState();
       };
 
       const setFrozenTransform = (transform = {}) => {
@@ -1617,13 +1718,15 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         showFinalModel,
         hideFinalModel,
         revealModelAfterSprite,
-        resetFinalTransform,
         getFinalModelDebug,
         playGlbIntro,
         playGlbIdle,
         restartScan,
         setFrozenTransform,
         getFrozenState: cloneFrozenState,
+        beginFrozenDrag,
+        dragFrozenToScreenPoint,
+        endFrozenDrag,
         moveFrozenByScreenDelta,
         rotateFrozenBy,
         scaleFrozenBy,

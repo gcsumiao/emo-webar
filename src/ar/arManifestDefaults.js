@@ -6,7 +6,7 @@ export const DEFAULT_SCENE_ID = 'targets';
 
 export const DEFAULT_GLB_ASSET_ID = 'emo-model';
 
-export const DEFAULT_GLB_URL = '/assets/step06/models/yimao_branch_grow_animated.glb';
+export const DEFAULT_GLB_URL = '/assets/step06/models/yimao_animation_ultra_fast_growth.glb';
 
 export const DEFAULT_TARGETS = [
   {
@@ -44,20 +44,23 @@ export const DEFAULT_TARGETS = [
 export const DEFAULT_GLB_CONFIG = {
   assetId: DEFAULT_GLB_ASSET_ID,
   src: DEFAULT_GLB_URL,
-  position: [0, -0.1, 0.02],
+  position: [0, 0, 0.02],
   rotation: [0, -90, 0],
-  scale: [0.24, 0.24, 0.24],
+  scale: [0.18, 0.18, 0.18],
   visibleOnTarget: false,
   showAfterSpriteIntro: false,
   animation: {
     playMode: 'all-clips-once',
-    clips: ['PolygonAction', 'Polygon_2Action'],
+    clips: ['Scene'],
     introClip: null,
     idleClip: null,
     fps: 24,
+    startFrame: 1,
+    hiddenNodesUntilFrame: ['Polygon', 'Polygon_2'],
+    revealHiddenNodesFrame: 52,
     markers: [
       { id: 'drop-bounce', frame: 1, audio: 'drop-bounce' },
-      { id: 'branch-pop', frame: 14, audio: 'branch-pop' },
+      { id: 'branch-pop', frame: 52, audio: 'branch-pop' },
     ],
     loopIdle: false,
     clampIntroWhenFinished: true,

@@ -96,24 +96,28 @@ async function canvasToPhoto(canvas, filenamePrefix, source) {
 const POLAROID = {
   width: 1080,
   ribbon: 98,
-  photoHeight: 1178,
-  footerHeight: 378,
+  photoHeight: 1364,
+  footerHeight: 360,
   pink: '#F29CB0',
   pinkSoft: '#FFE4EC',
   pinkDeep: '#E56D89',
   glyphCrop: { x: 305, y: 884, width: 472, height: 70 },
-  cornerSakuraRotations: [-18, 22, -12, 28],
 };
 
 POLAROID.framedHeight = POLAROID.ribbon * 2 + POLAROID.photoHeight;
 POLAROID.height = POLAROID.framedHeight + POLAROID.footerHeight;
 
+const GLYPH_CANVAS_SCALE = 4;
+
 function tintedStripCanvas(frameImage, crop, color) {
   const c = document.createElement('canvas');
-  c.width = crop.width;
-  c.height = crop.height;
+  c.width = Math.round(crop.width * GLYPH_CANVAS_SCALE);
+  c.height = Math.round(crop.height * GLYPH_CANVAS_SCALE);
   const x = c.getContext('2d');
   if (!x) return null;
+  x.imageSmoothingEnabled = true;
+  x.imageSmoothingQuality = 'high';
+  x.setTransform(GLYPH_CANVAS_SCALE, 0, 0, GLYPH_CANVAS_SCALE, 0, 0);
   x.drawImage(frameImage, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height);
   x.globalCompositeOperation = 'source-in';
   x.fillStyle = color;
@@ -161,30 +165,6 @@ function tileGlyphVertical(ctx, glyph, x0, y0, stripWidth, totalHeight, count, e
   ctx.restore();
 }
 
-function drawSakura(ctx, cx, cy, radius, rotationDeg) {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate((rotationDeg * Math.PI) / 180);
-  ctx.fillStyle = '#fff';
-  const petalRx = radius * 0.40;
-  const petalRy = radius * 0.60;
-  const petalCy = -radius * 0.46;
-  for (let i = 0; i < 5; i++) {
-    ctx.save();
-    ctx.rotate((i * 72 * Math.PI) / 180);
-    ctx.beginPath();
-    ctx.ellipse(0, petalCy, petalRx, petalRy, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-  ctx.fillStyle = POLAROID.pinkDeep;
-  ctx.globalAlpha = 0.9;
-  ctx.beginPath();
-  ctx.arc(0, 0, radius * 0.16, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
 function drawPolaroidFrame(ctx, photoImage, width, height, frameImage = null) {
   const { ribbon, photoHeight, framedHeight, pink, pinkSoft, pinkDeep, glyphCrop } = POLAROID;
   const photoX = ribbon;
@@ -196,7 +176,7 @@ function drawPolaroidFrame(ctx, photoImage, width, height, frameImage = null) {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, width, height);
 
-  // Soft pink inner tint behind the ribbons
+  // Soft pink inner tint behind the ribbons keeps antialiasing on the card edge clean.
   ctx.fillStyle = pinkSoft;
   ctx.fillRect(0, 0, width, framedHeight);
 
@@ -223,19 +203,10 @@ function drawPolaroidFrame(ctx, photoImage, width, height, frameImage = null) {
       tileGlyphVertical(ctx, whiteGlyph, width - ribbon, 0, ribbon, framedHeight, 3, verGap, 'down');
     }
 
-    // Corner sakura — four flowers at the ribbon/photo seams
-    const sakuraR = ribbon * 0.46;
-    const inset = ribbon - sakuraR * 0.55;
-    const [rotTL, rotTR, rotBL, rotBR] = POLAROID.cornerSakuraRotations;
-    drawSakura(ctx, inset, inset, sakuraR, rotTL);
-    drawSakura(ctx, width - inset, inset, sakuraR, rotTR);
-    drawSakura(ctx, inset, framedHeight - inset, sakuraR, rotBL);
-    drawSakura(ctx, width - inset, framedHeight - inset, sakuraR, rotBR);
-
     // Footer: hairlines + centered pinkDeep brand strip
     if (pinkGlyph) {
-      const footerCenterY = framedHeight + POLAROID.footerHeight / 2;
-      const stripH = 128;
+      const footerCenterY = framedHeight + POLAROID.footerHeight * 0.58;
+      const stripH = 96;
       const aspect = pinkGlyph.width / pinkGlyph.height;
       const stripW = stripH * aspect;
       const stripX = (width - stripW) / 2;
@@ -283,7 +254,7 @@ export async function createFramedARPhoto(photo, frameUrl = null) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
-  const ctx = canvas.getContext('2d', { alpha: true });
+  const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) throw new Error('Canvas 2D context is unavailable.');
 
   ctx.imageSmoothingEnabled = true;

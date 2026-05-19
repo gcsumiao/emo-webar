@@ -60,8 +60,8 @@ Runtime state is exposed through `window.__mindar`:
 - `getLastTarget()` returns the most recent target metadata.
 - `freezeCurrentTarget()` copies the current anchored model into an editable scene-level frozen object.
 - `unfreezeCurrentTarget()` hides the frozen object and restores live anchored content.
-- `moveFrozenByScreenDelta({ dx, dy, clampToViewport })` moves the frozen object along the camera-facing plane and clamps it inside the visible AR edit area by default.
-- `rotateFrozenBy({ yawDelta })` rotates the frozen object around the Y axis.
+- `beginFrozenDrag({ pointerId, clientX, clientY })`, `dragFrozenToScreenPoint(...)`, and `endFrozenDrag({ clampToViewport })` move a transparent drag proxy on a fixed camera-depth plane, then sync the frozen object to it.
+- `scaleFrozenBy({ scaleFactor })` scales the frozen object and clamps it inside the visible AR edit area.
 - `getFrozenState()` returns the current frozen transform and source target.
 
 The scan and AR screens currently treat any configured target as an EMO hit. Spatial AR content lives under the MindAR anchor, so it follows the detected image's position, rotation, and scale. MindAR supports multiple targets in one compiled `.mind` pack; multiple packs require a scene selection step through `switchScene(sceneId)` or `applyRecognitionResult()`.
@@ -72,9 +72,8 @@ After scan success, Step 06 shows the configured animated GLB inside `#frozen-ar
 
 Live final mode uses no persistent gesture icons or mode switch. Small staged toast hints explain the direct gestures the first time the model becomes editable:
 
-- **Rotate**: drag the middle camera area with one finger for continuous 360-degree yaw and clamped pitch.
-- **Move / scale**: use two fingers to move the model inside the current screen-safe edit area; pinch to scale. Two-finger twist can also adjust yaw.
-- **Reset**: tap the reset button to restore the default editable position.
+- **Move**: drag the middle camera area with one finger. The pointer moves a transparent proxy object, and the animated GLB parent follows it.
+- **Scale**: pinch with two fingers. Rotation is intentionally disabled so the animated GLB does not deform or lose its visible pose.
 
 When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 
@@ -83,8 +82,8 @@ When the user taps the shutter in the AR screen, `ARActive` calls `window.__mind
 The main Vite WebAR experience now plays the animated Step 06 GLB directly after recognition. The reference flow is Kivicube-like:
 
 1. Recognition chooses a scene pack, then MindAR recognizes one of that pack's image targets.
-2. Targets configured with `renderMode: "gltf-only"` load `assets/step06/models/yimao_branch_grow_animated.glb`.
-3. The runtime plays `PolygonAction` and `Polygon_2Action` together once, clamps the final pose, and keeps the frozen GLB object for viewer-style rotate, bounded move, scale, and capture.
+2. Targets configured with `renderMode: "gltf-only"` load `assets/step06/models/yimao_animation_ultra_fast_growth.glb`.
+3. The runtime applies frame 1 before reveal, hides the `Polygon` and `Polygon_2` branch/leaf nodes until frame 52, centers the projected mesh near the screen middle, plays the `Scene` clip once, clamps the final pose, and keeps the frozen GLB object for bounded proxy-drag move, scale, and capture.
 4. The active Step 06 path does not request the old PNG frame sequence.
 
 The runtime intentionally avoids extra studio lights, tone-mapping exposure, generated environment maps, or material brightness overrides for the Step 06 GLB. The model should display from its own textures and material values.
@@ -94,7 +93,7 @@ Current audio contract:
 - `assets/step06/audio/button-click.mp3` plays for non-final-AR page buttons, including scan controls.
 - `assets/step06/audio/bgm.mp3` loops from scan through AR capture/retake/rescan flows.
 - `assets/step06/audio/drop-bounce.mp3` overlays the BGM when the GLB timeline reaches frame 1 at 24fps (`0.0417s`).
-- `assets/step06/audio/branch-pop.mp3` overlays the BGM when the GLB timeline reaches frame 14 at 24fps (`0.5833s`).
+- `assets/step06/audio/branch-pop.mp3` overlays the BGM when the GLB timeline reaches frame 52 at 24fps (`2.1667s`).
 - `assets/step06/audio/shutter.mp3` overlays the BGM when the AR shutter is pressed.
 
 This keeps the prototype frontend-only: no new production dependency, backend, or cloud recognition API is required for the GLB animation or audio marker changes.

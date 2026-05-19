@@ -4,7 +4,7 @@ const STEP06_MANIFEST_URL = asset('/assets/step06/manifest.json');
 
 const manifestDefaults = {
   audioUrl: asset('/assets/step06/audio/bgm.mp3'),
-  glbUrl: asset('/assets/step06/models/yimao_branch_grow_animated.glb'),
+  glbUrl: asset('/assets/step06/models/yimao_animation_ultra_fast_growth.glb'),
   fps: 24,
 };
 
