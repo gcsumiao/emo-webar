@@ -583,6 +583,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     if (arPhase !== 'final-live') return;
     const next = getARRuntime()?.resetFrozenTransform?.();
     if (next) setFrozenState(next);
+    setHasInteractedOnce(false);
   }, [arPhase]);
 
   const exitAR = React.useCallback(async () => {
