@@ -830,6 +830,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           markGestureCompleted();
         }
         updatedState = runtime?.rotateFrozenBy?.({
+          pointerDeltaX: dx,
+          pointerDeltaY: dy,
           yawDelta: dx * SINGLE_FINGER_YAW_SENSITIVITY,
           pitchDelta: dy * SINGLE_FINGER_PITCH_SENSITIVITY,
         }) || updatedState;

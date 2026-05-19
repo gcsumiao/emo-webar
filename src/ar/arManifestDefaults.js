@@ -8,6 +8,18 @@ export const DEFAULT_GLB_ASSET_ID = 'emo-model';
 
 export const DEFAULT_GLB_URL = '/assets/step06/models/yimao_animation_ultra_fast_growth.glb';
 
+export const DEFAULT_GLB_INTERACTION = {
+  rotationMode: 'pivot-trackball',
+  pivot: 'boundsCenter',
+  pitchRange: [-180, 180],
+  yawSensitivity: 0.16,
+  pitchSensitivity: 0.12,
+  minScale: 0.25,
+  maxScale: 2.4,
+  screenMarginNdc: 0.06,
+  nearPlaneMargin: 0.08,
+};
+
 export const DEFAULT_TARGETS = [
   {
     targetIndex: 0,
@@ -73,6 +85,7 @@ export const DEFAULT_GLB_CONFIG = {
     spriteHideDelayMs: 0,
     flashMs: 0,
   },
+  interaction: { ...DEFAULT_GLB_INTERACTION },
 };
 
 export const DEFAULT_RENDER_MODE = 'gltf-only';

@@ -1,5 +1,6 @@
 import { asset } from '../lib/assetUrl.js';
 import {
+  DEFAULT_GLB_INTERACTION,
   DEFAULT_RENDER_MODE,
   createDefaultArManifest,
 } from './arManifestDefaults.js';
@@ -49,6 +50,39 @@ function normalizeArray(value, fallback) {
   });
 }
 
+function normalizeNumber(value, fallback, min = -Infinity, max = Infinity) {
+  const next = Number(value);
+  const resolved = Number.isFinite(next) ? next : fallback;
+  return Math.max(min, Math.min(max, resolved));
+}
+
+function normalizeGlbInteraction(interactionLike, fallbackInteraction = DEFAULT_GLB_INTERACTION) {
+  const merged = mergeObject(DEFAULT_GLB_INTERACTION, mergeObject(fallbackInteraction, interactionLike || {}));
+  const pitchRange = normalizeArray(merged.pitchRange, DEFAULT_GLB_INTERACTION.pitchRange);
+  const minPitch = Number(pitchRange[0]);
+  const maxPitch = Number(pitchRange[1]);
+  const normalizedPitchRange = Number.isFinite(minPitch) && Number.isFinite(maxPitch) && maxPitch >= minPitch
+    ? [minPitch, maxPitch]
+    : [...DEFAULT_GLB_INTERACTION.pitchRange];
+  const minScale = normalizeNumber(merged.minScale, DEFAULT_GLB_INTERACTION.minScale, 0.01);
+  const maxScale = Math.max(
+    minScale,
+    normalizeNumber(merged.maxScale, DEFAULT_GLB_INTERACTION.maxScale, minScale)
+  );
+
+  return {
+    rotationMode: merged.rotationMode === 'pivot-trackball' ? 'pivot-trackball' : DEFAULT_GLB_INTERACTION.rotationMode,
+    pivot: merged.pivot === 'boundsCenter' ? 'boundsCenter' : DEFAULT_GLB_INTERACTION.pivot,
+    pitchRange: normalizedPitchRange,
+    yawSensitivity: normalizeNumber(merged.yawSensitivity, DEFAULT_GLB_INTERACTION.yawSensitivity, 0),
+    pitchSensitivity: normalizeNumber(merged.pitchSensitivity, DEFAULT_GLB_INTERACTION.pitchSensitivity, 0),
+    minScale,
+    maxScale,
+    screenMarginNdc: normalizeNumber(merged.screenMarginNdc, DEFAULT_GLB_INTERACTION.screenMarginNdc, 0, 0.45),
+    nearPlaneMargin: normalizeNumber(merged.nearPlaneMargin, DEFAULT_GLB_INTERACTION.nearPlaneMargin, 0),
+  };
+}
+
 function normalizeAsset(assetLike) {
   if (!isPlainObject(assetLike) || !assetLike.id) return null;
   return {
@@ -84,6 +118,7 @@ function normalizeGlb(glbLike, fallbackGlb, targetIndex) {
   glb.scale = normalizeArray(glb.scale, fallbackGlb.scale || [1, 1, 1]);
   glb.animation = mergeObject(fallbackGlb.animation || {}, glb.animation || {});
   glb.transition = mergeObject(fallbackGlb.transition || {}, glb.transition || {});
+  glb.interaction = normalizeGlbInteraction(glb.interaction, fallbackGlb.interaction);
   glb.visibleOnTarget = Boolean(glb.visibleOnTarget);
   glb.showAfterSpriteIntro = glb.showAfterSpriteIntro !== false;
   return glb;

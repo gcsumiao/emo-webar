@@ -118,7 +118,27 @@ The WebAR runtime does not add studio lighting, tone-mapping exposure, generated
 
 The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform that user gestures move, rotate, and scale during editing.
 
-Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: the pointer moves a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag moves the model and rotates the frozen parent for 360-degree inspection: horizontal drag controls yaw, upward drag pitches the view to reveal the GLB bottom, and downward drag reveals the GLB top. Two-finger pinch only scales the model. The runtime clamps the projected GLB bounds so the editable model cannot be dragged off screen.
+Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: the pointer moves a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag moves the model and rotates an internal GLB pivot for 360-degree inspection: horizontal drag controls yaw, upward drag pitches the view to reveal the GLB bottom and back, and downward drag reveals the GLB top and back. Two-finger pinch only scales the model. The runtime clamps the projected GLB bounds and camera near-plane depth so the editable model cannot be dragged off screen or scaled into the camera.
+
+The optional `glb.interaction` object controls the final editable GLB behavior. If omitted, these defaults are used:
+
+```json
+{
+  "interaction": {
+    "rotationMode": "pivot-trackball",
+    "pivot": "boundsCenter",
+    "pitchRange": [-180, 180],
+    "yawSensitivity": 0.16,
+    "pitchSensitivity": 0.12,
+    "minScale": 0.25,
+    "maxScale": 2.4,
+    "screenMarginNdc": 0.06,
+    "nearPlaneMargin": 0.08
+  }
+}
+```
+
+`pivot: "boundsCenter"` rotates around the model's current visual bounds center rather than the animated mesh origin. `screenMarginNdc` shrinks the edit area in normalized device coordinates, and `nearPlaneMargin` adds world-space distance in front of the camera near plane before scale is reduced.
 
 The runtime drag API accepts pointer positions and applies the same default bounds check on drag end:
 

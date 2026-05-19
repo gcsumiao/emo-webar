@@ -8,6 +8,7 @@ import {
   loadArManifest,
 } from './arManifest.js';
 import { arTargets } from './arTargets.js';
+import { DEFAULT_GLB_INTERACTION } from './arManifestDefaults.js';
 import { spriteConfigForTarget, FROZEN_SPRITE_DEFAULTS } from './arSpriteConfig.js';
 import './components/index.js';
 
@@ -115,10 +116,20 @@ function normalizeDegrees(value) {
   return ((next % 360) + 360) % 360;
 }
 
-function clampPitchDegrees(value) {
+function normalizePitchRange(range) {
+  const min = Array.isArray(range) ? Number(range[0]) : DEFAULT_GLB_INTERACTION.pitchRange[0];
+  const max = Array.isArray(range) ? Number(range[1]) : DEFAULT_GLB_INTERACTION.pitchRange[1];
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) {
+    return DEFAULT_GLB_INTERACTION.pitchRange;
+  }
+  return [min, max];
+}
+
+function clampPitchDegrees(value, range = DEFAULT_GLB_INTERACTION.pitchRange) {
   const next = Number(value || 0);
   if (!Number.isFinite(next)) return 0;
-  return Math.max(-75, Math.min(75, next));
+  const [min, max] = normalizePitchRange(range);
+  return Math.max(min, Math.min(max, next));
 }
 
 function clampNumber(value, min, max) {
@@ -232,10 +243,14 @@ function buildFrozenSpriteMarkup() {
           material="${spriteMaterial}"
           sprite-sequence="configKey: ${PERSISTENT_SPRITE_CONFIG_KEY}; autoplay: false"></a-plane>
       </a-entity>
-      <a-entity id="frozen-ar-model"
-        class="glb-content"
-        visible="false"
-        gltf-transition-model="configKey: ${PERSISTENT_GLB_CONFIG_KEY}"></a-entity>
+      <a-entity id="frozen-glb-rotation-pivot" position="0 0 0" rotation="0 0 0">
+        <a-entity id="frozen-glb-model-offset" position="0 0 0">
+          <a-entity id="frozen-ar-model"
+            class="glb-content"
+            visible="false"
+            gltf-transition-model="configKey: ${PERSISTENT_GLB_CONFIG_KEY}"></a-entity>
+        </a-entity>
+      </a-entity>
       ${debugGlbMarker}
     </a-entity>
     <a-entity id="frozen-drag-proxy" visible="false"></a-entity>
@@ -420,6 +435,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const frozenCharacter = container.querySelector('#frozen-sprite-character');
       const persistentSpriteContent = container.querySelector('#persistent-sprite-content');
       const frozenModel = container.querySelector('#frozen-ar-model');
+      const frozenGlbPivot = container.querySelector('#frozen-glb-rotation-pivot');
+      const frozenGlbModelOffset = container.querySelector('#frozen-glb-model-offset');
       const dragProxy = container.querySelector('#frozen-drag-proxy');
       const debugGlbMarker = container.querySelector('#debug-glb-marker');
       const anchors = targets.map((target) => ({
@@ -518,12 +535,20 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         const top = Math.max(0, rect.top + paddingPx);
         const bottom = Math.min(viewportHeight, rect.bottom - paddingPx);
         if (right <= left || bottom <= top) return null;
-        return {
-          minX: (left / viewportWidth) * 2 - 1,
-          maxX: (right / viewportWidth) * 2 - 1,
-          minY: 1 - (bottom / viewportHeight) * 2,
-          maxY: 1 - (top / viewportHeight) * 2,
-        };
+        let minX = (left / viewportWidth) * 2 - 1;
+        let maxX = (right / viewportWidth) * 2 - 1;
+        let minY = 1 - (bottom / viewportHeight) * 2;
+        let maxY = 1 - (top / viewportHeight) * 2;
+        const marginNdc = frozenState?.contentMode === 'gltf'
+          ? Math.max(0, Math.min(0.45, Number(readInteractionConfig().screenMarginNdc) || 0))
+          : 0;
+        if (marginNdc > 0 && maxX - minX > marginNdc * 2 && maxY - minY > marginNdc * 2) {
+          minX += marginNdc;
+          maxX -= marginNdc;
+          minY += marginNdc;
+          maxY -= marginNdc;
+        }
+        return { minX, maxX, minY, maxY };
       };
       const readModelProjectionBounds = () => {
         const THREE = getThree();
@@ -558,6 +583,34 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           centerY: (minY + maxY) / 2,
           width: maxX - minX,
           height: maxY - minY,
+        };
+      };
+      const readModelCameraDepthBounds = () => {
+        const THREE = getThree();
+        const model = getPersistentModelComp()?.model || frozenModel?.getObject3D?.('mesh') || frozenObject?.object3D;
+        if (!THREE || !model || !scene.camera) return null;
+        syncRenderMatrices();
+        const box = new THREE.Box3().setFromObject(model);
+        if (box.isEmpty()) return null;
+        const corners = [
+          [box.min.x, box.min.y, box.min.z],
+          [box.min.x, box.min.y, box.max.z],
+          [box.min.x, box.max.y, box.min.z],
+          [box.min.x, box.max.y, box.max.z],
+          [box.max.x, box.min.y, box.min.z],
+          [box.max.x, box.min.y, box.max.z],
+          [box.max.x, box.max.y, box.min.z],
+          [box.max.x, box.max.y, box.max.z],
+        ].map(([x, y, z]) => {
+          const cameraSpace = new THREE.Vector3(x, y, z);
+          scene.camera.worldToLocal(cameraSpace);
+          return -cameraSpace.z;
+        }).filter((depth) => Number.isFinite(depth));
+        if (!corners.length) return null;
+        return {
+          minDepth: Math.min(...corners),
+          maxDepth: Math.max(...corners),
+          centerDepth: corners.reduce((sum, depth) => sum + depth, 0) / corners.length,
         };
       };
       const projectedVector = (object3D) => {
@@ -700,6 +753,47 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         startPosition: null,
       };
 
+      const resetGlbPivotTransform = () => {
+        if (!frozenGlbPivot?.object3D || !frozenGlbModelOffset?.object3D) return false;
+        frozenGlbPivot.object3D.position.set(0, 0, 0);
+        frozenGlbPivot.object3D.rotation.set(0, 0, 0);
+        frozenGlbModelOffset.object3D.position.set(0, 0, 0);
+        return true;
+      };
+
+      const applyGlbPivotRotation = () => {
+        const THREE = getThree();
+        if (!THREE || !frozenGlbPivot?.object3D) return false;
+        if (frozenState.contentMode !== 'gltf') {
+          frozenGlbPivot.object3D.rotation.set(0, 0, 0);
+          return true;
+        }
+        frozenGlbPivot.object3D.rotation.set(
+          THREE.MathUtils.degToRad(frozenState.rotation.x),
+          THREE.MathUtils.degToRad(frozenState.rotation.y),
+          0
+        );
+        return true;
+      };
+
+      const refreshGlbInteractionPivot = () => {
+        const THREE = getThree();
+        const model = getPersistentModelComp()?.model || frozenModel?.getObject3D?.('mesh');
+        if (!THREE || !model || !frozenObject?.object3D || !frozenGlbPivot?.object3D || !frozenGlbModelOffset?.object3D) return false;
+        resetGlbPivotTransform();
+        syncRenderMatrices();
+        const box = new THREE.Box3().setFromObject(model);
+        if (box.isEmpty()) return false;
+        const centerWorld = new THREE.Vector3();
+        box.getCenter(centerWorld);
+        const centerLocal = frozenObject.object3D.worldToLocal(centerWorld.clone());
+        frozenGlbPivot.object3D.position.copy(centerLocal);
+        frozenGlbModelOffset.object3D.position.copy(centerLocal.clone().multiplyScalar(-1));
+        applyGlbPivotRotation();
+        syncRenderMatrices();
+        return true;
+      };
+
       const applyFrozenObjectTransform = () => {
         if (!frozenObject?.object3D) return false;
         const THREE = getThree();
@@ -707,13 +801,16 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         const renderedPosition = toRenderedFrozenPosition(frozenState.position);
         const renderedScale = toRenderedFrozenScale(frozenState.scale);
         frozenObject.object3D.position.set(renderedPosition.x, renderedPosition.y, renderedPosition.z);
+        const parentPitch = frozenState.contentMode === 'gltf' ? 0 : frozenState.rotation.x;
+        const parentYaw = frozenState.contentMode === 'gltf' ? 0 : frozenState.rotation.y;
         frozenObject.object3D.rotation.set(
-          THREE.MathUtils.degToRad(frozenState.rotation.x),
-          THREE.MathUtils.degToRad(frozenState.rotation.y),
+          THREE.MathUtils.degToRad(parentPitch),
+          THREE.MathUtils.degToRad(parentYaw),
           THREE.MathUtils.degToRad(frozenState.rotation.z)
         );
         frozenObject.object3D.scale.set(renderedScale.x, renderedScale.y, renderedScale.z);
         frozenObject.setAttribute('visible', frozenState.active ? 'true' : 'false');
+        applyGlbPivotRotation();
         return true;
       };
 
@@ -767,7 +864,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         let changed = false;
         if (modelBounds.width > editWidth || modelBounds.height > editHeight) {
           const fitFactor = Math.min(editWidth / modelBounds.width, editHeight / modelBounds.height) * 0.98;
-          const nextScale = Math.max(FROZEN_SPRITE_SCALE_MIN, frozenState.scale.x * fitFactor);
+          const minScale = frozenState.contentMode === 'gltf' ? getScaleMin() : FROZEN_SPRITE_SCALE_MIN;
+          const nextScale = Math.max(minScale, frozenState.scale.x * fitFactor);
           if (Number.isFinite(nextScale) && nextScale < frozenState.scale.x) {
             frozenState.scale = { x: nextScale, y: nextScale, z: nextScale };
             applyFrozenObjectTransform();
@@ -795,6 +893,22 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return moveFrozenByNdcDelta(deltaNdcX, deltaNdcY) || changed;
       };
 
+      const clampFrozenToDepthBounds = () => {
+        if (!frozenState.active || frozenState.contentMode !== 'gltf') return false;
+        const depthBounds = readModelCameraDepthBounds();
+        if (!depthBounds) return false;
+        const safeMinDepth = (readCameraNear() || 0.01) + (Number(readInteractionConfig().nearPlaneMargin) || 0);
+        if (depthBounds.minDepth >= safeMinDepth) return false;
+        const nearSpan = Math.max(0.001, depthBounds.centerDepth - depthBounds.minDepth);
+        const allowedSpan = Math.max(0.001, depthBounds.centerDepth - safeMinDepth);
+        const fitFactor = Math.max(0.05, Math.min(1, (allowedSpan / nearSpan) * 0.96));
+        const nextScale = Math.max(getScaleMin(), frozenState.scale.x * fitFactor);
+        if (!Number.isFinite(nextScale) || nextScale >= frozenState.scale.x - 0.0001) return false;
+        frozenState.scale = { x: nextScale, y: nextScale, z: nextScale };
+        applyFrozenObjectTransform();
+        return true;
+      };
+
       const setRuntimeStatus = (nextStatus) => {
         statusRef.current = nextStatus;
         pushDiagnostics({ status: nextStatus, lastEvent: `status:${nextStatus}` });
@@ -813,6 +927,18 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const getCurrentRenderMode = () => getTargetRenderMode(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
       const getCurrentSpriteConfig = () => spriteConfigForTarget(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
       const getCurrentGlbConfig = () => getTargetGlbConfig(runtimeManifest, getCurrentTargetConfig()?.targetIndex ?? targets[0]?.targetIndex ?? 0);
+      const readInteractionConfig = () => ({
+        ...DEFAULT_GLB_INTERACTION,
+        ...(getCurrentGlbConfig()?.interaction || {}),
+      });
+      const getScaleMin = () => {
+        const min = Number(readInteractionConfig().minScale);
+        return Number.isFinite(min) && min > 0 ? min : FROZEN_SPRITE_SCALE_MIN;
+      };
+      const getScaleMax = () => {
+        const max = Number(readInteractionConfig().maxScale);
+        return Number.isFinite(max) && max > 0 ? Math.max(getScaleMin(), max) : FROZEN_SPRITE_SCALE_MAX;
+      };
       const readAnimationDiagnostics = (glb = getCurrentGlbConfig()) => ({
         animationStartFrame: glb?.animation ? readAnimationStartFrame(glb.animation) : null,
         animationEndFrame: glb?.animation ? readAnimationEndFrame(glb.animation) : null,
@@ -831,12 +957,17 @@ export function MindARStage({ active, visible, onDiagnostics }) {
 
       const applyFrozenState = () => {
         if (!frozenObject?.object3D) return false;
-        const clampedPitch = clampPitchDegrees(frozenState.rotation.x);
+        const pitchRange = frozenState.contentMode === 'gltf'
+          ? readInteractionConfig().pitchRange
+          : [-75, 75];
+        const clampedPitch = clampPitchDegrees(frozenState.rotation.x, pitchRange);
         if (clampedPitch !== frozenState.rotation.x) {
           frozenState.rotation = { ...frozenState.rotation, x: clampedPitch };
         }
         if (!applyFrozenObjectTransform()) return false;
+        if (clampFrozenToDepthBounds()) applyFrozenObjectTransform();
         if (clampFrozenToEditBounds()) applyFrozenObjectTransform();
+        if (clampFrozenToDepthBounds()) applyFrozenObjectTransform();
         pushDiagnostics({
           frozen: frozenState.active,
           contentMode: frozenState.contentMode,
@@ -983,6 +1114,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         getPersistentModelComp()?.hide?.({ crossfadeMs: 0 });
         frozenModel?.setAttribute('visible', 'false');
         debugGlbMarker?.setAttribute('visible', 'false');
+        resetGlbPivotTransform();
         activeFinalMode = activeFinalMode === 'gltf' ? null : activeFinalMode;
         pushDiagnostics({ glbPhase: 'hidden', lastEvent: 'glb-hidden' });
       };
@@ -998,6 +1130,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           debugGlbMarker.setAttribute('rotation', vectorAttr(transform.rotation, [0, 0, 0]));
           configureDebugGlbMarker();
         }
+        if (getPersistentModelComp()?.isReady?.()) refreshGlbInteractionPivot();
       };
 
       const getFinalModelDebug = () => {
@@ -1124,6 +1257,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         comp.applyAnimationFrame?.(animationEndFrame ?? animationStartFrame, animationFrameOptions);
         frozenState.contentMode = 'gltf';
         activeFinalMode = 'gltf';
+        refreshGlbInteractionPivot();
         applyFrozenState();
         frozenModel.setAttribute('visible', 'true');
         debugGlbMarker?.setAttribute('visible', 'true');
@@ -1142,6 +1276,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           lastEvent: `glb-visible:${idx}`,
         });
         await comp.playIntroThenIdle?.();
+        refreshGlbInteractionPivot();
+        applyFrozenState();
         centerFrozenModelAtNdc(GLB_INITIAL_CENTER_NDC, { lastEvent: `glb-centered-after-end:${idx}` });
         const clipNames = comp.getAnimationNames?.() || [];
         pushDiagnostics({
@@ -1359,6 +1495,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         if (activeFinalMode === 'gltf') {
           frozenModel?.setAttribute('visible', 'true');
           debugGlbMarker?.setAttribute('visible', 'true');
+          refreshGlbInteractionPivot();
         } else {
           getPersistentIntroAnim()?.enterFinalIdle?.();
         }
@@ -1377,6 +1514,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         getPersistentModelComp()?.hide?.({ crossfadeMs: 0 });
         frozenModel?.setAttribute('visible', 'false');
         debugGlbMarker?.setAttribute('visible', 'false');
+        resetGlbPivotTransform();
         applyFrozenState();
         return cloneFrozenState();
       };
@@ -1635,10 +1773,20 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return cloneFrozenState();
       };
 
-      const rotateFrozenBy = ({ yawDelta = 0, pitchDelta = 0 } = {}) => {
+      const rotateFrozenBy = ({ yawDelta = 0, pitchDelta = 0, pointerDeltaX = null, pointerDeltaY = null } = {}) => {
         if (!frozenState.active) return cloneFrozenState();
-        const nextYaw = normalizeDegrees(frozenState.rotation.y + Number(yawDelta || 0));
-        const nextPitch = clampPitchDegrees(frozenState.rotation.x + Number(pitchDelta || 0));
+        const interaction = readInteractionConfig();
+        const resolvedYawDelta = Number.isFinite(Number(pointerDeltaX))
+          ? Number(pointerDeltaX) * (Number(interaction.yawSensitivity) || 0)
+          : Number(yawDelta || 0);
+        const resolvedPitchDelta = Number.isFinite(Number(pointerDeltaY))
+          ? Number(pointerDeltaY) * (Number(interaction.pitchSensitivity) || 0)
+          : Number(pitchDelta || 0);
+        const nextYaw = normalizeDegrees(frozenState.rotation.y + resolvedYawDelta);
+        const nextPitch = clampPitchDegrees(
+          frozenState.rotation.x + resolvedPitchDelta,
+          frozenState.contentMode === 'gltf' ? interaction.pitchRange : [-75, 75]
+        );
         frozenState.rotation = { ...frozenState.rotation, x: nextPitch, y: nextYaw };
         applyFrozenState();
         return cloneFrozenState();
@@ -1647,7 +1795,9 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const scaleFrozenBy = ({ scaleFactor = 1 } = {}) => {
         if (!frozenState.active) return cloneFrozenState();
         const factor = Number.isFinite(Number(scaleFactor)) ? Number(scaleFactor) : 1;
-        const next = Math.max(FROZEN_SPRITE_SCALE_MIN, Math.min(FROZEN_SPRITE_SCALE_MAX, frozenState.scale.x * factor));
+        const minScale = frozenState.contentMode === 'gltf' ? getScaleMin() : FROZEN_SPRITE_SCALE_MIN;
+        const maxScale = frozenState.contentMode === 'gltf' ? getScaleMax() : FROZEN_SPRITE_SCALE_MAX;
+        const next = Math.max(minScale, Math.min(maxScale, frozenState.scale.x * factor));
         frozenState.scale = { x: next, y: next, z: next };
         applyFrozenState();
         return cloneFrozenState();
@@ -1697,6 +1847,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const onGltfLoaded = () => {
         window.requestAnimationFrame(() => {
           const comp = getPersistentModelComp();
+          if (comp?.isReady?.()) refreshGlbInteractionPivot();
           pushDiagnostics({
             frozenModelLoaded: true,
             modelReady: Boolean(comp?.isReady?.()),

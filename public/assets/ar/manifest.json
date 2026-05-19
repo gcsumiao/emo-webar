@@ -43,6 +43,17 @@
         "crossfadeMs": 0,
         "spriteHideDelayMs": 0,
         "flashMs": 0
+      },
+      "interaction": {
+        "rotationMode": "pivot-trackball",
+        "pivot": "boundsCenter",
+        "pitchRange": [-180, 180],
+        "yawSensitivity": 0.16,
+        "pitchSensitivity": 0.12,
+        "minScale": 0.25,
+        "maxScale": 2.4,
+        "screenMarginNdc": 0.06,
+        "nearPlaneMargin": 0.08
       }
     },
     "sprite": {}
