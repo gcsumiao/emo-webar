@@ -724,6 +724,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     if (arPhase !== 'final-live') return;
+    arAudio.playButtonClick();
     const next = getARRuntime()?.resetFrozenTransform?.();
     if (next) setFrozenState(next);
     setHasInteractedOnce(false);
@@ -735,6 +736,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     if (arPhase !== 'final-live' || cameraSwitching) return;
     const runtime = getARRuntime();
     if (!runtime?.switchCameraFacing) return;
+    arAudio.playButtonClick();
     setCameraSwitching(true);
     try {
       const result = await runtime.switchCameraFacing();
@@ -766,6 +768,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, [clearCapturedPhoto]);
 
   const shareFrame = React.useCallback(async () => {
+    arAudio.playButtonClick();
     const sharePhoto = framedPhoto || capturedPhoto;
     if (sharePhoto?.url) {
       const fileData = {
@@ -802,6 +805,11 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     }
     try { await navigator.clipboard?.writeText?.(shareData.url); } catch {}
   }, [capturedPhoto, framedPhoto, lang]);
+
+  const retakeFrame = React.useCallback((event) => {
+    arAudio.playButtonClick();
+    return captureFrame(event);
+  }, [captureFrame]);
 
   const handlePointerDown = React.useCallback((event) => {
     if (!canEdit) return;
@@ -1081,7 +1089,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           framedPhotoHeight={framedPhoto.height}
           lang={lang}
           onHome={goHome}
-          onRetake={captureFrame}
+          onRetake={retakeFrame}
           onShare={shareFrame}
         />
       )}
