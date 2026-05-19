@@ -1,4 +1,5 @@
 import { asset } from '../lib/assetUrl.js';
+import { getSceneApiUrl } from './arCloudConfig.js';
 import {
   DEFAULT_GLB_INTERACTION,
   DEFAULT_RENDER_MODE,
@@ -90,6 +91,22 @@ function normalizeAsset(assetLike) {
     id: String(assetLike.id),
     type: assetLike.type || 'model',
     src: resolveArAssetUrl(assetLike.src),
+  };
+}
+
+function normalizeSceneCatalogFromApi(payload) {
+  if (!isPlainObject(payload) || !Array.isArray(payload.scenes)) return null;
+  return {
+    schemaVersion: Number(payload.schemaVersion) || 1,
+    defaultSceneId: payload.defaultSceneId || payload.scenes[0]?.sceneId || payload.scenes[0]?.id || 'targets',
+    recognitionMode: payload.recognitionMode || 'client-scene-rotation',
+    tenant: payload.tenant || '',
+    location: payload.location || '',
+    source: payload.source || 'api',
+    scenes: payload.scenes.map((scene) => ({
+      ...scene,
+      mindTargetUrl: scene.mindTargetUrl || scene.mindFileUrl || scene.mindTargetSrc || scene.url,
+    })),
   };
 }
 
@@ -221,7 +238,7 @@ function generatedTargets(targetCount) {
 
 function normalizeScene(sceneLike, orderIndex, context) {
   const sceneSource = isPlainObject(sceneLike) ? sceneLike : {};
-  const rawMindTargetUrl = sceneSource.mindTargetUrl || sceneSource.mindTargetSrc || sceneSource.url || context.fallbackMindTargetUrl;
+  const rawMindTargetUrl = sceneSource.mindTargetUrl || sceneSource.mindFileUrl || sceneSource.mindTargetSrc || sceneSource.url || context.fallbackMindTargetUrl;
   const sceneId = String(sceneSource.sceneId || sceneSource.id || sceneIdFromMindTargetUrl(rawMindTargetUrl) || `scene-${orderIndex}`);
   const scene = {
     ...sceneSource,
@@ -366,18 +383,34 @@ export async function loadArManifest({ force = false } = {}) {
     })
     .then(async (raw) => {
       let sceneCatalog = null;
-      let catalogWarning = '';
+      const catalogWarnings = [];
+      const sceneApiUrl = getSceneApiUrl();
+      if (sceneApiUrl) {
+        try {
+          const response = await fetch(sceneApiUrl, { cache: 'no-cache' });
+          if (!response.ok) throw new Error(`AR scene API request failed: ${response.status}`);
+          sceneCatalog = normalizeSceneCatalogFromApi(await response.json());
+          if (!sceneCatalog) throw new Error('AR scene API returned an invalid scene catalog.');
+        } catch (error) {
+          catalogWarnings.push(String(error?.message || error));
+          sceneCatalog = null;
+        }
+      }
+
       const catalogUrl = getCatalogUrlFromSource(raw);
-      if (catalogUrl) {
+      if (!sceneCatalog && catalogUrl) {
         try {
           const response = await fetch(catalogUrl, { cache: 'no-cache' });
           if (!response.ok) throw new Error(`AR scene catalog request failed: ${response.status}`);
           sceneCatalog = await response.json();
         } catch (error) {
-          catalogWarning = String(error?.message || error);
+          catalogWarnings.push(String(error?.message || error));
         }
       }
-      cachedManifest = normalizeArManifest(raw, { sceneCatalog, catalogWarning });
+      cachedManifest = normalizeArManifest(raw, {
+        sceneCatalog,
+        catalogWarning: catalogWarnings.join(' | '),
+      });
       return cachedManifest;
     })
     .catch((error) => {

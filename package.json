@@ -8,17 +8,22 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "mindar:catalog": "node scripts/build_mindar_scene_catalog.mjs",
-    "mindar:catalog:check": "node scripts/build_mindar_scene_catalog.mjs --check"
+    "mindar:catalog:check": "node scripts/build_mindar_scene_catalog.mjs --check",
+    "recognition:index": "node scripts/build_recognition_index.mjs",
+    "recognition:index:check": "node scripts/build_recognition_index.mjs --check",
+    "db:migrate": "node scripts/db_migrate.mjs",
+    "db:seed:scenes": "node scripts/seed_ar_scenes.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
-    "vite": "^7.0.0",
+    "pg": "^8.21.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "sharp": "^0.33.0",
+    "vite": "^7.0.0"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.0.0",
-    "@gltf-transform/extensions": "^4.0.0",
-    "sharp": "^0.33.0"
+    "@gltf-transform/extensions": "^4.0.0"
   }
 }
