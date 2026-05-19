@@ -620,7 +620,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   }, [capturedPhoto]);
 
   React.useEffect(() => {
-    if (arPhase !== 'final-live') {
+    const shouldPrimeCue = arPhase === 'glb-entering' || arPhase === 'final-live';
+    if (!shouldPrimeCue) {
       hideInteractionCue();
       return;
     }
@@ -634,7 +635,9 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       scheduleCue(CUE_IDLE, COACHMARK_MS);
       return;
     }
-    setCue(CUE_IDLE);
+    if (interactionCueRef.current === CUE_HIDDEN) {
+      setCue(CUE_IDLE);
+    }
   }, [arPhase, hideInteractionCue, scheduleCue, setCue]);
 
   React.useEffect(() => {
@@ -657,6 +660,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const isCapturing = arPhase === 'capturing-frame';
   const isLive = arPhase === 'final-live' || isCaptured;
   const canEdit = arPhase === 'final-live';
+  const shouldShowInteractionCue = !isCaptured && !isCapturing && (arPhase === 'glb-entering' || canEdit);
 
   const clearCapturedPhoto = React.useCallback(() => {
     setCapturedPhoto((current) => {
@@ -920,7 +924,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         />
       )}
 
-      {canEdit && !isCaptured && !isCapturing && (
+      {shouldShowInteractionCue && (
         <InteractionCueLayer
           cue={interactionCue}
           anchor={interactionAnchor}
