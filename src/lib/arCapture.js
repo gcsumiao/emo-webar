@@ -112,6 +112,8 @@ export async function createARPhoto() {
   return canvasToPhoto(canvas, 'emo-ar', 'mindar');
 }
 
+const FRAME_BANNER_RATIO = 280 / 2200;
+
 export async function createFramedARPhoto(photo, frameUrl = null) {
   if (!photo?.url) throw new Error('Cannot create framed photo without a captured image.');
   const [photoImage, frameImage] = await Promise.all([
@@ -120,11 +122,17 @@ export async function createFramedARPhoto(photo, frameUrl = null) {
   ]);
 
   const photoWidth = photoImage.naturalWidth || photo.width || 1080;
-  const photoHeight = photoImage.naturalHeight || photo.height || 1920;
   const canvasWidth = photoWidth;
-  const canvasHeight = sourceReady(frameImage) && frameImage.naturalWidth > 0
-    ? Math.round(photoWidth * (frameImage.naturalHeight / frameImage.naturalWidth))
-    : photoHeight;
+  const canvasHeight = Math.round((canvasWidth * 16) / 9);
+
+  let frameDrawHeight = canvasHeight;
+  let bannerHeight = 0;
+  if (sourceReady(frameImage) && frameImage.naturalWidth > 0) {
+    frameDrawHeight = Math.round(canvasWidth * (frameImage.naturalHeight / frameImage.naturalWidth));
+    bannerHeight = Math.round(frameDrawHeight * FRAME_BANNER_RATIO);
+  }
+  const frameDrawY = canvasHeight - frameDrawHeight;
+  const photoAreaHeight = canvasHeight - bannerHeight;
 
   const canvas = document.createElement('canvas');
   canvas.width = canvasWidth;
@@ -136,9 +144,9 @@ export async function createFramedARPhoto(photo, frameUrl = null) {
   ctx.imageSmoothingQuality = 'high';
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-  drawCover(ctx, photoImage, 0, 0, photoWidth, photoHeight);
+  drawCover(ctx, photoImage, 0, 0, canvasWidth, photoAreaHeight);
   if (sourceReady(frameImage)) {
-    ctx.drawImage(frameImage, 0, 0, canvasWidth, canvasHeight);
+    ctx.drawImage(frameImage, 0, frameDrawY, canvasWidth, frameDrawHeight);
   }
 
   return canvasToPhoto(canvas, 'emo-ar-framed', 'framed');

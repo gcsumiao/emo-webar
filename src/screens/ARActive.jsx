@@ -1150,39 +1150,46 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, framedPhotoWidth,
       <div
         style={{
           position: 'absolute',
-          left: '50%',
-          top: '50%',
-          width: 'min(78vw, 320px)',
-          aspectRatio,
-          transform: 'translate(-50%, -52%)',
-          animation: 'polaroid-in 700ms cubic-bezier(.22,1,.36,1) both',
-          filter: 'none',
+          inset: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 'clamp(28px, 6vh, 64px)',
+          paddingTop: `calc(var(--safe-top) + 72px)`,
+          paddingBottom: `calc(var(--safe-bottom) + 28px)`,
+          paddingLeft: 16,
+          paddingRight: 16,
           pointerEvents: 'none',
         }}
       >
-        <img
-          src={framedPhotoUrl}
-          alt=""
-          draggable={false}
+        <div
           style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            display: 'block',
+            width: 'min(78vw, 320px, calc(64vh * 9 / 16))',
+            aspectRatio,
+            animation: 'polaroid-in 700ms cubic-bezier(.22,1,.36,1) both',
+            filter: 'none',
           }}
-        />
-      </div>
-      <div
-        style={{
-          position: 'absolute',
-          left: 16,
-          right: 16,
-          bottom: `calc(var(--safe-bottom) + 38px)`,
-          display: 'flex',
-          gap: 10,
-          pointerEvents: 'auto',
-        }}
-      >
+        >
+          <img
+            src={framedPhotoUrl}
+            alt=""
+            draggable={false}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              display: 'block',
+            }}
+          />
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            gap: 18,
+            pointerEvents: 'auto',
+          }}
+        >
         <ActionPill
           lang={lang}
           zh="重新拍照"
@@ -1205,12 +1212,13 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, framedPhotoWidth,
             </svg>
           )}
         />
+        </div>
       </div>
       <style>{`
         @keyframes polaroid-in {
-          0%   { opacity: 0; transform: translate(-50%, -52%) scale(0.6); }
-          60%  { opacity: 1; transform: translate(-50%, -52%) scale(1.04); }
-          100% { opacity: 1; transform: translate(-50%, -52%) scale(1); }
+          0%   { opacity: 0; transform: scale(0.6); }
+          60%  { opacity: 1; transform: scale(1.04); }
+          100% { opacity: 1; transform: scale(1); }
         }
       `}</style>
     </div>
@@ -1224,8 +1232,8 @@ function ActionPill({ lang, zh, en, onClick, icon }) {
       type="button"
       onClick={onClick}
       style={{
-        flex: 1,
-        padding: '14px 16px',
+        minWidth: 128,
+        padding: '12px 24px',
         borderRadius: 999,
         border: 'none',
         background: '#f5bbd3',
