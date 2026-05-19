@@ -108,13 +108,14 @@ export default function App() {
   }, [state, setState]);
 
   React.useEffect(() => {
+    arAudio.setState(state);
     arAudio.preload();
     if (state === 'scan' || state === 'ar') {
       preloadStep06({ full: false });
     }
     if (state === 'scan') arAudio.startScan();
     else if (state === 'ar') arAudio.cueARIntro();
-    else arAudio.stop();
+    else if (state !== 'loading') arAudio.stop();
   }, [state]);
 
   React.useEffect(() => {
@@ -132,12 +133,14 @@ export default function App() {
       const control = findInteractiveControl(event);
       if (!control) return;
       lastPointerSound = { time: performance.now(), control };
+      void arAudio.unlock(event);
       arAudio.playButtonClick();
     };
     const playClickSound = (event) => {
       const control = findInteractiveControl(event);
       if (!control) return;
       if (control === lastPointerSound.control && performance.now() - lastPointerSound.time < 600) return;
+      void arAudio.unlock(event);
       arAudio.playButtonClick();
     };
 

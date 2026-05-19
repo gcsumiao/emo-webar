@@ -2,7 +2,12 @@
 // at the dev-server root ("/") and under a GitHub Pages subpath
 // (e.g. "/emo-webar/").
 const RAW_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/';
-const ASSET_VERSION = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_VERSION) || '';
+const BUILD_APP_VERSION = typeof __EMO_APP_VERSION__ !== 'undefined' ? __EMO_APP_VERSION__ : '';
+const ASSET_VERSION =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_VERSION) ||
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_VERCEL_GIT_COMMIT_SHA) ||
+  BUILD_APP_VERSION ||
+  '';
 export const ASSET_BASE = RAW_BASE.replace(/\/$/, '');
 
 function withAssetVersion(url) {
