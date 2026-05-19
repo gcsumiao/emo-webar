@@ -14,7 +14,7 @@ const SCAN_FRAME_BOUNDS = {
   viewBoxWidth: 1080,
   viewBoxHeight: 1920,
 };
-const SCAN_WINDOW_HORIZONTAL_PADDING_RATIO = 0;
+const SCAN_WINDOW_HORIZONTAL_PADDING_RATIO = 0.035;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
