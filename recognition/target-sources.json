@@ -1,11 +1,15 @@
 {
   "schemaVersion": 1,
+  "defaultKind": "planar-scene",
+  "defaultArMode": "screen-space",
   "sourceRootCandidates": [
     "../emo-checklist-source-archive"
   ],
   "scenes": [
     {
       "sceneId": "targets",
+      "kind": "object",
+      "arMode": "screen-space",
       "files": [
         "一毛AR材料/3.一毛识别图库/3.实际场景照片-jpg/一毛气模-实拍图01.jpg",
         "一毛AR材料/3.一毛识别图库/3.实际场景照片-jpg/一毛气模-实拍图02.jpg",
