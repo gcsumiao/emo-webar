@@ -65,6 +65,8 @@ Runtime state is exposed through `window.__mindar`:
 - `scaleFrozenBy({ scaleFactor })` scales the frozen object and clamps it inside the visible AR edit area.
 - `resetFrozenTransform()` restores the editable final GLB to the transform captured when the final animation frame first became live.
 - `getFrozenState()` returns the current frozen transform and source target.
+- `getCameraFacingMode()` returns the active camera preference: `environment` or `user`.
+- `switchCameraFacing(nextFacingMode?)` toggles camera preference, or switches to the provided `environment`/`user` value, while preserving the frozen final GLB.
 
 The scan and AR screens currently treat any configured target as an EMO hit. Spatial AR content lives under the MindAR anchor, so it follows the detected image's position, rotation, and scale. MindAR supports multiple targets in one compiled `.mind` pack; multiple packs require a scene selection step through `switchScene(sceneId)` or `applyRecognitionResult()`.
 
@@ -84,7 +86,9 @@ After that first touch, three white gesture pills remain visible during the edit
 
 The gesture pills are language-specific: English mode shows only `Drag · 360°`, `Pinch · Scale`, and `Long press · Move`; Chinese mode shows only `拖动 · 360°`, `双指 · 缩放`, and `长按 · 移动`. The editable final AR state intentionally avoids the older GLB outer circle, rotating arrows, scaling corner marks, and white dot guide elements.
 
-A reset control sits beside the shutter in editable final mode. It shows `TAP TO RESET` in English mode or `一键还原` in Chinese mode, and calls `resetFrozenTransform()` to restore the GLB to the final-frame transform captured before user drag, rotation, or scale gestures.
+A reset control sits beside the shutter in editable final mode. It shows `Reset` in English mode or `一键还原` in Chinese mode, and calls `resetFrozenTransform()` to restore the GLB to the final-frame transform captured before user drag, rotation, or scale gestures.
+
+A camera flip control mirrors reset on the left side of the shutter in editable final mode. It shows `Flip` in English mode or `翻转` in Chinese mode, and calls `switchCameraFacing()` to toggle between the back camera (`environment`) and front camera (`user`). Camera switching keeps the final frozen GLB active and does not reset the scan, pose, scale, or rotation.
 
 When the user taps the shutter in the AR screen, `ARActive` calls `window.__mindar.freezeCurrentTarget()` and locks the current transform for capture/share. Retake calls `unfreezeCurrentTarget()` and returns to editable final AR.
 

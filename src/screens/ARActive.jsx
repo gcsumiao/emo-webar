@@ -128,6 +128,19 @@ function IconResetArrow({ size = 24, color = TOKENS.pink, sw = 2 }) {
   );
 }
 
+function IconCameraFlip({ size = 24, color = TOKENS.pink, sw = 2 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M7.3 9.2h1.6l1.1-1.5h4l1.1 1.5h1.6c1 0 1.8.8 1.8 1.8v4.7c0 1-.8 1.8-1.8 1.8H7.3c-1 0-1.8-.8-1.8-1.8V11c0-1 .8-1.8 1.8-1.8z" stroke={color} strokeWidth={sw} strokeLinejoin="round" />
+      <path d="M9.4 13.5a2.6 2.6 0 0 0 5.2 0 2.6 2.6 0 0 0-5.2 0z" stroke={color} strokeWidth={sw} />
+      <path d="M6.3 5.8a7.2 7.2 0 0 1 9.8-.5" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <path d="M15.8 2.6l.4 2.9-2.9.4" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M17.7 20.2a7.2 7.2 0 0 1-9.8.5" stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <path d="M8.2 23.4l-.4-2.9 2.9-.4" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function GestureTextChip({ icon, lang, zh, en, style = {} }) {
   const main = t(lang, zh, en);
   return (
@@ -160,6 +173,70 @@ function GestureTextChip({ icon, lang, zh, en, style = {} }) {
       >
         {main}
       </span>
+    </div>
+  );
+}
+
+function CameraFlipControl({ lang, isLandscapePhone, onFlip, disabled = false }) {
+  const controlSize = isLandscapePhone ? 54 : 68;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 'calc(var(--safe-left) + 20px)',
+        bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`,
+        width: controlSize,
+        height: controlSize,
+        pointerEvents: 'auto',
+        zIndex: 13,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onFlip}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+        }}
+        aria-label={t(lang, '翻转镜头', 'Flip camera')}
+        disabled={disabled}
+        style={{
+          width: controlSize,
+          height: controlSize,
+          borderRadius: 999,
+          border: '0.5px solid rgba(255,255,255,0.14)',
+          background: 'rgba(48,48,50,0.78)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 0,
+          cursor: disabled ? 'default' : 'pointer',
+          opacity: disabled ? 0.58 : 1,
+        }}
+      >
+        <IconCameraFlip size={isLandscapePhone ? 24 : 28} />
+      </button>
+      <div
+        style={{
+          position: 'absolute',
+          top: `calc(100% + ${isLandscapePhone ? 6 : 8}px)`,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          fontFamily: lang === 'en' ? FONT_MONO : langFont(lang),
+          fontSize: lang === 'en' ? 9.5 : 11,
+          fontWeight: lang === 'en' ? 800 : 700,
+          lineHeight: 1,
+          letterSpacing: 0,
+          color: 'rgba(255,255,255,0.78)',
+          textShadow: '0 1px 5px rgba(0,0,0,0.34)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {t(lang, '翻转', 'Flip')}
+      </div>
     </div>
   );
 }
@@ -387,6 +464,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
   const [showAppearingPrompt, setShowAppearingPrompt] = React.useState(false);
   const [isInteracting, setIsInteracting] = React.useState(false);
   const [hasInteractedOnce, setHasInteractedOnce] = React.useState(false);
+  const [cameraSwitching, setCameraSwitching] = React.useState(false);
   const pointersRef = React.useRef(new Map());
   const gestureRef = React.useRef({
     mode: 'idle',
@@ -650,6 +728,24 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
     if (next) setFrozenState(next);
     setHasInteractedOnce(false);
   }, [arPhase]);
+
+  const switchCameraFacing = React.useCallback(async (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (arPhase !== 'final-live' || cameraSwitching) return;
+    const runtime = getARRuntime();
+    if (!runtime?.switchCameraFacing) return;
+    setCameraSwitching(true);
+    try {
+      const result = await runtime.switchCameraFacing();
+      const nextState = result?.frozenState || runtime.getFrozenState?.();
+      if (nextState) setFrozenState(nextState);
+    } catch (error) {
+      console.error('[EMO-AR] camera switch failed', error);
+    } finally {
+      setCameraSwitching(false);
+    }
+  }, [arPhase, cameraSwitching]);
 
   const exitAR = React.useCallback(async () => {
     window.clearTimeout(flashTimerRef.current);
@@ -958,11 +1054,19 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       </div>
 
       {isLive && !isCaptured && canEdit && (
-        <ResetControl
-          lang={lang}
-          isLandscapePhone={isLandscapePhone}
-          onReset={resetFrozenTransform}
-        />
+        <>
+          <CameraFlipControl
+            lang={lang}
+            isLandscapePhone={isLandscapePhone}
+            onFlip={switchCameraFacing}
+            disabled={cameraSwitching}
+          />
+          <ResetControl
+            lang={lang}
+            isLandscapePhone={isLandscapePhone}
+            onReset={resetFrozenTransform}
+          />
+        </>
       )}
 
       {isCapturing && (
@@ -989,6 +1093,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>glb: <b style={{ color: TOKENS.green }}>{diagnostics?.glbPhase || '-'}</b> · mode {diagnostics?.contentMode || '-'}</div>
           <div>gesture: single-finger rotate · two-finger scale · long-press move</div>
           <div>activeTarget: {diagnostics?.activeTargetId || '-'}</div>
+          <div>camera: {diagnostics?.cameraFacingMode || '-'}</div>
           <div>edit: <b style={{ color: frozenState?.active ? TOKENS.green : TOKENS.pinkDeep }}>{String(!!frozenState?.active)}</b></div>
           {frozenState && (
             <>
@@ -1012,6 +1117,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           <div>marker: {formatVector(diagnostics?.debugMarkerWorld, 2)}</div>
           <div>layers: {formatLayerInfo(diagnostics?.layerInfo)}</div>
           {diagnostics?.textureWarning && <div style={{ color: '#ffbac8' }}>texture: {diagnostics.textureWarning}</div>}
+          {diagnostics?.cameraError && <div style={{ color: '#ffbac8' }}>camera: {diagnostics.cameraError}</div>}
           {diagnostics?.lastError && <div style={{ color: '#ffbac8' }}>last-error: {diagnostics.lastError}</div>}
           {diagnostics?.modelError && <div style={{ color: '#ffbac8' }}>model-error: {diagnostics.modelError}</div>}
         </div>

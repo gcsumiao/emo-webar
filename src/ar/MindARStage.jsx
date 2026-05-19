@@ -79,6 +79,25 @@ function readSearchParam(name) {
   }
 }
 
+function normalizeCameraFacingMode(value) {
+  return value === 'user' ? 'user' : 'environment';
+}
+
+function cameraFacingConstraint(facingMode, exact = false) {
+  const nextFacingMode = normalizeCameraFacingMode(facingMode);
+  return exact ? { exact: nextFacingMode } : { ideal: nextFacingMode };
+}
+
+function withCameraFacingConstraint(constraints, facingMode, exact = false) {
+  const next = constraints && typeof constraints === 'object' ? { ...constraints } : {};
+  if (next.video === false) return next;
+  const facingModeConstraint = cameraFacingConstraint(facingMode, exact);
+  next.video = next.video && typeof next.video === 'object'
+    ? { ...next.video, facingMode: facingModeConstraint }
+    : { facingMode: facingModeConstraint };
+  return next;
+}
+
 function vectorAttr(value, fallback = [0, 0, 0]) {
   const source = Array.isArray(value) ? value : fallback;
   return source.map((part, index) => {
@@ -306,6 +325,9 @@ function createDiagnostics() {
     sceneLabel: '',
     mindTargetUrl: '',
     mockSceneId: '',
+    cameraFacingMode: 'environment',
+    cameraSwitching: false,
+    cameraError: '',
   };
 }
 
@@ -355,6 +377,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     let manifest = null;
     let currentSceneId = readInitialSceneId();
     let sceneSwitchQueue = Promise.resolve();
+    let cameraSwitchQueue = Promise.resolve();
+    let cameraFacingMode = 'environment';
     const foundCbs = new Set();
     const lostCbs = new Set();
     const statusCbs = new Set();
@@ -963,6 +987,159 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         statusCbs.forEach((cb) => {
           try { cb(nextStatus); } catch (error) { console.error(error); }
         });
+      };
+
+      const getMindARSystem = () => {
+        const sys = scene.systems && scene.systems['mindar-image-system'];
+        if (!sys) throw new Error('mindar-image-system not ready');
+        return sys;
+      };
+
+      const probeCameraFacingMode = async (facingMode, exact = false) => {
+        if (!navigator.mediaDevices?.getUserMedia) return;
+        let probeStream = null;
+        try {
+          probeStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: cameraFacingConstraint(facingMode, exact) },
+            audio: false,
+          });
+        } finally {
+          probeStream?.getTracks?.().forEach((track) => track.stop());
+        }
+      };
+
+      const runWithCameraFacingMode = async (facingMode, exact, task) => {
+        const mediaDevices = navigator.mediaDevices;
+        const nativeGetUserMedia = mediaDevices?.getUserMedia;
+        if (!nativeGetUserMedia) return task();
+
+        const originalGetUserMedia = nativeGetUserMedia.bind(mediaDevices);
+        const patchedGetUserMedia = (constraints) => originalGetUserMedia(
+          withCameraFacingConstraint(constraints, facingMode, exact)
+        );
+        let patched = false;
+        try {
+          mediaDevices.getUserMedia = patchedGetUserMedia;
+          patched = mediaDevices.getUserMedia === patchedGetUserMedia;
+        } catch {}
+
+        try {
+          return await task();
+        } finally {
+          if (patched) {
+            try {
+              mediaDevices.getUserMedia = nativeGetUserMedia;
+            } catch {}
+          }
+        }
+      };
+
+      const clearTrackingStateForCameraRestart = () => {
+        activeTargets.clear();
+        lostTimers.forEach(({ dim, hide }) => {
+          window.clearTimeout(dim);
+          window.clearTimeout(hide);
+        });
+        lostTimers.clear();
+      };
+
+      const startMindARCamera = async ({
+        facingMode = cameraFacingMode,
+        exact = false,
+        status = 'loading',
+        finalStatus = 'running',
+        clearError = true,
+      } = {}) => {
+        const sys = getMindARSystem();
+        const nextFacingMode = normalizeCameraFacingMode(facingMode);
+        if (status) setRuntimeStatus(status);
+        try {
+          await probeCameraFacingMode(nextFacingMode, exact);
+          await runWithCameraFacingMode(nextFacingMode, exact, () => sys.start());
+          cameraFacingMode = nextFacingMode;
+          startedRef.current = true;
+          pushDiagnostics({
+            cameraFacingMode,
+            cameraSwitching: false,
+            ...(clearError ? { cameraError: '', lastError: '' } : {}),
+            lastEvent: `camera-started:${cameraFacingMode}`,
+          });
+          setRuntimeStatus(finalStatus);
+          return { facingMode: cameraFacingMode, frozenState: cloneFrozenState() };
+        } catch (error) {
+          startedRef.current = false;
+          throw error;
+        }
+      };
+
+      const stopMindARCameraForSwitch = async () => {
+        const sys = getMindARSystem();
+        if (startedRef.current) {
+          try {
+            await Promise.resolve(sys.stop());
+          } catch {}
+        }
+        startedRef.current = false;
+        clearTrackingStateForCameraRestart();
+      };
+
+      const switchCameraFacing = (nextFacingMode) => {
+        cameraSwitchQueue = cameraSwitchQueue.catch(() => null).then(async () => {
+          const previousFacingMode = cameraFacingMode;
+          const targetFacingMode = normalizeCameraFacingMode(
+            nextFacingMode || (previousFacingMode === 'environment' ? 'user' : 'environment')
+          );
+          const finalStatus = frozenState.active ? 'persistent' : 'running';
+          setRuntimeStatus('camera-switching');
+          pushDiagnostics({
+            cameraFacingMode: targetFacingMode,
+            cameraSwitching: true,
+            lastError: '',
+            lastEvent: `camera-switching:${targetFacingMode}`,
+          });
+
+          try {
+            await stopMindARCameraForSwitch();
+            return await startMindARCamera({
+              facingMode: targetFacingMode,
+              exact: true,
+              status: null,
+              finalStatus,
+            });
+          } catch (error) {
+            const message = String(error?.message || error);
+            console.error('[MindAR] camera switch failed', error);
+            pushDiagnostics({
+              cameraFacingMode: previousFacingMode,
+              cameraSwitching: false,
+              lastError: message,
+              cameraError: message,
+              lastEvent: `camera-switch-failed:${targetFacingMode}`,
+            });
+            try {
+              await startMindARCamera({
+                facingMode: previousFacingMode,
+                exact: false,
+                status: null,
+                finalStatus,
+                clearError: false,
+              });
+            } catch (restoreError) {
+              const restoreMessage = String(restoreError?.message || restoreError);
+              console.error('[MindAR] camera restore failed', restoreError);
+              pushDiagnostics({
+                cameraFacingMode: previousFacingMode,
+                cameraSwitching: false,
+                lastError: restoreMessage,
+                cameraError: restoreMessage,
+                lastEvent: 'camera-restore-failed',
+              });
+              setRuntimeStatus('error');
+            }
+            throw error;
+          }
+        });
+        return cameraSwitchQueue;
       };
 
       const getTargetConfig = (targetIndex) => {
@@ -1606,24 +1783,22 @@ export function MindARStage({ active, visible, onDiagnostics }) {
 
       const restartScan = () => {
         const snapshot = resetSceneForScan();
-        const sys = scene.systems && scene.systems['mindar-image-system'];
-        if (!sys || !startedRef.current) {
+        try {
+          getMindARSystem();
+        } catch {
+          setRuntimeStatus(scene.hasLoaded ? 'ready' : 'idle');
+          return snapshot;
+        }
+        if (!startedRef.current) {
           setRuntimeStatus(scene.hasLoaded ? 'ready' : 'idle');
           return snapshot;
         }
 
         setRuntimeStatus('restarting');
         Promise.resolve()
-          .then(() => {
-            try { sys.stop(); } catch {}
-            startedRef.current = false;
-          })
+          .then(() => stopMindARCameraForSwitch())
           .then(() => new Promise((resolve) => window.setTimeout(resolve, 80)))
-          .then(() => sys.start())
-          .then(() => {
-            startedRef.current = true;
-            setRuntimeStatus('running');
-          })
+          .then(() => startMindARCamera({ facingMode: cameraFacingMode, exact: false, status: null, finalStatus: 'running' }))
           .catch((error) => {
             console.error('[MindAR] restart failed', error);
             startedRef.current = false;
@@ -1991,6 +2166,8 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         getCurrentSpriteConfig,
         getCurrentGlbConfig,
         getGlbAnimationNames: () => getPersistentModelComp()?.getAnimationNames?.() || [],
+        getCameraFacingMode: () => cameraFacingMode,
+        switchCameraFacing,
         getStatus: () => statusRef.current,
         getActiveTargets: () => Array.from(activeTargets.values()).map(cloneTarget),
         getLastTarget: () => lastTarget ? cloneTarget(lastTarget) : null,
@@ -2037,26 +2214,18 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           return () => lostCbs.delete(cb);
         },
         start: async () => {
-          const sys = scene.systems && scene.systems['mindar-image-system'];
-          if (!sys) throw new Error('mindar-image-system not ready');
-          setRuntimeStatus('loading');
-          if (navigator.mediaDevices?.getUserMedia) {
-            let probeStream = null;
-            try {
-              probeStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: 'environment' } },
-                audio: false,
-              });
-            } catch (error) {
-              setRuntimeStatus('camera-denied');
-              throw error;
-            } finally {
-              probeStream?.getTracks?.().forEach((track) => track.stop());
-            }
+          try {
+            return await startMindARCamera({
+              facingMode: cameraFacingMode,
+              exact: false,
+              status: 'loading',
+              finalStatus: 'running',
+            });
+          } catch (error) {
+            const message = String(error?.name || error?.message || error);
+            setRuntimeStatus(/NotAllowed|Permission|denied|NotFound|Overconstrained/i.test(message) ? 'camera-denied' : 'error');
+            throw error;
           }
-          await sys.start();
-          startedRef.current = true;
-          setRuntimeStatus('running');
         },
         stop: () => {
           const sys = scene.systems && scene.systems['mindar-image-system'];
