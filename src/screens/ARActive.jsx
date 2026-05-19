@@ -826,10 +826,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           onPointerCancel={handlePointerUp}
           style={{
             position: 'absolute',
-            left: 0,
-            right: 0,
-            top: 'calc(var(--safe-top) + 96px)',
-            bottom: 'calc(var(--safe-bottom) + 220px)',
+            inset: 0,
             zIndex: 4,
             pointerEvents: 'auto',
             touchAction: 'none',
@@ -896,6 +893,8 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         <PolaroidPreviewOverlay
           backdropUrl={capturedPhoto?.url}
           framedPhotoUrl={framedPhoto.url}
+          framedPhotoWidth={framedPhoto.width}
+          framedPhotoHeight={framedPhoto.height}
           lang={lang}
           onHome={goHome}
           onRetake={captureFrame}
@@ -1070,7 +1069,10 @@ function CapturingOverlay({ backdropUrl, lang }) {
   );
 }
 
-function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onHome, onRetake, onShare }) {
+function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, framedPhotoWidth, framedPhotoHeight, lang, onHome, onRetake, onShare }) {
+  const aspectRatio = framedPhotoWidth && framedPhotoHeight
+    ? `${framedPhotoWidth} / ${framedPhotoHeight}`
+    : '1080 / 1920';
   return (
     <div
       data-interactive="true"
@@ -1144,7 +1146,7 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onHome, onR
           left: '50%',
           top: '50%',
           width: 'min(78vw, 320px)',
-          aspectRatio: '1080 / 1920',
+          aspectRatio,
           transform: 'translate(-50%, -52%)',
           animation: 'polaroid-in 700ms cubic-bezier(.22,1,.36,1) both',
           filter: 'none',
@@ -1175,7 +1177,6 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onHome, onR
         }}
       >
         <ActionPill
-          variant="ghost"
           lang={lang}
           zh="重新拍照"
           en="Retake"
@@ -1187,7 +1188,6 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onHome, onR
           )}
         />
         <ActionPill
-          variant="primary"
           lang={lang}
           zh="分享"
           en="Share"
@@ -1210,7 +1210,7 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, lang, onHome, onR
   );
 }
 
-function ActionPill({ variant = 'primary', lang, zh, en, onClick, icon }) {
+function ActionPill({ lang, zh, en, onClick, icon }) {
   const label = t(lang, zh, en);
   return (
     <button
@@ -1221,14 +1221,14 @@ function ActionPill({ variant = 'primary', lang, zh, en, onClick, icon }) {
         padding: '14px 16px',
         borderRadius: 999,
         border: 'none',
-        background: TOKENS.ink,
+        background: '#f5bbd3',
         color: '#fff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
         cursor: 'pointer',
-        boxShadow: '0 10px 28px rgba(0,0,0,0.22)',
+        boxShadow: '0 10px 28px rgba(245,187,211,0.32)',
       }}
     >
       {icon}

@@ -523,13 +523,42 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 390;
         const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 844;
         const editSurface = document.querySelector('[data-ar-edit-surface="true"]');
-        const rect = editSurface?.getBoundingClientRect?.() || {
-          left: 0,
-          right: viewportWidth,
-          top: 96,
-          bottom: Math.max(96, viewportHeight - 220),
+        const surfaceRect = editSurface?.getBoundingClientRect?.() || null;
+        const readSafeInsetPx = (name) => {
+          try {
+            const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+            const value = parseFloat(raw);
+            return Number.isFinite(value) ? value : 0;
+          } catch {
+            return 0;
+          }
         };
-        const paddingPx = 12;
+        const surfaceCoversViewport = surfaceRect
+          && surfaceRect.left <= 1
+          && surfaceRect.top <= 1
+          && surfaceRect.right >= viewportWidth - 1
+          && surfaceRect.bottom >= viewportHeight - 1;
+        let rect;
+        if (surfaceCoversViewport) {
+          const safeTop = readSafeInsetPx('--safe-top');
+          const safeRight = readSafeInsetPx('--safe-right');
+          const safeBottom = readSafeInsetPx('--safe-bottom');
+          const safeLeft = readSafeInsetPx('--safe-left');
+          rect = {
+            left: safeLeft,
+            right: viewportWidth - safeRight,
+            top: safeTop,
+            bottom: viewportHeight - safeBottom,
+          };
+        } else {
+          rect = surfaceRect || {
+            left: 0,
+            right: viewportWidth,
+            top: 96,
+            bottom: Math.max(96, viewportHeight - 220),
+          };
+        }
+        const paddingPx = 24;
         const left = Math.max(0, rect.left + paddingPx);
         const right = Math.min(viewportWidth, rect.right - paddingPx);
         const top = Math.max(0, rect.top + paddingPx);
