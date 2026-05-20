@@ -48,6 +48,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.clips = [];
       this.bounds = null;
       this.materialState = new Map();
+      this.baseMaterialState = new Map();
       this.nodeState = new Map();
       this.hiddenNodeState = new Map();
       this.hiddenNodesRevealed = true;
@@ -72,6 +73,10 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       if (configKey) this.data.configKey = configKey;
       const registry = ensureRegistry();
       this.config = registry.configs.get(this.data.configKey) || {};
+      if (this.ready && this.model) {
+        this._applyMaterialProfile();
+        this._captureMaterialState();
+      }
       if (this.ready && this.data.autoplay) this.playIntroThenIdle();
     },
     resetLoadState() {
@@ -82,6 +87,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.clips = [];
       this.bounds = null;
       this.materialState = new Map();
+      this.baseMaterialState = new Map();
       this.nodeState = new Map();
       this.hiddenNodeState = new Map();
       this.hiddenNodesRevealed = true;
@@ -101,6 +107,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.bounds = this._readBounds(model);
       this.actions = new Map();
       this.materialState = new Map();
+      this.baseMaterialState = new Map();
       this.nodeState = new Map();
       this.hiddenNodeState = new Map();
       this.hiddenNodesRevealed = true;
@@ -109,6 +116,8 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
         if (clip?.name) this.actions.set(clip.name, this.mixer.clipAction(clip));
       });
       this._configureOverlayRendering();
+      this._captureBaseMaterialState();
+      this._applyMaterialProfile();
       this._captureMaterialState();
       this._syncHiddenNodesAtTime(this._getStartTimeSec());
       this.ready = true;
@@ -153,21 +162,114 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
         node.frustumCulled = false;
       });
     },
+    _readMaterialState(material) {
+      return {
+        opacity: numberOr(material.opacity, 1),
+        transparent: Boolean(material.transparent),
+        depthWrite: material.depthWrite,
+        depthTest: material.depthTest,
+        roughness: material.roughness,
+        metalness: material.metalness,
+        envMapIntensity: material.envMapIntensity,
+        specularIntensity: material.specularIntensity,
+        color: material.color?.clone ? material.color.clone() : null,
+        emissive: material.emissive?.clone ? material.emissive.clone() : null,
+        emissiveIntensity: material.emissiveIntensity,
+      };
+    },
+    _captureBaseMaterialState() {
+      if (!this.model?.traverse) return;
+      this.model.traverse((node) => {
+        if (!node.isMesh || !node.material) return;
+        toArray(node.material).forEach((material) => {
+          if (!material || this.baseMaterialState.has(material)) return;
+          this.baseMaterialState.set(material, this._readMaterialState(material));
+        });
+      });
+    },
     _captureMaterialState() {
+      this.materialState = new Map();
       if (!this.model?.traverse) return;
       this.model.traverse((node) => {
         if (!node.isMesh || !node.material) return;
         toArray(node.material).forEach((material) => {
           if (!material || this.materialState.has(material)) return;
-          this.materialState.set(material, {
-            opacity: numberOr(material.opacity, 1),
-            transparent: Boolean(material.transparent),
-            depthWrite: material.depthWrite,
-            depthTest: material.depthTest,
-            roughness: material.roughness,
-            metalness: material.metalness,
-            envMapIntensity: material.envMapIntensity,
-          });
+          this.materialState.set(material, this._readMaterialState(material));
+        });
+      });
+    },
+    _restoreMaterialProfileFields(material, state) {
+      if (!material || !state) return false;
+      let changed = false;
+      ['roughness', 'metalness', 'envMapIntensity', 'specularIntensity', 'emissiveIntensity'].forEach((key) => {
+        if (key in material && state[key] !== undefined) {
+          material[key] = state[key];
+          changed = true;
+        }
+      });
+      if (material.color && state.color?.copy) {
+        material.color.copy(state.color);
+        changed = true;
+      }
+      if (material.emissive && state.emissive?.copy) {
+        material.emissive.copy(state.emissive);
+        changed = true;
+      }
+      return changed;
+    },
+    _setMaterialNumber(material, key, value) {
+      const next = Number(value);
+      if (!material || !(key in material) || !Number.isFinite(next)) return false;
+      material[key] = next;
+      return true;
+    },
+    _setMaterialColor(material, value) {
+      if (!material?.color?.set || typeof value !== 'string' || !value.trim()) return false;
+      material.color.set(value.trim());
+      return true;
+    },
+    _setMaterialEmissive(material, value) {
+      if (!material?.emissive?.set || typeof value !== 'string' || !value.trim()) return false;
+      material.emissive.set(value.trim());
+      return true;
+    },
+    _materialRuleMatches(rule, node, material) {
+      const nodeNames = Array.isArray(rule?.nodeNames) ? rule.nodeNames.map(String) : [];
+      const materialNames = Array.isArray(rule?.materialNames) ? rule.materialNames.map(String) : [];
+      if (nodeNames.length && !nodeNames.includes(node.name)) return false;
+      if (materialNames.length && !materialNames.includes(material.name)) return false;
+      return true;
+    },
+    _applyMaterialRule(material, rule) {
+      let changed = this._setMaterialColor(material, rule?.color);
+      changed = this._setMaterialNumber(material, 'metalness', rule?.metalness) || changed;
+      changed = this._setMaterialNumber(material, 'roughness', rule?.roughness) || changed;
+      changed = this._setMaterialNumber(material, 'envMapIntensity', rule?.envMapIntensity) || changed;
+      changed = this._setMaterialNumber(material, 'specularIntensity', rule?.specularIntensity) || changed;
+      changed = this._setMaterialEmissive(material, rule?.emissive) || changed;
+      changed = this._setMaterialNumber(material, 'emissiveIntensity', rule?.emissiveIntensity) || changed;
+      return changed;
+    },
+    _applyMaterialProfile() {
+      const profile = this.config.materialProfile || {};
+      const rules = Array.isArray(profile.rules) && profile.rules.length ? profile.rules : [profile];
+      const shouldRestoreOriginal = profile.enabled === false || profile.preserveOriginal !== false;
+      if (!this.model?.traverse) return;
+      this.model.traverse((node) => {
+        if (!node.isMesh || !node.material) return;
+        toArray(node.material).forEach((material) => {
+          if (!material) return;
+          let changed = shouldRestoreOriginal
+            ? this._restoreMaterialProfileFields(material, this.baseMaterialState.get(material))
+            : false;
+          if (profile.enabled !== false) {
+            rules.forEach((rule) => {
+              if (this._materialRuleMatches(rule, node, material)) {
+                changed = this._applyMaterialRule(material, rule) || changed;
+              }
+            });
+          }
+          if (changed) material.needsUpdate = true;
         });
       });
     },
@@ -291,6 +393,10 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
         if ('roughness' in material && state.roughness !== undefined) material.roughness = state.roughness;
         if ('metalness' in material && state.metalness !== undefined) material.metalness = state.metalness;
         if ('envMapIntensity' in material && state.envMapIntensity !== undefined) material.envMapIntensity = state.envMapIntensity;
+        if ('specularIntensity' in material && state.specularIntensity !== undefined) material.specularIntensity = state.specularIntensity;
+        if ('emissiveIntensity' in material && state.emissiveIntensity !== undefined) material.emissiveIntensity = state.emissiveIntensity;
+        if (material.color && state.color?.copy) material.color.copy(state.color);
+        if (material.emissive && state.emissive?.copy) material.emissive.copy(state.emissive);
         material.needsUpdate = true;
       });
       this.nodeState.forEach((state, node) => {

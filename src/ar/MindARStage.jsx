@@ -23,6 +23,22 @@ const FINAL_BASE_RENDER_DEPTH = Math.abs(FROZEN_SPRITE_POSITION.z);
 const FINAL_NEAR_DEPTH_MULTIPLIER = 1.2;
 const DROP_ENTER_MARGIN_RATIO = 0.16;
 const GLB_INITIAL_CENTER_NDC = { x: 0, y: 0 };
+const GLB_LIGHT_RIG_ID = 'glb-light-rig';
+const GLB_LIGHT_TARGET_ID_PREFIX = 'glb-light-target';
+const GLB_LIGHT_DEFAULT_TARGET_POSITION = [0, -0.02, -FINAL_BASE_RENDER_DEPTH];
+const GLB_LIGHT_PRESETS = {
+  'soft-product-face': [
+    { id: 'ambient', type: 'ambient', color: '#fff7fa', intensity: 0.055 },
+    { id: 'hemisphere', type: 'hemisphere', color: '#fff9fc', groundColor: '#bc416f', intensity: 0.1 },
+    { id: 'key', type: 'directional', color: '#fff9fb', intensity: 0.82, position: [-0.96, 1.05, -0.38], targetPosition: [-0.06, 0.06, -FINAL_BASE_RENDER_DEPTH] },
+    { id: 'face-spot', type: 'spot', color: '#fff0f4', intensity: 0.24, position: [-0.46, 0.2, -0.72], targetPosition: [-0.08, -0.03, -FINAL_BASE_RENDER_DEPTH], angle: 44, penumbra: 0.98, distance: 2.1, decay: 1.55 },
+    { id: 'face-sheen', type: 'point', color: '#fff4f7', intensity: 0.034, position: [-0.22, 0.06, -0.82], distance: 1.35, decay: 1.9 },
+    { id: 'face-center-fill', type: 'spot', color: '#fff3f6', intensity: 0.14, position: [-0.03, -0.03, -0.78], targetPosition: [-0.01, -0.12, -FINAL_BASE_RENDER_DEPTH], angle: 50, penumbra: 0.99, distance: 2.15, decay: 1.85 },
+    { id: 'right-fill', type: 'point', color: '#e66f99', intensity: 0.009, position: [0.7, -0.08, -0.76], distance: 2.1, decay: 2.15 },
+    { id: 'lower-lift', type: 'point', color: '#c94d7a', intensity: 0.006, position: [-0.04, -0.5, -0.82], distance: 1.7, decay: 2.25 },
+    { id: 'rim', type: 'directional', color: '#eaf3ff', intensity: 0.045, position: [0.82, 0.16, 0.34], targetPosition: [0.05, 0, -FINAL_BASE_RENDER_DEPTH] },
+  ],
+};
 
 function ensureSpriteRegistry() {
   if (!window.__spriteRegistry) {
@@ -182,6 +198,64 @@ function buildGltfModelAttr(glb) {
   if (glb?.assetId) return `#${glb.assetId}`;
   if (glb?.src) return `url(${glb.src})`;
   return '';
+}
+
+function formatAttrNumber(value, fallback = 0) {
+  const next = Number(value);
+  const resolved = Number.isFinite(next) ? next : fallback;
+  return Number(resolved.toFixed(4)).toString();
+}
+
+function lightSafeId(value) {
+  return String(value || 'light').replace(/[^a-z0-9_-]/gi, '');
+}
+
+function lightTargetId(light) {
+  return `${GLB_LIGHT_TARGET_ID_PREFIX}-${lightSafeId(light.id || light.type)}`;
+}
+
+function buildGlbLightEntity(light, intensityScale = 1) {
+  const lightParts = [
+    `type: ${light.type}`,
+    `color: ${light.color || '#ffffff'}`,
+    `intensity: ${formatAttrNumber((light.intensity ?? 1) * intensityScale, 1)}`,
+    'castShadow: false',
+  ];
+  if (light.groundColor) lightParts.push(`groundColor: ${light.groundColor}`);
+  if (Number.isFinite(Number(light.distance))) lightParts.push(`distance: ${formatAttrNumber(light.distance)}`);
+  if (Number.isFinite(Number(light.decay))) lightParts.push(`decay: ${formatAttrNumber(light.decay, 1)}`);
+  if (Number.isFinite(Number(light.angle))) lightParts.push(`angle: ${formatAttrNumber(light.angle)}`);
+  if (Number.isFinite(Number(light.penumbra))) lightParts.push(`penumbra: ${formatAttrNumber(light.penumbra)}`);
+  if (Array.isArray(light.targetPosition)) lightParts.push(`target: #${lightTargetId(light)}`);
+
+  const position = Array.isArray(light.position) ? vectorAttr(light.position, [0, 0, 0]) : '0 0 0';
+  const className = `glb-light glb-light-${lightSafeId(light.id || light.type)}`;
+  return `<a-entity class="${escapeAttr(className)}" position="${escapeAttr(position)}" light="${escapeAttr(lightParts.join('; '))}"></a-entity>`;
+}
+
+function buildGlbLightTargetEntity(light) {
+  if (!Array.isArray(light.targetPosition)) return '';
+  const targetPosition = vectorAttr(light.targetPosition, GLB_LIGHT_DEFAULT_TARGET_POSITION);
+  return `<a-entity id="${escapeAttr(lightTargetId(light))}" class="glb-light-target" position="${escapeAttr(targetPosition)}"></a-entity>`;
+}
+
+function buildGlbLightRigContents(lighting = {}) {
+  const enabled = lighting?.enabled !== false;
+  if (!enabled) return '';
+
+  const presetName = GLB_LIGHT_PRESETS[lighting?.preset] ? lighting.preset : 'soft-product-face';
+  const intensityScale = Number.isFinite(Number(lighting?.intensityScale)) ? Math.max(0, Number(lighting.intensityScale)) : 1;
+  const lights = GLB_LIGHT_PRESETS[presetName] || GLB_LIGHT_PRESETS['soft-product-face'];
+  return `
+    ${lights.map(buildGlbLightTargetEntity).join('')}
+    ${lights.map((light) => buildGlbLightEntity(light, intensityScale)).join('')}
+  `;
+}
+
+function buildGlbLightRigMarkup(lighting = {}) {
+  const presetName = GLB_LIGHT_PRESETS[lighting?.preset] ? lighting.preset : 'soft-product-face';
+  const presetAttr = lighting?.enabled === false ? '' : ` data-preset="${escapeAttr(presetName)}"`;
+  return `<a-entity id="${GLB_LIGHT_RIG_ID}"${presetAttr}>${buildGlbLightRigContents(lighting)}</a-entity>`;
 }
 
 function buildAFrameAssetsMarkup(manifest) {
@@ -428,8 +502,10 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         spriteRegistry.configs.set(spriteConfigKey(target.targetIndex), spriteConfig);
         gltfRegistry.configs.set(gltfConfigKey(target.targetIndex), glbConfig);
       });
+      const initialTargetIndex = targets[0]?.targetIndex ?? 0;
+      const initialGlbConfig = getTargetGlbConfig(runtimeManifest, initialTargetIndex);
       spriteRegistry.configs.set(PERSISTENT_SPRITE_CONFIG_KEY, spriteConfigForTarget(runtimeManifest, targets[0]?.targetIndex ?? 0));
-      gltfRegistry.configs.set(PERSISTENT_GLB_CONFIG_KEY, getTargetGlbConfig(runtimeManifest, targets[0]?.targetIndex ?? 0));
+      gltfRegistry.configs.set(PERSISTENT_GLB_CONFIG_KEY, initialGlbConfig);
 
       const anchorMarkup = targets.map((target) => {
         const spriteConfig = spriteConfigForTarget(runtimeManifest, target.targetIndex);
@@ -444,9 +520,11 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           vr-mode-ui="enabled: false"
           device-orientation-permission-ui="enabled: false"
           renderer="colorManagement: true; alpha: true; preserveDrawingBuffer: true"
+          light="defaultLightsEnabled: ${initialGlbConfig?.lighting?.enabled === false ? 'true' : 'false'}"
           style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;">
           <a-assets timeout="15000">${buildAFrameAssetsMarkup(runtimeManifest)}</a-assets>
           <a-camera id="emo-camera" position="0 0 0" look-controls="enabled: false">
+            ${buildGlbLightRigMarkup(initialGlbConfig?.lighting)}
             ${buildFrozenSpriteMarkup()}
           </a-camera>
           ${anchorMarkup}
@@ -461,6 +539,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const frozenModel = container.querySelector('#frozen-ar-model');
       const frozenGlbPivot = container.querySelector('#frozen-glb-rotation-pivot');
       const frozenGlbModelOffset = container.querySelector('#frozen-glb-model-offset');
+      const glbLightRig = container.querySelector(`#${GLB_LIGHT_RIG_ID}`);
       const dragProxy = container.querySelector('#frozen-drag-proxy');
       const debugGlbMarker = container.querySelector('#debug-glb-marker');
       const anchors = targets.map((target) => ({
@@ -478,6 +557,15 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const getPersistentIntroAnim = () => persistentSpriteContent?.components?.['sprite-intro-anim'] || null;
       const getPersistentSeq = () => frozenCharacter?.components?.['sprite-sequence'] || null;
       const getPersistentModelComp = () => frozenModel?.components?.['gltf-transition-model'] || null;
+      const applyGlbLighting = (glb) => {
+        const lighting = glb?.lighting || {};
+        scene.setAttribute('light', `defaultLightsEnabled: ${lighting.enabled === false ? 'true' : 'false'}`);
+        if (!glbLightRig) return;
+        const presetName = GLB_LIGHT_PRESETS[lighting?.preset] ? lighting.preset : 'soft-product-face';
+        if (lighting.enabled === false) glbLightRig.removeAttribute('data-preset');
+        else glbLightRig.setAttribute('data-preset', presetName);
+        glbLightRig.innerHTML = buildGlbLightRigContents(lighting);
+      };
       const plainVector = (vector) => vector
         ? { x: vector.x, y: vector.y, z: vector.z }
         : null;
@@ -1414,6 +1502,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         persistentModelTargetIndex = idx;
 
         gltfRegistry.configs.set(PERSISTENT_GLB_CONFIG_KEY, glb);
+        applyGlbLighting(glb);
         frozenModel.setAttribute('gltf-transition-model', 'configKey', PERSISTENT_GLB_CONFIG_KEY);
         const comp = getPersistentModelComp();
         if (attrChanged) comp?.resetLoadState?.();

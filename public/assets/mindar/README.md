@@ -101,7 +101,7 @@ The main Vite WebAR experience now plays the animated Step 06 GLB directly after
 3. The runtime centers the projected frame-70 mesh at screen center, applies frame 1 before reveal, hides the `Polygon` and `Polygon_2` branch/leaf nodes until frame 52, plays the `Scene` clip from frame 1 to frame 70, clamps the final pose, and keeps the frozen GLB object for long-press proxy-drag move, single-finger 360 inspection, two-finger scale, and capture.
 4. The active Step 06 path does not request the old PNG frame sequence.
 
-The runtime intentionally avoids extra studio lights, tone-mapping exposure, generated environment maps, or material brightness overrides for the Step 06 GLB. The model should display from its own textures and material values.
+The runtime applies the manifest-configured `soft-product-face` GLB lighting and material profile for Step 06. The light rig is attached to the camera and does not add a virtual ground plane, so it strengthens face volume while preserving the transparent AR camera background. Its default lighting is neutral and pink-balanced to avoid a yellow cast, keep the center face bright, and create a soft right-edge/bottom falloff through lighting direction and reduced fill rather than texture edits or noise. Material tuning is rule-based: the default candy-like finish targets the body node `Polygon_3`, keeps its original GLB color/texture, adds only a subtle pink emissive lift for the face center, and preserves the original response for the eyes, mouth, brows, branch, and leaf.
 
 Current audio contract:
 

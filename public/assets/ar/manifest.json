@@ -54,6 +54,26 @@
         "maxScale": 2.4,
         "screenMarginNdc": 0.06,
         "nearPlaneMargin": 0.08
+      },
+      "lighting": {
+        "enabled": true,
+        "preset": "soft-product-face",
+        "intensityScale": 1
+      },
+      "materialProfile": {
+        "enabled": true,
+        "preserveOriginal": true,
+        "rules": [
+          {
+            "nodeNames": ["Polygon_3"],
+            "metalness": 0,
+            "roughness": 0.37,
+            "specularIntensity": 0.55,
+            "envMapIntensity": 0.24,
+            "emissive": "#f6b0bd",
+            "emissiveIntensity": 0.22
+          }
+        ]
       }
     },
     "sprite": {}

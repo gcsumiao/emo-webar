@@ -20,6 +20,28 @@ export const DEFAULT_GLB_INTERACTION = {
   nearPlaneMargin: 0.08,
 };
 
+export const DEFAULT_GLB_LIGHTING = {
+  enabled: true,
+  preset: 'soft-product-face',
+  intensityScale: 1,
+};
+
+export const DEFAULT_GLB_MATERIAL_PROFILE = {
+  enabled: true,
+  preserveOriginal: true,
+  rules: [
+    {
+      nodeNames: ['Polygon_3'],
+      metalness: 0,
+      roughness: 0.37,
+      specularIntensity: 0.55,
+      envMapIntensity: 0.24,
+      emissive: '#f6b0bd',
+      emissiveIntensity: 0.22,
+    },
+  ],
+};
+
 export const DEFAULT_TARGETS = [
   {
     targetIndex: 0,
@@ -86,6 +108,8 @@ export const DEFAULT_GLB_CONFIG = {
     flashMs: 0,
   },
   interaction: { ...DEFAULT_GLB_INTERACTION },
+  lighting: { ...DEFAULT_GLB_LIGHTING },
+  materialProfile: { ...DEFAULT_GLB_MATERIAL_PROFILE },
 };
 
 export const DEFAULT_RENDER_MODE = 'gltf-only';

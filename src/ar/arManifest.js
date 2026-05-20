@@ -2,6 +2,8 @@ import { asset } from '../lib/assetUrl.js';
 import { getSceneApiUrl } from './arCloudConfig.js';
 import {
   DEFAULT_GLB_INTERACTION,
+  DEFAULT_GLB_LIGHTING,
+  DEFAULT_GLB_MATERIAL_PROFILE,
   DEFAULT_RENDER_MODE,
   createDefaultArManifest,
 } from './arManifestDefaults.js';
@@ -84,6 +86,71 @@ function normalizeGlbInteraction(interactionLike, fallbackInteraction = DEFAULT_
   };
 }
 
+function normalizeGlbLighting(lightingLike, fallbackLighting = DEFAULT_GLB_LIGHTING) {
+  const merged = mergeObject(DEFAULT_GLB_LIGHTING, mergeObject(fallbackLighting, lightingLike || {}));
+  return {
+    enabled: merged.enabled !== false,
+    preset: merged.preset === 'soft-product-face' ? 'soft-product-face' : DEFAULT_GLB_LIGHTING.preset,
+    intensityScale: normalizeNumber(merged.intensityScale, DEFAULT_GLB_LIGHTING.intensityScale, 0, 4),
+  };
+}
+
+function normalizeStringArray(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (typeof value === 'string' && value.trim()) return [value.trim()];
+  return [];
+}
+
+function normalizeOptionalNumber(value, min = -Infinity, max = Infinity) {
+  const next = Number(value);
+  if (!Number.isFinite(next)) return undefined;
+  return Math.max(min, Math.min(max, next));
+}
+
+function normalizeMaterialRule(ruleLike) {
+  if (!isPlainObject(ruleLike)) return null;
+  const rule = {};
+  const nodeNames = normalizeStringArray(ruleLike.nodeNames);
+  const materialNames = normalizeStringArray(ruleLike.materialNames);
+  if (nodeNames.length) rule.nodeNames = nodeNames;
+  if (materialNames.length) rule.materialNames = materialNames;
+  if (typeof ruleLike.color === 'string' && ruleLike.color.trim()) rule.color = ruleLike.color.trim();
+  if (typeof ruleLike.emissive === 'string' && ruleLike.emissive.trim()) rule.emissive = ruleLike.emissive.trim();
+
+  [
+    ['metalness', 0, 1],
+    ['roughness', 0, 1],
+    ['envMapIntensity', 0, 5],
+    ['specularIntensity', 0, 1],
+    ['emissiveIntensity', 0, 1],
+  ].forEach(([key, min, max]) => {
+    const value = normalizeOptionalNumber(ruleLike[key], min, max);
+    if (value !== undefined) rule[key] = value;
+  });
+
+  const hasSelector = Boolean(rule.nodeNames?.length || rule.materialNames?.length);
+  const hasMaterialValue = ['color', 'emissive', 'metalness', 'roughness', 'envMapIntensity', 'specularIntensity', 'emissiveIntensity']
+    .some((key) => rule[key] !== undefined);
+  return hasSelector || hasMaterialValue ? rule : null;
+}
+
+function normalizeGlbMaterialProfile(profileLike, fallbackProfile = DEFAULT_GLB_MATERIAL_PROFILE) {
+  const merged = mergeObject(DEFAULT_GLB_MATERIAL_PROFILE, mergeObject(fallbackProfile, profileLike || {}));
+  let rules = Array.isArray(merged.rules)
+    ? merged.rules.map(normalizeMaterialRule).filter(Boolean)
+    : [];
+  if (!rules.length) {
+    const legacyRule = normalizeMaterialRule(merged);
+    if (legacyRule) rules = [legacyRule];
+  }
+
+  return {
+    enabled: merged.enabled !== false,
+    preserveOriginal: merged.preserveOriginal !== false,
+    rules,
+  };
+}
+
 function normalizeAsset(assetLike) {
   if (!isPlainObject(assetLike) || !assetLike.id) return null;
   return {
@@ -136,6 +203,8 @@ function normalizeGlb(glbLike, fallbackGlb, targetIndex) {
   glb.animation = mergeObject(fallbackGlb.animation || {}, glb.animation || {});
   glb.transition = mergeObject(fallbackGlb.transition || {}, glb.transition || {});
   glb.interaction = normalizeGlbInteraction(glb.interaction, fallbackGlb.interaction);
+  glb.lighting = normalizeGlbLighting(glb.lighting, fallbackGlb.lighting);
+  glb.materialProfile = normalizeGlbMaterialProfile(glb.materialProfile, fallbackGlb.materialProfile);
   glb.visibleOnTarget = Boolean(glb.visibleOnTarget);
   glb.showAfterSpriteIntro = glb.showAfterSpriteIntro !== false;
   return glb;

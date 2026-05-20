@@ -69,7 +69,7 @@ For scenes without explicit `targets`, the runtime generates target metadata as 
 
 ## What The Manifest Controls
 
-The manifest can change model URLs, sprite frame URLs, target labels, per-target transforms, animation clip names, and sprite-to-GLB transition timing without changing frontend code.
+The manifest can change model URLs, sprite frame URLs, target labels, per-target transforms, animation clip names, GLB lighting/material tuning, and sprite-to-GLB transition timing without changing frontend code.
 
 It does not merge image targets at runtime. Each `.mind` file is a scene pack, and MindAR tracks only the active pack. A cloud or mock recognition result should choose `sceneId`; the frontend then loads that scene pack and lets MindAR handle local image tracking.
 
@@ -133,7 +133,49 @@ Step 06 now uses `assets/step06/models/yimao_animation_ultra_fast_growth.glb` di
 
 The old PNG frame sequence is no longer part of the active Step 06 path.
 
-The WebAR runtime does not add studio lighting, tone-mapping exposure, generated environment maps, or material brightness overrides to the final GLB. The configured model should carry the intended material and texture appearance itself so the AR layer renders it as close as possible to the source GLB.
+The WebAR runtime applies the configured GLB lighting and material profile to the final GLB. The default `soft-product-face` profile adds neutral, pink-balanced camera-space product lighting without adding a virtual ground plane, so the AR layer keeps the live camera background while giving the model stronger face volume, a soft right-edge/bottom falloff, and the source GLB's pink body texture.
+
+## GLB Lighting And Material Profile
+
+The optional `glb.lighting` object controls the camera-space light rig used for the final editable GLB:
+
+```json
+{
+  "lighting": {
+    "enabled": true,
+    "preset": "soft-product-face",
+    "intensityScale": 1
+  }
+}
+```
+
+- `enabled: false` removes the custom rig and lets A-Frame use its default lights.
+- `preset: "soft-product-face"` adds a low neutral/pink ambient base, a clearer upper-left soft key, a broad pink-white face fill, reduced right/lower fills, rose-pink hemisphere ground light, and a subtle cool back-right rim. The preset creates the right-edge and lower-body falloff through lighting direction and fill balance only; it does not recolor the GLB texture, add noise, or require a different binary model.
+- `intensityScale` multiplies the preset intensities. Use values below `1` for darker camera feeds and above `1` for stronger product highlights.
+
+The optional `glb.materialProfile` object lightly tunes GLB materials after load:
+
+```json
+{
+  "materialProfile": {
+    "enabled": true,
+    "preserveOriginal": true,
+    "rules": [
+      {
+        "nodeNames": ["Polygon_3"],
+        "metalness": 0,
+        "roughness": 0.37,
+        "specularIntensity": 0.55,
+        "envMapIntensity": 0.24,
+        "emissive": "#f6b0bd",
+        "emissiveIntensity": 0.22
+      }
+    ]
+  }
+}
+```
+
+Rules can match `nodeNames`, `materialNames`, or both. With `preserveOriginal: true`, the runtime restores each material to the GLB's loaded values before applying matching rules, so non-matching parts such as eyes, mouth, brows, branch, and leaf keep their original material response. The body rule uses a subtle pink emissive lift to brighten the face center without editing the GLB texture. Only properties that exist on the loaded Three.js material are changed, and animation timing/node visibility is unaffected.
 
 ## GLB Transform Space
 
