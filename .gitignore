@@ -11,5 +11,3 @@
 /_mp4_frames/
 /dist/
 /node_modules/
-/recognition-service/data/*
-!/recognition-service/data/.gitkeep

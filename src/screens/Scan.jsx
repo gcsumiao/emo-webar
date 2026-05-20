@@ -17,7 +17,6 @@ const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
 const CLOUD_RECOGNITION_INITIAL_DELAY_MS = 650;
 const CLOUD_RECOGNITION_INTERVAL_MS = 1300;
 const CLOUD_RECOGNITION_RETRY_MS = 700;
-const CLOUD_AR_ACTIVATION_TIMEOUT_MS = 8000;
 const SCAN_FRAME_BOUNDS = {
   x: 219,
   y: 505,
@@ -171,8 +170,8 @@ function postRecognitionEvent(target) {
       location: getArLocation(),
       sceneId: target.sceneId,
       targetIndex: target.targetIndex,
-      confidence: Number.isFinite(Number(target.confidence)) ? Number(target.confidence) : 1,
-      source: target.source || 'mindar',
+      confidence: 1,
+      source: 'mindar',
     }),
     keepalive: true,
   }).catch((error) => {
@@ -207,7 +206,6 @@ export function Scan({ lang = 'zh', setLang }) {
     let retryTimer = null;
     let mockRecognitionTimer = null;
     let cloudRecognitionTimer = null;
-    let cloudActivationFallbackTimer = null;
     let cloudRecognitionInFlight = false;
     let hasLockedTarget = false;
     let hasCloudScene = false;
@@ -220,57 +218,9 @@ export function Scan({ lang = 'zh', setLang }) {
       cloudRecognitionTimer = null;
     };
 
-    const clearCloudActivationFallback = () => {
-      window.clearTimeout(cloudActivationFallbackTimer);
-      cloudActivationFallbackTimer = null;
-    };
-
     const shouldSkipCloudRecognition = () => (
       hasFixedSceneSelection() || manualSceneLockedRef.current
     );
-
-    const lockFromCloudResult = (result) => {
-      hasLockedTarget = true;
-      clearCloudRecognition();
-      clearCloudActivationFallback();
-      setShowManualLock(false);
-      setScanState('locked');
-      postRecognitionEvent({
-        ...result,
-        source: result?.source || 'cloud-recognition',
-      });
-    };
-
-    const resumeCloudRecognition = () => {
-      hasCloudScene = false;
-      manualSceneLockedRef.current = false;
-      setScanState('searching');
-      startCloudRecognition();
-    };
-
-    const scheduleCloudActivationFallback = (result) => {
-      clearCloudActivationFallback();
-      cloudActivationFallbackTimer = window.setTimeout(async () => {
-        if (cancelled || hasLockedTarget) return;
-        const runtime = getARRuntime();
-        if (!runtime?.activateCloudResult) {
-          resumeCloudRecognition();
-          return;
-        }
-        try {
-          const fallbackResult = {
-            ...result,
-            arMode: 'screen-space',
-            source: result?.source || 'cloud-recognition-fallback',
-          };
-          await runtime.activateCloudResult(fallbackResult, { forceScreenSpace: true });
-          if (!cancelled && !hasLockedTarget) lockFromCloudResult(fallbackResult);
-        } catch (error) {
-          console.warn('[EMO-AR] cloud AR fallback failed', error);
-          if (!cancelled && !hasLockedTarget) resumeCloudRecognition();
-        }
-      }, CLOUD_AR_ACTIVATION_TIMEOUT_MS);
-    };
 
     const startCloudRecognition = () => {
       clearCloudRecognition();
@@ -286,7 +236,7 @@ export function Scan({ lang = 'zh', setLang }) {
       const runRecognition = async () => {
         if (cancelled || hasLockedTarget || hasCloudScene || cloudRecognitionInFlight || shouldSkipCloudRecognition()) return;
         const runtime = getARRuntime();
-        if (!runtime?.applyRecognitionResult && !runtime?.activateCloudResult) {
+        if (!runtime?.applyRecognitionResult) {
           schedule(CLOUD_RECOGNITION_RETRY_MS);
           return;
         }
@@ -326,24 +276,11 @@ export function Scan({ lang = 'zh', setLang }) {
             setShowManualLock(false);
             setSelectedSceneId(result.sceneId || '');
             setScanState('scene-loading');
-            const arMode = result.arMode || 'screen-space';
-            if (arMode !== 'mindar-anchor' && runtime.activateCloudResult) {
-              await runtime.activateCloudResult(result);
-              if (!cancelled && !hasLockedTarget) lockFromCloudResult(result);
-              return;
-            }
-            await runtime.applyRecognitionResult?.(result);
-            scheduleCloudActivationFallback(result);
+            await runtime.applyRecognitionResult(result);
             return;
           }
         } catch (error) {
           console.warn('[EMO-AR] cloud recognition failed', error);
-          if (hasCloudScene && !hasLockedTarget) {
-            hasCloudScene = false;
-            manualSceneLockedRef.current = false;
-            clearCloudActivationFallback();
-            setScanState('searching');
-          }
         } finally {
           cloudRecognitionInFlight = false;
         }
@@ -379,7 +316,6 @@ export function Scan({ lang = 'zh', setLang }) {
       offFound = runtime.onTargetFound((target) => {
         hasLockedTarget = true;
         clearCloudRecognition();
-        clearCloudActivationFallback();
         setShowManualLock(false);
         setScanState('locked');
         postRecognitionEvent(target);
@@ -412,7 +348,6 @@ export function Scan({ lang = 'zh', setLang }) {
       window.removeEventListener(RUNTIME_READY_EVENT, bindRuntime);
       window.clearTimeout(retryTimer);
       window.clearTimeout(mockRecognitionTimer);
-      clearCloudActivationFallback();
       clearRuntimeSubscriptions();
     };
   }, []);

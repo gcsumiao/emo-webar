@@ -2007,61 +2007,6 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         };
       };
 
-      const activateCloudResult = async (result = {}, options = {}) => {
-        if (!result?.matched) {
-          pushDiagnostics({ lastEvent: 'cloud-activation-miss' });
-          return { matched: false, scene: getCurrentScene() };
-        }
-
-        const arMode = options.forceScreenSpace ? 'screen-space' : (result.arMode || 'screen-space');
-        if (arMode === 'mindar-anchor') return applyRecognitionResult(result);
-
-        const requestedTargetIndex = Number(result.targetIndex);
-        const defaultTargetIndex = targets[0]?.targetIndex ?? 0;
-        const targetIndex = Number.isFinite(requestedTargetIndex)
-          && targets.some((target) => target.targetIndex === requestedTargetIndex)
-          ? requestedTargetIndex
-          : defaultTargetIndex;
-        const target = getTargetConfig(targetIndex);
-        const transformOverride = result.transformOverride || result.transform || {};
-
-        pushDiagnostics({
-          activeTargetId: result.targetId || target?.targetId || diagnosticsRef.current.activeTargetId,
-          cloudSceneId: result.sceneId || null,
-          cloudTargetId: result.targetId || null,
-          cloudTargetIndex: Number.isFinite(requestedTargetIndex) ? requestedTargetIndex : null,
-          cloudArMode: 'screen-space',
-          confidence: result.confidence ?? null,
-          lastEvent: `cloud-screen-space-activation:${result.sceneId || currentSceneId || 'unknown'}`,
-        });
-
-        Promise.resolve(revealModelAfterSprite(targetIndex, transformOverride))
-          .then(() => {
-            pushDiagnostics({
-              glbPhase: getPersistentModelComp()?.isReady?.() ? 'visible' : diagnosticsRef.current.glbPhase,
-              lastEvent: `cloud-screen-space-visible:${targetIndex}`,
-            });
-          })
-          .catch((error) => {
-            const message = String(error?.message || error);
-            console.error('[MindAR] cloud screen-space activation failed', error);
-            pushDiagnostics({
-              modelError: message,
-              lastError: message,
-              lastEvent: 'cloud-screen-space-failed',
-            });
-          });
-
-        return {
-          matched: true,
-          arMode: 'screen-space',
-          scene: getCurrentScene(),
-          target: target ? cloneTarget(target) : null,
-          confidence: result.confidence ?? null,
-          activationStarted: true,
-        };
-      };
-
       const screenPointToDragPlaneIntersection = ({ clientX = 0, clientY = 0 } = {}, plane) => {
         const THREE = getThree();
         if (!THREE || !scene.camera || !plane) return null;
@@ -2302,7 +2247,6 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         switchScene,
         recognizeFrameMock,
         applyRecognitionResult,
-        activateCloudResult,
         getMockSceneId,
         setMockSceneId,
         getTargetConfig,

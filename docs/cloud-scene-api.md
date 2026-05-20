@@ -4,10 +4,9 @@ This project now supports a Kivicube-like cloud-first v1 flow:
 
 1. The frontend captures a compressed camera-frame crop on the scan page.
 2. The frontend posts that frame to `/api/recognize`.
-3. The Vercel API proxies the frame to `AR_RECOGNITION_SERVICE_URL`.
-4. The OpenCV recognition service returns `sceneId`, `targetId`, `targetIndex`, confidence, and `arMode`.
-5. For `arMode: "screen-space"`, the frontend starts the final GLB immediately and does not wait for MindAR `targetFound`.
-6. MindAR remains available for `?scene=...`, debug picker flows, and future `arMode: "mindar-anchor"` results.
+3. The API compares the frame against the generated recognition descriptor index.
+4. The API returns `sceneId`, `targetId`, `targetIndex`, confidence, and the matching `.mind` URL.
+5. The frontend loads that one MindAR scene pack, then MindAR remains the local browser tracker for `targetIndex`.
 
 The older `/api/scenes` endpoint still exists for scene metadata and fallback
 catalog loading, but the scan page no longer rotates every `.mind` file by
@@ -111,10 +110,8 @@ Records the final browser-side MindAR hit:
 
 `POST /api/recognize`
 
-Proxies a compressed scan-frame image to the OpenCV recognition service
-configured by `AR_RECOGNITION_SERVICE_URL`. If the service is unconfigured,
-unavailable, or times out, this route returns a miss response so the scan page
-keeps scanning instead of getting stuck.
+Recognizes a compressed scan-frame image against
+`public/assets/ar/recognition-index.json`.
 
 Request:
 
@@ -141,8 +138,6 @@ Response on match:
   "targetId": "气模-0",
   "targetIndex": 0,
   "label": "01 (1)",
-  "kind": "planar-scene",
-  "arMode": "screen-space",
   "confidence": 0.99,
   "scoreMargin": 0.54,
   "mindFileUrl": "/assets/mindar/气模targets.mind",
@@ -167,44 +162,7 @@ Response on miss:
 The request body should stay under the Vercel Function payload limit. The
 frontend sends a 384px JPEG scan crop.
 
-## OpenCV Recognition Service
-
-The Dockerized service lives in `recognition-service/` and uses FastAPI +
-OpenCV AKAZE/ORB feature matching.
-
-Build the local OpenCV feature index:
-
-```sh
-npm run recognition:opencv:index
-npm run recognition:opencv:index:check
-```
-
-Run the service:
-
-```sh
-npm run recognition:service
-```
-
-The local Docker compose service mounts:
-
-```text
-./recognition-service/data -> /app/data
-. -> /workspace
-../emo-checklist-source-archive -> /source
-```
-
-If your source archive is elsewhere, set:
-
-```env
-AR_RECOGNITION_SOURCE_ROOT_HOST=/absolute/path/to/emo-checklist-source-archive
-```
-
-The service response defaults to `arMode: "screen-space"` because live scenes
-and physical objects should trigger AR without requiring a matching MindAR
-plane. Use `arMode: "mindar-anchor"` only for targets that are known to be
-trackable by the corresponding `.mind` pack.
-
-## Recognition Data
+## Recognition Index
 
 Source images stay outside the repo. The local mapping lives in
 `recognition/target-sources.json` and currently points at:
@@ -213,7 +171,7 @@ Source images stay outside the repo. The local mapping lives in
 /Users/sumiaoc/Downloads/emo-checklist-source-archive
 ```
 
-The older JavaScript descriptor index can still be generated for diagnostics:
+Generate the deployable descriptor index:
 
 ```sh
 npm run recognition:index
@@ -226,7 +184,7 @@ The generated file is:
 public/assets/ar/recognition-index.json
 ```
 
-That file contains descriptors and scene metadata, not the original images.
+This file contains descriptors and scene metadata, not the original images.
 Docker is not used as image storage. If source images are later moved to Vercel
 Blob, S3, or R2, set `AR_RECOGNITION_SOURCE_BASE_URL` before rebuilding the
 index so `sourceImageUrl` points to the object-store URLs.
@@ -238,7 +196,6 @@ VITE_AR_SCENE_API_URL=/api/scenes
 VITE_AR_RECOGNITION_API_URL=/api/recognize
 VITE_AR_TENANT=emo
 VITE_AR_LOCATION=store-a
-AR_RECOGNITION_SERVICE_URL=http://localhost:8000
 ```
 
 Runtime URL parameters override the defaults:
@@ -271,19 +228,16 @@ Recommended Vercel settings:
   - `VITE_AR_SCENE_API_URL=/api/scenes`
   - `VITE_AR_RECOGNITION_API_URL=/api/recognize`
   - `VITE_AR_RECOGNITION_EVENTS_URL=off`
-  - `AR_RECOGNITION_SERVICE_URL=https://your-recognition-service.example.com`
-  - `AR_RECOGNITION_PROXY_TIMEOUT_MS=6000`
   - `VITE_AR_TENANT=emo`
   - `VITE_AR_LOCATION=store-a`
   - `AR_SCENE_CACHE_SECONDS=60`
   - `AR_SCENE_MAX_RESULTS=0`
+  - `AR_RECOGNITION_MIN_CONFIDENCE=0.76`
+  - `AR_RECOGNITION_MIN_SCENE_MARGIN=0.02`
+  - `AR_RECOGNITION_STRONG_CONFIDENCE=0.93`
 
 Set `AR_SCENE_MAX_RESULTS` to a small number such as `8` when a location should
 scan only its top-priority scene packs.
-
-Neon is optional for recognition. Use it for scene metadata, analytics, tenant,
-and location configuration. The image matching itself happens in the OpenCV
-recognition service.
 
 Local full-stack development should use:
 

@@ -38,18 +38,14 @@ npm run mindar:catalog
 npm run mindar:catalog:check
 ```
 
-Cloud recognition now has two layers. The Vercel `/api/recognize` route stays
-lightweight and proxies frames to `AR_RECOGNITION_SERVICE_URL`. The OpenCV
-service builds its feature index from the source target images; the source
-images stay outside this repo and are mounted into Docker only for indexing:
+Cloud recognition uses an offline descriptor index generated from the source
+target images. The source images stay outside this repo; rebuild the deployed
+index after source-image or mapping changes:
 
 ```bash
-npm run recognition:opencv:index
-npm run recognition:service
+npm run recognition:index
+npm run recognition:index:check
 ```
-
-Set `AR_RECOGNITION_SERVICE_URL=http://localhost:8000` for local `vercel dev`,
-or to the deployed HTTPS recognition service in Vercel.
 
 Use `?debug=1` to show the scan-screen scene picker, `?scene=气模` to start on a specific scene pack, or `?mockScene=水箱` to test the mock recognition handoff.
 
