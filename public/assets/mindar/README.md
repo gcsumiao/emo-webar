@@ -52,7 +52,7 @@ Runtime state is exposed through `window.__mindar`:
 - `getCurrentScene()` returns the active scene pack.
 - `switchScene(sceneId)` rebuilds MindAR with another `.mind` file.
 - `recognizeFrameMock({ sceneId, targetIndex, confidence })` returns a frontend-only mock recognition result for testing scene selection.
-- `applyRecognitionResult({ matched, sceneId, targetIndex, confidence })` applies a cloud/mock recognition result by switching scene packs.
+- `applyRecognitionResult({ matched, sceneId, targetIndex, confidence })` applies a future cloud/mock recognition result by switching scene packs.
 - `setMockSceneId(sceneId)` stores the current debug scene picker choice for `recognizeFrameMock()`.
 - `onTargetFound(cb)` receives `{ sceneId, sceneLabel, mindTargetUrl, targetIndex, targetId, label }`.
 - `onTargetLost(cb)` receives `{ sceneId, sceneLabel, mindTargetUrl, targetIndex, targetId, label }`.
@@ -117,4 +117,4 @@ For a future Kivicube upload package, export separate platform-friendly images/v
 
 ## Recognition placeholder
 
-MindAR remains authoritative for known posters/packaging after a scene pack is selected. The cloud recognizer returns a `sceneId` and optional `targetIndex`; the Vite runtime applies that through `window.__mindar.applyRecognitionResult()`.
+MindAR remains authoritative for known posters/packaging after a scene pack is selected. The future local AI or cloud recognizer should return a `sceneId` and optional `targetIndex`; the Vite runtime applies that through `window.__mindar.applyRecognitionResult()`.

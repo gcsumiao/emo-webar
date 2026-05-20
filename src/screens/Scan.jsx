@@ -1,22 +1,11 @@
 import React from 'react';
 import { LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
 import { getARRuntime } from '../ar/arRuntime.js';
-import {
-  getArLocation,
-  getArTenant,
-  getRecognitionApiUrl,
-  getRecognitionEventsUrl,
-  hasFixedSceneSelection,
-} from '../ar/arCloudConfig.js';
 import { asset } from '../lib/assetUrl.js';
-import { captureRecognitionFrame } from '../lib/cloudRecognitionCapture.js';
 import { useScanGeometry } from '../lib/viewport.js';
 
 const MANUAL_LOCK_DELAY_MS = 3000;
 const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
-const CLOUD_RECOGNITION_INITIAL_DELAY_MS = 650;
-const CLOUD_RECOGNITION_INTERVAL_MS = 1300;
-const CLOUD_RECOGNITION_RETRY_MS = 700;
 const SCAN_FRAME_BOUNDS = {
   x: 219,
   y: 505,
@@ -158,39 +147,13 @@ function readDebugFlag() {
   }
 }
 
-function postRecognitionEvent(target) {
-  const url = getRecognitionEventsUrl();
-  if (!url || !target) return;
-
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tenant: getArTenant(),
-      location: getArLocation(),
-      sceneId: target.sceneId,
-      targetIndex: target.targetIndex,
-      confidence: 1,
-      source: 'mindar',
-    }),
-    keepalive: true,
-  }).catch((error) => {
-    console.warn('[EMO-AR] recognition event logging failed', error);
-  });
-}
-
 export function Scan({ lang = 'zh', setLang }) {
   const [scanState, setScanState] = React.useState('searching');
   const [showManualLock, setShowManualLock] = React.useState(false);
   const [sceneCatalog, setSceneCatalog] = React.useState([]);
   const [selectedSceneId, setSelectedSceneId] = React.useState('');
-  const manualSceneLockedRef = React.useRef(false);
-  const geometryRef = React.useRef(null);
   const debugMode = React.useMemo(readDebugFlag, []);
   const geometry = useScanGeometry();
-  React.useEffect(() => {
-    geometryRef.current = geometry;
-  }, [geometry]);
   const isLocked = scanState === 'locked';
   const isLandscapePhone = geometry.orientation === 'landscape' && !geometry.isTablet && geometry.height < 520;
   const scanControlGap = isLandscapePhone ? 12 : 18;
@@ -205,91 +168,9 @@ export function Scan({ lang = 'zh', setLang }) {
     let cancelled = false;
     let retryTimer = null;
     let mockRecognitionTimer = null;
-    let cloudRecognitionTimer = null;
-    let cloudRecognitionInFlight = false;
-    let hasLockedTarget = false;
-    let hasCloudScene = false;
     let offFound = null;
     let offLost = null;
     let boundRuntime = null;
-
-    const clearCloudRecognition = () => {
-      window.clearTimeout(cloudRecognitionTimer);
-      cloudRecognitionTimer = null;
-    };
-
-    const shouldSkipCloudRecognition = () => (
-      hasFixedSceneSelection() || manualSceneLockedRef.current
-    );
-
-    const startCloudRecognition = () => {
-      clearCloudRecognition();
-      const url = getRecognitionApiUrl();
-      if (!url || shouldSkipCloudRecognition()) return;
-
-      const schedule = (delay = CLOUD_RECOGNITION_INTERVAL_MS) => {
-        clearCloudRecognition();
-        if (cancelled || hasLockedTarget || hasCloudScene || shouldSkipCloudRecognition()) return;
-        cloudRecognitionTimer = window.setTimeout(runRecognition, delay);
-      };
-
-      const runRecognition = async () => {
-        if (cancelled || hasLockedTarget || hasCloudScene || cloudRecognitionInFlight || shouldSkipCloudRecognition()) return;
-        const runtime = getARRuntime();
-        if (!runtime?.applyRecognitionResult) {
-          schedule(CLOUD_RECOGNITION_RETRY_MS);
-          return;
-        }
-        if (runtime.getActiveTargets?.().length) {
-          schedule(CLOUD_RECOGNITION_INTERVAL_MS);
-          return;
-        }
-
-        const latestGeometry = geometryRef.current;
-        const cropRect = latestGeometry
-          ? getScanWindowRect(latestGeometry.scanCenterX, latestGeometry.scanCenterY, latestGeometry.scanSize)
-          : null;
-        const frame = captureRecognitionFrame({ cropRect });
-        if (!frame?.imageDataUrl) {
-          schedule(CLOUD_RECOGNITION_RETRY_MS);
-          return;
-        }
-
-        cloudRecognitionInFlight = true;
-        try {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              tenant: getArTenant(),
-              location: getArLocation(),
-              imageDataUrl: frame.imageDataUrl,
-              maxCandidates: debugMode ? 5 : 3,
-            }),
-          });
-          if (!response.ok) throw new Error(`Cloud recognition failed: ${response.status}`);
-          const result = await response.json();
-          if (cancelled) return;
-          if (result?.matched) {
-            hasCloudScene = true;
-            manualSceneLockedRef.current = true;
-            setShowManualLock(false);
-            setSelectedSceneId(result.sceneId || '');
-            setScanState('scene-loading');
-            await runtime.applyRecognitionResult(result);
-            return;
-          }
-        } catch (error) {
-          console.warn('[EMO-AR] cloud recognition failed', error);
-        } finally {
-          cloudRecognitionInFlight = false;
-        }
-
-        schedule(CLOUD_RECOGNITION_INTERVAL_MS);
-      };
-
-      schedule(CLOUD_RECOGNITION_INITIAL_DELAY_MS);
-    };
 
     const clearRuntimeSubscriptions = () => {
       offFound?.();
@@ -313,38 +194,29 @@ export function Scan({ lang = 'zh', setLang }) {
       setSceneCatalog(catalog);
       setSelectedSceneId(runtime.getMockSceneId?.() || runtime.getCurrentScene?.()?.sceneId || catalog[0]?.sceneId || '');
 
-      offFound = runtime.onTargetFound((target) => {
-        hasLockedTarget = true;
-        clearCloudRecognition();
+      offFound = runtime.onTargetFound(() => {
         setShowManualLock(false);
         setScanState('locked');
-        postRecognitionEvent(target);
       });
       offLost = runtime.onTargetLost(() => {
         setScanState((current) => current === 'locked' ? current : 'searching');
       });
-
-      startCloudRecognition();
-
       window.clearTimeout(mockRecognitionTimer);
-      if (runtime.getMockSceneId?.()) {
-        mockRecognitionTimer = window.setTimeout(async () => {
-          try {
-            const result = await runtime.recognizeFrameMock?.({ collectionId: runtime.collectionId });
-            if (cancelled || !result?.matched) return;
-            runtime.applyRecognitionResult?.(result);
-          } catch (error) {
-            console.warn('[EMO-AR] mock cloud recognition failed', error);
-          }
-        }, 120);
-      }
+      mockRecognitionTimer = window.setTimeout(async () => {
+        try {
+          const result = await runtime.recognizeFrameMock?.({ collectionId: runtime.collectionId });
+          if (cancelled || !result?.matched) return;
+          runtime.applyRecognitionResult?.(result);
+        } catch (error) {
+          console.warn('[EMO-AR] mock cloud recognition failed', error);
+        }
+      }, 120);
     };
 
     window.addEventListener(RUNTIME_READY_EVENT, bindRuntime);
     bindRuntime();
     return () => {
       cancelled = true;
-      clearCloudRecognition();
       window.removeEventListener(RUNTIME_READY_EVENT, bindRuntime);
       window.clearTimeout(retryTimer);
       window.clearTimeout(mockRecognitionTimer);
@@ -394,21 +266,17 @@ export function Scan({ lang = 'zh', setLang }) {
 
   const scanHintText = isLocked
     ? t(lang, '已锁定，一毛出现中…', 'Locked · EMO is appearing…')
-    : scanState === 'scene-loading'
-      ? t(lang, '已识别，正在加载 AR…', 'Recognized · loading AR…')
     : isLandscapePhone
-      ? t(lang, '横屏模式 · 云端识别中', 'Landscape · cloud scanning')
-      : t(lang, '对准目标，云端识别', 'Aim at the target · cloud scanning');
+      ? t(lang, '横屏模式 · 对准目标', 'Landscape · aim at target')
+      : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning');
 
   const lockManually = React.useCallback(() => {
-    manualSceneLockedRef.current = true;
     setShowManualLock(false);
     setScanState('locked');
   }, []);
 
   const applyDebugScene = React.useCallback(async (event) => {
     const sceneId = event.target.value;
-    manualSceneLockedRef.current = true;
     setSelectedSceneId(sceneId);
     setShowManualLock(false);
     setScanState('searching');

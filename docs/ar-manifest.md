@@ -16,21 +16,6 @@ VITE_AR_MANIFEST_URL=https://your-cdn.com/ar/manifest.json
 If `VITE_AR_MANIFEST_URL` is unset, the app requests `/assets/ar/manifest.json`.
 If that request fails or returns invalid JSON, the frontend falls back to the built-in EMO defaults.
 
-Before falling back to the static scene catalog, the runtime tries the cloud
-scene API configured by `VITE_AR_SCENE_API_URL`. The scan page separately uses
-`VITE_AR_RECOGNITION_API_URL` for cloud-first image recognition:
-
-```env
-VITE_AR_SCENE_API_URL=/api/scenes
-VITE_AR_RECOGNITION_API_URL=/api/recognize
-VITE_AR_TENANT=emo
-VITE_AR_LOCATION=store-a
-```
-
-The request includes `tenant` and `location`, with URL parameters taking
-precedence over env defaults. See `docs/cloud-scene-api.md` for the Vercel API
-recognition, scene, and database contracts.
-
 ## Scene Catalog
 
 The app now separates scene recognition from local MindAR tracking. The manifest points to a generated scene catalog:
@@ -43,7 +28,7 @@ The app now separates scene recognition from local MindAR tracking. The manifest
 }
 ```
 
-`mindTargetUrl` and `targets` remain supported for the original single-scene contract. When `sceneCatalogUrl` is present, the runtime loads the catalog and chooses one scene pack at a time. If the cloud scene API is available, it supplies the catalog first; otherwise this static file remains the fallback. Cloud recognition chooses the scene pack before MindAR tracking starts; the frontend no longer has to rotate through every pack.
+`mindTargetUrl` and `targets` remain supported for the original single-scene contract. When `sceneCatalogUrl` is present, the runtime loads the catalog and chooses one scene pack at a time.
 
 The catalog shape is:
 
@@ -61,9 +46,6 @@ The catalog shape is:
   ]
 }
 ```
-
-The cloud API may use `mindFileUrl` instead of `mindTargetUrl`; the frontend
-normalizes both names to the MindAR `imageTargetSrc` value.
 
 For scenes without explicit `targets`, the runtime generates target metadata as `${sceneId}-${targetIndex}`. The default `targets` scene keeps the existing EMO target IDs and labels from `public/assets/ar/manifest.json`.
 
