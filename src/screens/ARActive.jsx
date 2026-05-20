@@ -873,7 +873,15 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
       let updatedState = null;
       if (gestureRef.current.lastDistance) {
         const scaleFactor = clampScaleFactor(distance / gestureRef.current.lastDistance);
-        updatedState = runtime?.scaleFrozenBy?.({ scaleFactor }) || updatedState;
+        const pinchCenter = {
+          x: (points[0].x + points[1].x) / 2,
+          y: (points[0].y + points[1].y) / 2,
+        };
+        updatedState = runtime?.scaleFrozenBy?.({
+          scaleFactor,
+          centerX: pinchCenter.x,
+          centerY: pinchCenter.y,
+        }) || updatedState;
       }
       if (updatedState) setFrozenState(updatedState);
       gestureRef.current.lastDistance = distance;

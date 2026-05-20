@@ -80,6 +80,9 @@ function normalizeGlbInteraction(interactionLike, fallbackInteraction = DEFAULT_
     pitchSensitivity: normalizeNumber(merged.pitchSensitivity, DEFAULT_GLB_INTERACTION.pitchSensitivity, 0),
     minScale,
     maxScale,
+    screenBoundsMode: merged.screenBoundsMode === 'projected-bounds'
+      ? 'projected-bounds'
+      : DEFAULT_GLB_INTERACTION.screenBoundsMode,
     screenMarginNdc: normalizeNumber(merged.screenMarginNdc, DEFAULT_GLB_INTERACTION.screenMarginNdc, 0, 0.45),
     screenEdgePaddingPx: normalizeNumber(merged.screenEdgePaddingPx, DEFAULT_GLB_INTERACTION.screenEdgePaddingPx, 0),
     nearPlaneMargin: normalizeNumber(merged.nearPlaneMargin, DEFAULT_GLB_INTERACTION.nearPlaneMargin, 0),

@@ -23,6 +23,9 @@ const FINAL_BASE_RENDER_DEPTH = Math.abs(FROZEN_SPRITE_POSITION.z);
 const FINAL_NEAR_DEPTH_MULTIPLIER = 1.2;
 const DROP_ENTER_MARGIN_RATIO = 0.16;
 const GLB_INITIAL_CENTER_NDC = { x: 0, y: 0 };
+const GLB_SCREEN_BOUNDS_CENTER_ANCHOR = 'center-anchor';
+const GLB_SCREEN_BOUNDS_PROJECTED_BOUNDS = 'projected-bounds';
+const GLB_SCALE_PIVOT_TOLERANCE_NDC = 0.12;
 const GLB_LIGHT_RIG_ID = 'glb-light-rig';
 const GLB_LIGHT_TARGET_ID_PREFIX = 'glb-light-target';
 const GLB_LIGHT_DEFAULT_TARGET_POSITION = [0, -0.02, -FINAL_BASE_RENDER_DEPTH];
@@ -762,6 +765,14 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         box.getCenter(center);
         return projectWorldVector(center);
       };
+      const readModelScreenAnchorProjection = () => readMeshCenterProjection();
+      const isProjectedPointInsideBounds = (point, bounds, tolerance = 0) => {
+        if (!point || !bounds) return false;
+        return point.x >= bounds.minX - tolerance
+          && point.x <= bounds.maxX + tolerance
+          && point.y >= bounds.minY - tolerance
+          && point.y <= bounds.maxY + tolerance;
+      };
       const readMeshProjectedSize = () => {
         const THREE = getThree();
         const model = getPersistentModelComp()?.model || frozenModel?.getObject3D?.('mesh');
@@ -999,7 +1010,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return true;
       };
 
-      const clampFrozenToEditBounds = () => {
+      const clampFrozenProjectedBoundsToEditBounds = () => {
         if (!frozenState.active) return false;
         const THREE = getThree();
         if (!THREE || !scene.camera) return false;
@@ -1015,7 +1026,6 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           const nextScale = Math.max(minScale, frozenState.scale.x * fitFactor);
           if (Number.isFinite(nextScale) && nextScale < frozenState.scale.x) {
             frozenState.scale = { x: nextScale, y: nextScale, z: nextScale };
-            if (frozenState.contentMode === 'gltf') rememberGlbScaleSafetyLimit(nextScale);
             applyFrozenObjectTransform();
             modelBounds = readModelProjectionBounds() || modelBounds;
             changed = true;
@@ -1039,6 +1049,34 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         const deltaNdcY = targetCenterY - modelBounds.centerY;
         if (Math.abs(deltaNdcX) < 0.001 && Math.abs(deltaNdcY) < 0.001) return changed;
         return moveFrozenByNdcDelta(deltaNdcX, deltaNdcY) || changed;
+      };
+
+      const clampFrozenCenterAnchorToEditBounds = () => {
+        if (!frozenState.active) return false;
+        const editBounds = readEditBoundsNdc();
+        if (!editBounds) return false;
+        let anchor = readModelScreenAnchorProjection();
+        if (!anchor) {
+          const modelBounds = readModelProjectionBounds();
+          if (!modelBounds) return false;
+          anchor = { x: modelBounds.centerX, y: modelBounds.centerY };
+        }
+        const targetX = clampNumber(anchor.x, editBounds.minX, editBounds.maxX);
+        const targetY = clampNumber(anchor.y, editBounds.minY, editBounds.maxY);
+        const deltaNdcX = targetX - anchor.x;
+        const deltaNdcY = targetY - anchor.y;
+        if (Math.abs(deltaNdcX) < 0.001 && Math.abs(deltaNdcY) < 0.001) return false;
+        return moveFrozenByNdcDelta(deltaNdcX, deltaNdcY);
+      };
+
+      const clampFrozenToEditBounds = () => {
+        if (frozenState.contentMode === 'gltf') {
+          const mode = readInteractionConfig().screenBoundsMode || GLB_SCREEN_BOUNDS_CENTER_ANCHOR;
+          if (mode !== GLB_SCREEN_BOUNDS_PROJECTED_BOUNDS) {
+            return clampFrozenCenterAnchorToEditBounds();
+          }
+        }
+        return clampFrozenProjectedBoundsToEditBounds();
       };
 
       const clampFrozenToDepthBounds = () => {
@@ -1996,14 +2034,26 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         };
       };
 
+      const screenPointToNdc = ({ clientX = null, clientY = null } = {}) => {
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 390;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 844;
+        const x = Number(clientX);
+        const y = Number(clientY);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        return {
+          x: (x / viewportWidth) * 2 - 1,
+          y: -(y / viewportHeight) * 2 + 1,
+        };
+      };
+
       const screenPointToDragPlaneIntersection = ({ clientX = 0, clientY = 0 } = {}, plane) => {
         const THREE = getThree();
         if (!THREE || !scene.camera || !plane) return null;
-        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 390;
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 844;
+        const ndcPoint = screenPointToNdc({ clientX, clientY });
+        if (!ndcPoint) return null;
         const ndc = new THREE.Vector2(
-          (Number(clientX) / viewportWidth) * 2 - 1,
-          -(Number(clientY) / viewportHeight) * 2 + 1
+          ndcPoint.x,
+          ndcPoint.y
         );
         const raycaster = new THREE.Raycaster();
         raycaster.setFromCamera(ndc, scene.camera);
@@ -2132,17 +2182,53 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return cloneFrozenState();
       };
 
-      const scaleFrozenBy = ({ scaleFactor = 1 } = {}) => {
+      const scaleFrozenBy = ({ scaleFactor = 1, centerX = null, centerY = null, clientX = null, clientY = null } = {}) => {
         if (!frozenState.active) return cloneFrozenState();
         const factor = Number.isFinite(Number(scaleFactor)) ? Number(scaleFactor) : 1;
+        const previousScale = frozenState.scale.x;
+        const centerBefore = frozenState.contentMode === 'gltf' ? readModelScreenAnchorProjection() : null;
+        const boundsBefore = frozenState.contentMode === 'gltf' ? readModelProjectionBounds() : null;
+        const pinchNdc = frozenState.contentMode === 'gltf'
+          ? screenPointToNdc({
+              clientX: centerX ?? clientX,
+              clientY: centerY ?? clientY,
+            })
+          : null;
+        const usePinchPivot = Boolean(
+          centerBefore
+          && pinchNdc
+          && isProjectedPointInsideBounds(pinchNdc, boundsBefore, GLB_SCALE_PIVOT_TOLERANCE_NDC)
+        );
         const minScale = frozenState.contentMode === 'gltf' ? getScaleMin() : FROZEN_SPRITE_SCALE_MIN;
         const configuredMaxScale = frozenState.contentMode === 'gltf' ? getScaleMax() : FROZEN_SPRITE_SCALE_MAX;
-        if (factor < 0.999) resetGlbScaleSafetyLimit();
         const maxScale = frozenState.contentMode === 'gltf' && factor > 1.001 && Number.isFinite(glbScaleSafetyLimit)
           ? Math.min(configuredMaxScale, Math.max(minScale, glbScaleSafetyLimit))
           : configuredMaxScale;
+        if (factor < 0.999) resetGlbScaleSafetyLimit();
         const next = Math.max(minScale, Math.min(maxScale, frozenState.scale.x * factor));
         frozenState.scale = { x: next, y: next, z: next };
+        const scaleChanged = Math.abs(frozenState.scale.x - previousScale) > 0.0001;
+        if (scaleChanged && centerBefore) {
+          applyFrozenObjectTransform();
+          if (clampFrozenToDepthBounds()) applyFrozenObjectTransform();
+          const effectiveFactor = previousScale > 0
+            ? frozenState.scale.x / previousScale
+            : 1;
+          const targetCenter = usePinchPivot
+            ? {
+                x: pinchNdc.x + (centerBefore.x - pinchNdc.x) * effectiveFactor,
+                y: pinchNdc.y + (centerBefore.y - pinchNdc.y) * effectiveFactor,
+              }
+            : centerBefore;
+          const centerAfter = readModelScreenAnchorProjection();
+          if (centerAfter && targetCenter) {
+            const deltaNdcX = targetCenter.x - centerAfter.x;
+            const deltaNdcY = targetCenter.y - centerAfter.y;
+            if (Math.abs(deltaNdcX) >= 0.001 || Math.abs(deltaNdcY) >= 0.001) {
+              moveFrozenByNdcDelta(deltaNdcX, deltaNdcY);
+            }
+          }
+        }
         applyFrozenState();
         return cloneFrozenState();
       };
