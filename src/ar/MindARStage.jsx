@@ -634,54 +634,43 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       const readEditBoundsNdc = () => {
         const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 390;
         const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 844;
+        const layerRect = container?.getBoundingClientRect?.() || null;
         const editSurface = document.querySelector('[data-ar-edit-surface="true"]');
         const surfaceRect = editSurface?.getBoundingClientRect?.() || null;
-        const readSafeInsetPx = (name) => {
-          try {
-            const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
-            const value = parseFloat(raw);
-            return Number.isFinite(value) ? value : 0;
-          } catch {
-            return 0;
-          }
-        };
-        const surfaceCoversViewport = surfaceRect
-          && surfaceRect.left <= 1
-          && surfaceRect.top <= 1
-          && surfaceRect.right >= viewportWidth - 1
-          && surfaceRect.bottom >= viewportHeight - 1;
-        let rect;
-        if (surfaceCoversViewport) {
-          const safeTop = readSafeInsetPx('--safe-top');
-          const safeRight = readSafeInsetPx('--safe-right');
-          const safeBottom = readSafeInsetPx('--safe-bottom');
-          const safeLeft = readSafeInsetPx('--safe-left');
-          rect = {
-            left: safeLeft,
-            right: viewportWidth - safeRight,
-            top: safeTop,
-            bottom: viewportHeight - safeBottom,
-          };
-        } else {
-          rect = surfaceRect || {
-            left: 0,
-            right: viewportWidth,
-            top: 96,
-            bottom: Math.max(96, viewportHeight - 220),
-          };
-        }
-        const paddingPx = 24;
-        const left = Math.max(0, rect.left + paddingPx);
-        const right = Math.min(viewportWidth, rect.right - paddingPx);
-        const top = Math.max(0, rect.top + paddingPx);
-        const bottom = Math.min(viewportHeight, rect.bottom - paddingPx);
+        const hasUsableRect = (rectLike) => (
+          rectLike
+          && Number.isFinite(rectLike.left)
+          && Number.isFinite(rectLike.right)
+          && Number.isFinite(rectLike.top)
+          && Number.isFinite(rectLike.bottom)
+          && rectLike.right > rectLike.left
+          && rectLike.bottom > rectLike.top
+        );
+        const rect = hasUsableRect(layerRect)
+          ? layerRect
+          : hasUsableRect(surfaceRect)
+            ? surfaceRect
+            : {
+                left: 0,
+                right: viewportWidth,
+                top: 0,
+                bottom: viewportHeight,
+              };
+        const interaction = frozenState?.contentMode === 'gltf' ? readInteractionConfig() : {};
+        const edgePaddingPx = frozenState?.contentMode === 'gltf'
+          ? Math.max(0, Number(interaction.screenEdgePaddingPx) || 0)
+          : 0;
+        const left = clampNumber(rect.left + edgePaddingPx, 0, viewportWidth);
+        const right = clampNumber(rect.right - edgePaddingPx, 0, viewportWidth);
+        const top = clampNumber(rect.top + edgePaddingPx, 0, viewportHeight);
+        const bottom = clampNumber(rect.bottom - edgePaddingPx, 0, viewportHeight);
         if (right <= left || bottom <= top) return null;
         let minX = (left / viewportWidth) * 2 - 1;
         let maxX = (right / viewportWidth) * 2 - 1;
         let minY = 1 - (bottom / viewportHeight) * 2;
         let maxY = 1 - (top / viewportHeight) * 2;
         const marginNdc = frozenState?.contentMode === 'gltf'
-          ? Math.max(0, Math.min(0.45, Number(readInteractionConfig().screenMarginNdc) || 0))
+          ? Math.max(0, Math.min(0.45, Number(interaction.screenMarginNdc) || 0))
           : 0;
         if (marginNdc > 0 && maxX - minX > marginNdc * 2 && maxY - minY > marginNdc * 2) {
           minX += marginNdc;
@@ -2038,12 +2027,13 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         dragProxyState.plane = plane;
         dragProxyState.startPoint = startPoint.clone();
         dragProxyState.startPosition = { ...frozenState.position };
+        resetGlbScaleSafetyLimit();
         if (dragProxy?.object3D) dragProxy.object3D.position.copy(objectWorld);
         pushDiagnostics({ lastEvent: 'drag-proxy-start' });
         return cloneFrozenState();
       };
 
-      const dragFrozenToScreenPoint = ({ pointerId = null, clientX = 0, clientY = 0, clampToViewport = false } = {}) => {
+      const dragFrozenToScreenPoint = ({ pointerId = null, clientX = 0, clientY = 0, clampToViewport = true } = {}) => {
         if (!frozenState.active || !dragProxyState.active || !dragProxyState.plane || !dragProxyState.startPoint || !dragProxyState.startPosition) {
           return cloneFrozenState();
         }
@@ -2058,6 +2048,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           x: dragProxyState.startPosition.x + delta.x / ratio,
           y: dragProxyState.startPosition.y + delta.y / ratio,
         };
+        resetGlbScaleSafetyLimit();
         if (dragProxy?.object3D) dragProxy.object3D.position.copy(point);
         if (clampToViewport) applyFrozenState();
         else applyFrozenObjectTransform();
@@ -2115,6 +2106,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           y: frozenState.position.y - dy / ratio,
           z: frozenState.position.z,
         };
+        resetGlbScaleSafetyLimit();
         if (clampToViewport) applyFrozenState();
         else applyFrozenObjectTransform();
         return cloneFrozenState();

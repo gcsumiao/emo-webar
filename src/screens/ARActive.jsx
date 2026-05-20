@@ -889,7 +889,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
           pointerId: event.pointerId,
           clientX: event.clientX,
           clientY: event.clientY,
-          clampToViewport: false,
+          clampToViewport: true,
         }) || null;
         if (Math.hypot(dx, dy) > 0.4) markGlbInteracted();
         if (updatedState) setFrozenState(updatedState);

@@ -60,7 +60,7 @@ Runtime state is exposed through `window.__mindar`:
 - `getLastTarget()` returns the most recent target metadata.
 - `freezeCurrentTarget()` copies the current anchored model into an editable scene-level frozen object.
 - `unfreezeCurrentTarget()` hides the frozen object and restores live anchored content.
-- `beginFrozenDrag({ pointerId, clientX, clientY })`, `dragFrozenToScreenPoint(...)`, and `endFrozenDrag({ clampToViewport })` move a transparent drag proxy on a fixed camera-depth plane, then sync the frozen object to it.
+- `beginFrozenDrag({ pointerId, clientX, clientY })`, `dragFrozenToScreenPoint(...)`, and `endFrozenDrag({ clampToViewport })` move a transparent drag proxy on a fixed camera-depth plane, then sync the frozen object to it with live viewport clamping.
 - `rotateFrozenBy({ yawDelta, pitchDelta })` rotates the internal GLB pivot for 360-degree inspection without touching animated mesh internals.
 - `scaleFrozenBy({ scaleFactor })` scales the frozen object and clamps it inside the visible AR edit area.
 - `resetFrozenTransform()` restores the editable final GLB to the transform captured when the final animation frame first became live.

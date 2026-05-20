@@ -16,7 +16,8 @@ export const DEFAULT_GLB_INTERACTION = {
   pitchSensitivity: 0.12,
   minScale: 0.25,
   maxScale: 2.4,
-  screenMarginNdc: 0.06,
+  screenMarginNdc: 0,
+  screenEdgePaddingPx: 2,
   nearPlaneMargin: 0.08,
 };
 

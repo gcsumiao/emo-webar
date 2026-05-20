@@ -160,7 +160,7 @@ Rules can match `nodeNames`, `materialNames`, or both. With `preserveOriginal: t
 
 The `defaultTarget.glb.position`, `rotation`, and `scale` values place the model inside the frozen camera-space AR object after recognition. They are model-relative offsets used for the final handoff pose, separate from the frozen parent transform and internal GLB pivot that user gestures adjust during editing.
 
-Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: long-press movement drives a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag only rotates an internal GLB pivot for 360-degree inspection. Two-finger pinch only scales the model. Single-finger long-press for about 450ms, then drag, moves the model. The runtime clamps the projected GLB bounds and camera near-plane depth so the editable model cannot be dragged off screen or scaled into the camera.
+Final GLB interaction uses a transparent drag proxy, following the same separation used by Three.js DragControls examples: long-press movement drives a proxy on a fixed camera-depth plane, and the GLB parent follows that proxy while the animated GLB nodes continue to play locally. Single-finger drag only rotates an internal GLB pivot for 360-degree inspection. Two-finger pinch only scales the model. Single-finger long-press for about 450ms, then drag, moves the model. During movement and scaling, the runtime clamps the projected GLB bounds to the visible AR layer and clamps camera near-plane depth so the editable model cannot be dragged off screen or scaled into the camera.
 
 The optional `glb.interaction` object controls the final editable GLB behavior. If omitted, these defaults are used:
 
@@ -174,19 +174,20 @@ The optional `glb.interaction` object controls the final editable GLB behavior. 
     "pitchSensitivity": 0.12,
     "minScale": 0.25,
     "maxScale": 2.4,
-    "screenMarginNdc": 0.06,
+    "screenMarginNdc": 0,
+    "screenEdgePaddingPx": 2,
     "nearPlaneMargin": 0.08
   }
 }
 ```
 
-`pivot: "boundsCenter"` rotates around the model's current visual bounds center rather than the animated mesh origin. `screenMarginNdc` shrinks the edit area in normalized device coordinates, and `nearPlaneMargin` adds world-space distance in front of the camera near plane before scale is reduced.
+`pivot: "boundsCenter"` rotates around the model's current visual bounds center rather than the animated mesh origin. `screenEdgePaddingPx` adds a small CSS-pixel hard edge inside the visible AR layer so the GLB can sit flush with the screen without being clipped. `screenMarginNdc` remains available as an optional extra inset in normalized device coordinates for scenes that need a wider margin. `nearPlaneMargin` adds world-space distance in front of the camera near plane before scale is reduced.
 
-The runtime drag API accepts pointer positions and applies the same default bounds check on drag end:
+The runtime drag API accepts pointer positions and applies the default bounds check while dragging and on drag end:
 
 ```js
 window.__mindar.beginFrozenDrag({ pointerId, clientX, clientY })
-window.__mindar.dragFrozenToScreenPoint({ pointerId, clientX, clientY })
+window.__mindar.dragFrozenToScreenPoint({ pointerId, clientX, clientY, clampToViewport: true })
 window.__mindar.endFrozenDrag({ clampToViewport: true })
 window.__mindar.rotateFrozenBy({ yawDelta, pitchDelta })
 window.__mindar.scaleFrozenBy({ scaleFactor })
