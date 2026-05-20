@@ -74,6 +74,7 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       const registry = ensureRegistry();
       this.config = registry.configs.get(this.data.configKey) || {};
       if (this.ready && this.model) {
+        this._restoreMaterials();
         this._applyMaterialProfile();
         this._captureMaterialState();
       }
@@ -411,9 +412,9 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
       this.model.visible = true;
       if (!durationMs || durationMs <= 0 || from === to) {
         this._setMaterialAlpha(to);
-        if (to >= 1) this._restoreMaterials();
         this.el.object3D.visible = endVisible;
         this.model.visible = endVisible;
+        if (to >= 1 || !endVisible) this._restoreMaterials();
         return Promise.resolve(true);
       }
       this._setMaterialAlpha(from);
@@ -428,9 +429,9 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
           const alpha = from + (to - from) * t;
           this._setMaterialAlpha(alpha);
           if (t >= 1) {
-            if (to >= 1) this._restoreMaterials();
             this.el.object3D.visible = endVisible;
             this.model.visible = endVisible;
+            if (to >= 1 || !endVisible) this._restoreMaterials();
             resolve(true);
             return;
           }
