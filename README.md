@@ -29,6 +29,17 @@ npm run mindar:catalog:check
 
 Use `?debug=1` to show the scan-screen scene picker, `?scene=气模` to start on a specific scene pack, or `?mockScene=水箱` to test the mock recognition handoff.
 
+## QR Code
+
+The deployed QR code points to `https://emoar.vercel.app/`.
+
+Public assets:
+
+- `/assets/qr/emoar-qr-code.png`
+- `/assets/qr/options.json`
+
+To regenerate the QR code, update the `data` value in `public/assets/qr/options.json` first, then regenerate the PNG with `qr-code-styling` and replace `public/assets/qr/emoar-qr-code.png`.
+
 ## Build
 
 ```bash

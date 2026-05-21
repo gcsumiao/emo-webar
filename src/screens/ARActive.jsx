@@ -1073,7 +1073,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
       {isLive && !isCaptured && canEdit && (
         <>
-          <GitHubCredit tone="light" placement="ar-live-lower-left" />
+          <GitHubCredit tone="light" placement="ar-live-lower-left" clickable={false} />
           <CameraFlipControl
             lang={lang}
             isLandscapePhone={isLandscapePhone}

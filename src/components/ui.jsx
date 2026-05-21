@@ -51,7 +51,7 @@ const GITHUB_CREDIT_PLACEMENTS = {
   'polaroid-lower-left': {
     position: 'absolute',
     left: 'calc(var(--safe-left) + 18px)',
-    bottom: 'calc(var(--safe-bottom) + min(96px, 14dvh))',
+    bottom: 'calc(var(--safe-bottom) + 28px)',
   },
 };
 
@@ -60,6 +60,7 @@ export function GitHubCredit({
   label = 'gcsumiao',
   placement = 'lower-left',
   tone = 'dark',
+  clickable = true,
   style = {},
 }) {
   const [active, setActive] = React.useState(false);
@@ -67,6 +68,47 @@ export function GitHubCredit({
   const color = light ? '#fff' : TOKENS.ink;
   const background = light ? 'rgba(255,255,255,0.08)' : 'rgba(31,26,31,0.04)';
   const activeBackground = light ? 'rgba(255,255,255,0.14)' : 'rgba(31,26,31,0.065)';
+  const commonStyle = {
+    ...GITHUB_CREDIT_PLACEMENTS[placement],
+    zIndex: 11,
+    minHeight: 30,
+    padding: '6px 10px 6px 9px',
+    borderRadius: 999,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    color,
+    opacity: active ? 0.78 : 0.38,
+    background: active ? activeBackground : background,
+    border: light ? '0.5px solid rgba(255,255,255,0.12)' : '0.5px solid rgba(31,26,31,0.025)',
+    textDecoration: 'none',
+    fontFamily: FONT_EN,
+    fontSize: 13,
+    fontWeight: 800,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    pointerEvents: clickable ? 'auto' : 'none',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+    transition: 'opacity 160ms ease, background 160ms ease',
+    WebkitTapHighlightColor: 'transparent',
+    ...style,
+  };
+  const content = (
+    <>
+      <GitHubMark size={17} />
+      <span>{label}</span>
+    </>
+  );
+
+  if (!clickable) {
+    return (
+      <div aria-hidden="true" style={commonStyle}>
+        {content}
+      </div>
+    );
+  }
 
   return (
     <a
@@ -82,36 +124,9 @@ export function GitHubCredit({
       onPointerDown={() => setActive(true)}
       onPointerUp={() => setActive(false)}
       onPointerCancel={() => setActive(false)}
-      style={{
-        ...GITHUB_CREDIT_PLACEMENTS[placement],
-        zIndex: 11,
-        minHeight: 30,
-        padding: '6px 10px 6px 9px',
-        borderRadius: 999,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        color,
-        opacity: active ? 0.78 : 0.38,
-        background: active ? activeBackground : background,
-        border: light ? '0.5px solid rgba(255,255,255,0.12)' : '0.5px solid rgba(31,26,31,0.025)',
-        textDecoration: 'none',
-        fontFamily: FONT_EN,
-        fontSize: 13,
-        fontWeight: 800,
-        lineHeight: 1,
-        whiteSpace: 'nowrap',
-        pointerEvents: 'auto',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        transition: 'opacity 160ms ease, background 160ms ease',
-        WebkitTapHighlightColor: 'transparent',
-        ...style,
-      }}
+      style={commonStyle}
     >
-      <GitHubMark size={17} />
-      <span>{label}</span>
+      {content}
     </a>
   );
 }
