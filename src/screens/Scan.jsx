@@ -1,5 +1,5 @@
 import React from 'react';
-import { LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
+import { GitHubCredit, LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
 import { getARRuntime } from '../ar/arRuntime.js';
 import { asset } from '../lib/assetUrl.js';
 import { useScanGeometry } from '../lib/viewport.js';
@@ -305,6 +305,7 @@ export function Scan({ lang = 'zh', setLang }) {
         </FrostButton>
         <LangChip lang={lang} onToggle={setLang} light />
       </div>
+      <GitHubCredit tone="light" placement="lower-left" />
 
       {debugMode && sceneCatalog.length > 0 && (
         <div style={debugScenePickerStyle(isLandscapePhone)}>

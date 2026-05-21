@@ -28,6 +28,94 @@ export function langFont(lang) {
   return lang === 'en' ? FONT_EN : FONT_ZH;
 }
 
+function GitHubMark({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 98 96" fill="currentColor" aria-hidden="true">
+      <path fillRule="evenodd" clipRule="evenodd" d="M48.85 0C21.88 0 0 22 0 49.16c0 21.71 14 40.13 33.43 46.64 2.43.45 3.32-1.06 3.32-2.37 0-1.17-.04-4.25-.07-8.35-13.6 2.97-16.47-6.59-16.47-6.59-2.22-5.68-5.43-7.19-5.43-7.19-4.44-3.06.34-3 .34-3 4.91.35 7.49 5.07 7.49 5.07 4.36 7.52 11.43 5.35 14.22 4.09.44-3.18 1.7-5.35 3.1-6.58-10.86-1.24-22.28-5.46-22.28-24.31 0-5.37 1.91-9.76 5.04-13.2-.5-1.25-2.18-6.25.48-13.02 0 0 4.11-1.32 13.44 5.04a46.43 46.43 0 0 1 24.48 0c9.33-6.36 13.43-5.04 13.43-5.04 2.67 6.77.99 11.77.49 13.02 3.14 3.44 5.03 7.83 5.03 13.2 0 18.9-11.44 23.05-22.34 24.27 1.75 1.52 3.31 4.52 3.31 9.11 0 6.58-.06 11.89-.06 13.5 0 1.32.88 2.85 3.36 2.36C83.98 89.27 98 70.86 98 49.16 98 22 76.13 0 48.85 0Z" />
+    </svg>
+  );
+}
+
+const GITHUB_CREDIT_PLACEMENTS = {
+  inline: {},
+  'lower-left': {
+    position: 'absolute',
+    left: 'calc(var(--safe-left) + 18px)',
+    bottom: 'calc(var(--safe-bottom) + 22px)',
+  },
+  'ar-live-lower-left': {
+    position: 'absolute',
+    left: 'calc(var(--safe-left) + 20px)',
+    bottom: 'calc(var(--safe-bottom) + 24px)',
+  },
+  'polaroid-lower-left': {
+    position: 'absolute',
+    left: 'calc(var(--safe-left) + 18px)',
+    bottom: 'calc(var(--safe-bottom) + min(96px, 14dvh))',
+  },
+};
+
+export function GitHubCredit({
+  href = 'https://github.com/gcsumiao/emo-webar',
+  label = 'gcsumiao',
+  placement = 'lower-left',
+  tone = 'dark',
+  style = {},
+}) {
+  const [active, setActive] = React.useState(false);
+  const light = tone === 'light';
+  const color = light ? '#fff' : TOKENS.ink;
+  const background = light ? 'rgba(255,255,255,0.08)' : 'rgba(31,26,31,0.04)';
+  const activeBackground = light ? 'rgba(255,255,255,0.14)' : 'rgba(31,26,31,0.065)';
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      data-interactive="true"
+      aria-label={`Open ${label} on GitHub`}
+      onMouseEnter={() => setActive(true)}
+      onMouseLeave={() => setActive(false)}
+      onFocus={() => setActive(true)}
+      onBlur={() => setActive(false)}
+      onPointerDown={() => setActive(true)}
+      onPointerUp={() => setActive(false)}
+      onPointerCancel={() => setActive(false)}
+      style={{
+        ...GITHUB_CREDIT_PLACEMENTS[placement],
+        zIndex: 11,
+        minHeight: 30,
+        padding: '6px 10px 6px 9px',
+        borderRadius: 999,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        color,
+        opacity: active ? 0.78 : 0.38,
+        background: active ? activeBackground : background,
+        border: light ? '0.5px solid rgba(255,255,255,0.12)' : '0.5px solid rgba(31,26,31,0.025)',
+        textDecoration: 'none',
+        fontFamily: FONT_EN,
+        fontSize: 13,
+        fontWeight: 800,
+        lineHeight: 1,
+        whiteSpace: 'nowrap',
+        pointerEvents: 'auto',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        transition: 'opacity 160ms ease, background 160ms ease',
+        WebkitTapHighlightColor: 'transparent',
+        ...style,
+      }}
+    >
+      <GitHubMark size={17} />
+      <span>{label}</span>
+    </a>
+  );
+}
+
 export function PillBtn({ lang = 'zh', zh, en, variant = 'primary', icon, onClick, disabled = false, style = {} }) {
   const primary = variant === 'primary';
   return (

@@ -1,11 +1,12 @@
 import React from 'react';
-import { TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { GitHubCredit, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 import { Mascot3D } from '../components/Mascot.jsx';
 
 export function Loading({ lang = 'zh' }) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#0d0f13' }}>
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(80% 50% at 50% 40%, #2a2028 0%, #0d0f13 70%)' }} />
+      <GitHubCredit tone="light" placement="lower-left" />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
         <div style={{ marginBottom: 28 }}><Mascot3D state="sprout" size={160} animate="bob" /></div>
         <div style={{ width: 220, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden', position: 'relative' }}>

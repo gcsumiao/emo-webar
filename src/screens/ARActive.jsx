@@ -1,5 +1,5 @@
 import React from 'react';
-import { LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { GitHubCredit, LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 import { arAudio } from '../lib/arAudio.js';
 import { createARPhoto, createFramedARPhoto } from '../lib/arCapture.js';
 import { asset } from '../lib/assetUrl.js';
@@ -179,13 +179,14 @@ function GestureTextChip({ icon, lang, zh, en, style = {} }) {
 
 function CameraFlipControl({ lang, isLandscapePhone, onFlip, disabled = false }) {
   const controlSize = isLandscapePhone ? 54 : 68;
+  const bottomOffset = isLandscapePhone ? 72 : 80;
 
   return (
     <div
       style={{
         position: 'absolute',
         left: 'calc(var(--safe-left) + 20px)',
-        bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`,
+        bottom: `calc(var(--safe-bottom) + ${bottomOffset}px)`,
         width: controlSize,
         height: controlSize,
         pointerEvents: 'auto',
@@ -243,13 +244,14 @@ function CameraFlipControl({ lang, isLandscapePhone, onFlip, disabled = false })
 
 function ResetControl({ lang, isLandscapePhone, onReset }) {
   const controlSize = isLandscapePhone ? 54 : 68;
+  const bottomOffset = isLandscapePhone ? 72 : 80;
 
   return (
     <div
       style={{
         position: 'absolute',
         right: 'calc(var(--safe-right) + 20px)',
-        bottom: `calc(var(--safe-bottom) + ${isLandscapePhone ? 18 : 80}px)`,
+        bottom: `calc(var(--safe-bottom) + ${bottomOffset}px)`,
         width: controlSize,
         height: controlSize,
         pointerEvents: 'auto',
@@ -1071,6 +1073,7 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
 
       {isLive && !isCaptured && canEdit && (
         <>
+          <GitHubCredit tone="light" placement="ar-live-lower-left" />
           <CameraFlipControl
             lang={lang}
             isLandscapePhone={isLandscapePhone}
@@ -1342,6 +1345,7 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, framedPhotoWidth,
           <path d="M8.25 16.35v-4.1c0-.42.34-.75.75-.75h2c.41 0 .75.33.75.75v4.1" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
+      <GitHubCredit tone="light" placement="polaroid-lower-left" />
       <div
         style={{
           position: 'absolute',
