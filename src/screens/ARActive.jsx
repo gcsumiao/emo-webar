@@ -1226,21 +1226,6 @@ function CapturingOverlay({ backdropUrl, lang }) {
         </div>
       </div>
       <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 90,
-          textAlign: 'center',
-          fontFamily: FONT_MONO,
-          fontSize: 10,
-          color: 'rgba(255,255,255,0.55)',
-          letterSpacing: '0.18em',
-        }}
-      >
-        {t(lang, '正在生成你的拍立得 · GENERATING POLAROID', 'GENERATING POLAROID · CREATING YOUR KEEPSAKE')}
-      </div>
-      <div
         aria-hidden="true"
         style={{
           position: 'absolute',

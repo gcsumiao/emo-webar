@@ -50,8 +50,8 @@ const GITHUB_CREDIT_PLACEMENTS = {
   },
   'polaroid-lower-left': {
     position: 'absolute',
-    left: 'calc(var(--safe-left) + 18px)',
-    bottom: 'calc(var(--safe-bottom) + 28px)',
+    left: 'calc(var(--safe-left) + 4px)',
+    bottom: 'calc(var(--safe-bottom) + 4px)',
   },
 };
 
