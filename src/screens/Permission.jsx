@@ -48,7 +48,7 @@ export function Permission({ lang = 'zh', setLang }) {
         type="button"
         data-interactive="true"
         onClick={() => setShowPrivacy(true)}
-        style={{ position: 'absolute', left: 'max(22px, calc(var(--safe-left) + 22px))', right: 'max(22px, calc(var(--safe-right) + 22px))', bottom: 'calc(var(--safe-bottom) + 138px)', maxWidth: 560, margin: '0 auto', padding: '12px 16px', borderRadius: 18, border: `2px solid ${TOKENS.emoGray}`, background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 12px 34px rgba(219,134,177,0.18)', cursor: 'pointer', textAlign: 'left' }}
+        style={{ position: 'absolute', left: 'max(22px, calc(var(--safe-left) + 22px))', right: 'max(22px, calc(var(--safe-right) + 22px))', bottom: 'calc(var(--safe-bottom) + 138px)', maxWidth: 560, margin: '0 auto', padding: '12px 16px', borderRadius: 18, border: `2px solid ${TOKENS.emoGray}`, background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: '0 12px 34px rgba(219,134,177,0.18)', cursor: 'pointer', textAlign: 'center' }}
       >
         <div style={{ width: 32, height: 32, borderRadius: 10, background: TOKENS.pinkSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="14" height="16" viewBox="0 0 14 16" fill="none"><path d="M7 1L1 3v5c0 4 3 6 6 7 3-1 6-3 6-7V3L7 1z" stroke={TOKENS.emoPink} strokeWidth="1.6" fill="none" strokeLinejoin="round" /></svg>
