@@ -48,7 +48,7 @@ export function Permission({ lang = 'zh', setLang }) {
         type="button"
         data-interactive="true"
         onClick={() => setShowPrivacy(true)}
-        style={{ position: 'absolute', left: '50%', bottom: 'calc(var(--safe-bottom) + 150px)', transform: 'translateX(-50%)', width: 'fit-content', maxWidth: 'calc(100% - max(44px, calc(var(--safe-left) + var(--safe-right) + 44px)))', padding: '8px 12px', borderRadius: 14, border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', textAlign: 'center' }}
+        style={{ position: 'absolute', left: 'calc(50% - 22px)', bottom: 'calc(var(--safe-bottom) + 150px)', transform: 'translateX(-50%)', width: 'fit-content', maxWidth: 'calc(100% - max(44px, calc(var(--safe-left) + var(--safe-right) + 44px)))', padding: '8px 12px', borderRadius: 14, border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', textAlign: 'center' }}
       >
         <div style={{ width: 32, height: 32, borderRadius: 10, background: TOKENS.pinkSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="14" height="16" viewBox="0 0 14 16" fill="none"><path d="M7 1L1 3v5c0 4 3 6 6 7 3-1 6-3 6-7V3L7 1z" stroke={TOKENS.emoPink} strokeWidth="1.6" fill="none" strokeLinejoin="round" /></svg>
