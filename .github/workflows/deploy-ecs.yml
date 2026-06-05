@@ -1,0 +1,74 @@
+name: Build and deploy site to ECS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecs-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ECS_HOST: ${{ secrets.ECS_HOST }}
+      ECS_PORT: ${{ secrets.ECS_PORT || '22' }}
+      ECS_USER: ${{ secrets.ECS_USER || 'deploy' }}
+      ECS_SSH_KEY: ${{ secrets.ECS_SSH_KEY }}
+      ECS_DEPLOY_PATH: ${{ secrets.ECS_DEPLOY_PATH || '/var/www/emoar/current' }}
+      ECS_KNOWN_HOSTS: ${{ secrets.ECS_KNOWN_HOSTS }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build site for ECS root domain
+        env:
+          VITE_BASE: /
+          VITE_APP_VERSION: ${{ github.sha }}
+        run: npm run build
+
+      - name: Prepare SSH
+        run: |
+          test -n "$ECS_HOST" || (echo "Missing ECS_HOST secret" && exit 1)
+          test -n "$ECS_SSH_KEY" || (echo "Missing ECS_SSH_KEY secret" && exit 1)
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$ECS_SSH_KEY" > ~/.ssh/ecs_deploy_key
+          chmod 600 ~/.ssh/ecs_deploy_key
+          touch ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          if [ -n "$ECS_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$ECS_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "$ECS_PORT" "$ECS_HOST" >> ~/.ssh/known_hosts
+          fi
+
+      - name: Ensure remote deploy directory exists
+        run: |
+          ssh -i ~/.ssh/ecs_deploy_key -p "$ECS_PORT" "$ECS_USER@$ECS_HOST" \
+            "mkdir -p '$ECS_DEPLOY_PATH'"
+
+      - name: Sync dist to ECS
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/ecs_deploy_key -p $ECS_PORT" \
+            dist/ "$ECS_USER@$ECS_HOST:$ECS_DEPLOY_PATH/"
+
+      - name: Validate and reload Nginx
+        run: |
+          ssh -i ~/.ssh/ecs_deploy_key -p "$ECS_PORT" "$ECS_USER@$ECS_HOST" \
+            "sudo -n nginx -t && sudo -n systemctl reload nginx"
