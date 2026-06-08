@@ -87,11 +87,6 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
-    location /vendor/ {
-        try_files $uri =404;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-    }
-
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -143,7 +138,7 @@ Check:
 https://www.emoar.fun/
 https://www.emoar.fun/assets/ar/manifest.json
 https://www.emoar.fun/assets/mindar/targets.mind
-https://www.emoar.fun/vendor/aframe-1.6.0.min.js
+https://www.emoar.fun/assets/vendor/aframe-1.6.0.min.js
 ```
 
 The vendor script response should include:

@@ -1,7 +1,7 @@
 import { asset } from '../lib/assetUrl.js';
 
-const AFRAME_VENDOR_URL = asset('/vendor/aframe-1.6.0.min.js');
-const MINDAR_VENDOR_URL = asset('/vendor/mindar-image-aframe-1.2.5.prod.js');
+const AFRAME_VENDOR_URL = asset('/assets/vendor/aframe-1.6.0.min.js');
+const MINDAR_VENDOR_URL = asset('/assets/vendor/mindar-image-aframe-1.2.5.prod.js');
 
 let librariesPromise = null;
 let aframePromise = null;
