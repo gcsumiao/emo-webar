@@ -28,7 +28,7 @@ export function Loading({ lang = 'zh', hasCameraPreview = false }) {
         <div style={{ marginTop: 18, textAlign: 'center', fontFamily: langFont(lang), fontSize: 18, fontWeight: 700, color: '#fff' }}>{t(lang, '唤醒一毛中…', 'Waking up EMO…')}</div>
       </div>
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(var(--safe-bottom) + 29px)', textAlign: 'center', fontFamily: FONT_MONO, fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.18em' }}>
-        {hasCameraPreview ? t(lang, '相机已开启 · 正在加载 AR', 'CAMERA ON · LOADING AR') : t(lang, '首次加载约需 3-5 秒', 'FIRST LOAD · 3-5 SECONDS')}
+        {t(lang, '首次加载约需 3-5 秒', 'FIRST LOAD · 3-5 SECONDS')}
       </div>
     </div>
   );
