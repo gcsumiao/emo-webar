@@ -11,7 +11,9 @@ let dropBouncePool = null;
 let branchPopPool = null;
 let shutterPool = null;
 let buttonClickPool = null;
-let preloaded = false;
+let arEffectsPreloaded = false;
+let shutterPreloaded = false;
+let uiClickPreloaded = false;
 let bgmPreloaded = false;
 let bgmPrimed = false;
 let effectsPrimed = false;
@@ -135,11 +137,26 @@ function safeLoadAudio(audio) {
   } catch {}
 }
 
-function preloadAudio({ includeBgm = false } = {}) {
-  if (!preloaded) {
-    preloaded = true;
-    [...getDropBounce(), ...getBranchPop(), ...getShutter(), ...getButtonClick()].forEach(safeLoadAudio);
+function preloadUiClick() {
+  if (uiClickPreloaded) return;
+  uiClickPreloaded = true;
+  getButtonClick().forEach(safeLoadAudio);
+}
+
+function preloadArEffects({ includeShutter = true } = {}) {
+  if (!arEffectsPreloaded) {
+    arEffectsPreloaded = true;
+    [...getDropBounce(), ...getBranchPop()].forEach(safeLoadAudio);
   }
+  if (includeShutter && !shutterPreloaded) {
+    shutterPreloaded = true;
+    getShutter().forEach(safeLoadAudio);
+  }
+}
+
+function preloadAudio({ includeBgm = false, includeUi = false, includeShutter = true } = {}) {
+  preloadArEffects({ includeShutter });
+  if (includeUi) preloadUiClick();
   if (includeBgm && !bgmPreloaded) {
     bgmPreloaded = true;
     safeLoadAudio(getBgm());
@@ -171,6 +188,7 @@ function playOneShot(pool, action, context = {}) {
     || items.find((item) => !item.__emoPendingPlay)
     || items[0];
   if (!audio) return Promise.resolve(false);
+  audio.__emoPrimeToken = null;
   try {
     audio.currentTime = 0;
   } catch {}
@@ -182,6 +200,7 @@ function playOneShot(pool, action, context = {}) {
 
 function startBgm({ restart = false } = {}) {
   const audio = getBgm();
+  audio.__emoPrimeToken = null;
   audio.muted = false;
   audio.volume = 1;
   if (restart || audio.ended) {
@@ -195,14 +214,22 @@ function startBgm({ restart = false } = {}) {
 function primeAudio(audio, action) {
   if (!audio) return Promise.resolve(false);
   if (audio.__emoPendingPlay) return Promise.resolve(false);
+  const primeToken = Symbol(action);
   const previousVolume = audio.volume;
+  const previousMuted = audio.muted;
+  audio.__emoPrimeToken = primeToken;
+  audio.muted = true;
   audio.volume = 0;
   return playAudio(audio, { action }).then((started) => {
-    audio.pause();
-    audio.volume = previousVolume;
-    try {
-      audio.currentTime = 0;
-    } catch {}
+    if (audio.__emoPrimeToken === primeToken) {
+      audio.pause();
+      audio.muted = previousMuted;
+      audio.volume = previousVolume;
+      audio.__emoPrimeToken = null;
+      try {
+        audio.currentTime = 0;
+      } catch {}
+    }
     return started;
   });
 }
@@ -216,6 +243,22 @@ function primeAudioFromPool(pool, action) {
   return primeAudio(audio, action);
 }
 
+function stopArAudio() {
+  [bgm, ...(dropBouncePool || []), ...(branchPopPool || []), ...(shutterPool || [])].forEach((audio) => {
+    if (!audio) return;
+    audio.__emoPrimeToken = null;
+    audio.pause();
+    audio.muted = false;
+    audio.volume = 1;
+    try {
+      audio.currentTime = 0;
+    } catch {}
+  });
+  bgmPrimed = false;
+  effectsPrimed = false;
+  unlockPromise = null;
+}
+
 export const arAudio = {
   setState: (nextState) => {
     currentState = nextState || 'unknown';
@@ -223,18 +266,24 @@ export const arAudio = {
   preload: (options) => {
     preloadAudio(options);
   },
-  unlock: ({ event, includeBgm = true } = {}) => {
-    if (event && event.isTrusted === false) return Promise.resolve(false);
-    if (effectsPrimed && (!includeBgm || (bgmPrimed && bgm && !bgm.paused))) {
-      return unlockPromise || Promise.resolve(true);
+  preloadUiClick: () => {
+    preloadUiClick();
+  },
+  primeCameraStartAudio: ({ event, includeBgm = true } = {}) => {
+    const trusted = event?.nativeEvent?.isTrusted ?? event?.isTrusted;
+    if (trusted === false) return Promise.resolve(false);
+    if (effectsPrimed && (!includeBgm || bgmPrimed)) return unlockPromise || Promise.resolve(true);
+
+    preloadUiClick();
+    preloadArEffects({ includeShutter: false });
+    if (includeBgm && !bgmPreloaded) {
+      bgmPreloaded = true;
+      safeLoadAudio(getBgm());
     }
-    preloadAudio({ includeBgm });
 
     const effectUnlock = Promise.all([
       primeAudioFromPool(getDropBounce(), 'unlock-drop-bounce'),
       primeAudioFromPool(getBranchPop(), 'unlock-branch-pop'),
-      primeAudioFromPool(getShutter(), 'unlock-shutter'),
-      primeAudioFromPool(getButtonClick(), 'unlock-button-click'),
     ]).then((results) => {
       const started = results.some(Boolean);
       effectsPrimed = started || effectsPrimed;
@@ -246,40 +295,25 @@ export const arAudio = {
       return unlockPromise;
     }
 
-    const audio = getBgm();
-    const previousBgmVolume = audio.volume;
-    audio.muted = false;
-    audio.volume = 0;
     unlockPromise = Promise.all([
       effectUnlock,
-      playAudio(audio, { action: 'unlock-bgm' }).then((started) => {
-        bgmPrimed = started;
+      primeAudio(getBgm(), 'unlock-bgm').then((started) => {
+        bgmPrimed = started || bgmPrimed;
         return started;
       }),
-    ]).then(([effectStarted, bgmStarted]) => {
-      audio.volume = previousBgmVolume;
-      return effectStarted || bgmStarted;
-    });
+    ]).then(([effectStarted, bgmStarted]) => effectStarted || bgmStarted);
     return unlockPromise;
   },
+  unlock: ({ event, includeBgm = true } = {}) => {
+    return arAudio.primeCameraStartAudio({ event, includeBgm });
+  },
+  startLoadingBgm: (options) => startBgm(options),
   startScan: () => startBgm(),
   cueARIntro: () => startBgm(),
   playDropBounce: (context) => playOneShot(getDropBounce(), 'drop-bounce', context),
   playBranchPop: (context) => playOneShot(getBranchPop(), 'branch-pop', context),
   playShutter: () => playOneShot(getShutter(), 'shutter'),
   playButtonClick: () => playOneShot(getButtonClick(), 'button-click'),
-  stop: () => {
-    [bgm, ...(dropBouncePool || []), ...(branchPopPool || []), ...(shutterPool || []), ...(buttonClickPool || [])].forEach((audio) => {
-      if (!audio) return;
-      audio.pause();
-      audio.muted = false;
-      audio.volume = 1;
-      try {
-        audio.currentTime = 0;
-      } catch {}
-    });
-    bgmPrimed = false;
-    effectsPrimed = false;
-    unlockPromise = null;
-  },
+  stopArAudio,
+  stop: stopArAudio,
 };

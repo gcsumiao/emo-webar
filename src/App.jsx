@@ -150,6 +150,10 @@ export default function App() {
   }), []);
 
   React.useEffect(() => {
+    arAudio.preloadUiClick();
+  }, []);
+
+  React.useEffect(() => {
     window.__setProtoState = setState;
     return () => {
       if (window.__setProtoState === setState) delete window.__setProtoState;
@@ -181,7 +185,7 @@ export default function App() {
     } else if (state === 'loading' || state === 'scan' || state === 'ar') {
       preloadStep06({ full: true, includeAudio: false });
     }
-    if (state !== 'loading' && state !== 'scan' && state !== 'ar') arAudio.stop();
+    if (state !== 'loading' && state !== 'scan' && state !== 'ar') arAudio.stopArAudio();
   }, [state]);
 
   React.useEffect(() => {

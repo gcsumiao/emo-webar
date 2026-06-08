@@ -8,19 +8,22 @@ export function Permission({ lang = 'zh', setLang }) {
   const [probing, setProbing] = React.useState(false);
   const [showPrivacy, setShowPrivacy] = React.useState(false);
 
-  const requestCamera = React.useCallback(async () => {
+  const requestCamera = React.useCallback(async (event) => {
     if (probing) return;
     setProbing(true);
+    arAudio.primeCameraStartAudio({ event: event?.nativeEvent || event, includeBgm: true });
     if (!navigator.mediaDevices?.getUserMedia) {
+      arAudio.stopArAudio();
       window.__setProtoState?.('error');
       setProbing(false);
       return;
     }
-    arAudio.unlock({ includeBgm: false });
     try {
       await requestCameraPreview({ facingMode: 'environment' });
+      arAudio.startLoadingBgm({ restart: true });
       window.__setProtoState?.('loading');
     } catch (error) {
+      arAudio.stopArAudio();
       const message = String(error?.name || error?.message || error);
       if (/NotAllowed|Permission|denied/i.test(message)) window.__setProtoState?.('denied');
       else window.__setProtoState?.('error');

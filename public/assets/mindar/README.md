@@ -105,11 +105,11 @@ The runtime applies the manifest-configured `soft-product-face` GLB lighting and
 
 Current audio contract:
 
-- `assets/step06/audio/button-click.mp3` plays for non-final-AR page buttons, including scan controls.
-- `assets/step06/audio/bgm.mp3` loops from scan through AR capture/retake/rescan flows.
-- `assets/step06/audio/drop-bounce.mp3` overlays the BGM when the GLB timeline reaches frame 1 at 24fps (`0.0417s`).
-- `assets/step06/audio/branch-pop.mp3` overlays the BGM when the GLB timeline reaches frame 52 at 24fps (`2.1667s`).
-- `assets/step06/audio/shutter.mp3` overlays the BGM when the AR shutter is pressed.
+- `assets/step06/audio/button-click.mp3` plays for non-final-AR page buttons, including landing, privacy, denied, and scan controls.
+- `assets/step06/audio/bgm.mp3` starts on the Waking up EMO screen after camera approval, then loops through scan and AR capture/retake/rescan flows.
+- `assets/step06/audio/drop-bounce.mp3` overlays the BGM only when the GLB timeline reaches frame 1 at 24fps (`0.0417s`).
+- `assets/step06/audio/branch-pop.mp3` overlays the BGM only when the GLB timeline reaches frame 52 at 24fps (`2.1667s`).
+- `assets/step06/audio/shutter.mp3` overlays the BGM only when the AR shutter is pressed.
 
 This keeps the prototype frontend-only: no new production dependency, backend, or cloud recognition API is required for the GLB animation or audio marker changes.
 

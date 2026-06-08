@@ -121,9 +121,10 @@ The permission screen separates camera authorization from AR startup. When the u
 Loading is staged to reduce first-open contention:
 
 - Landing loads only the regular page UI.
-- Permission does not prepare A-Frame, MindAR, the AR manifest, the active `.mind` target pack, GLB, or BGM.
-- After camera approval, default manual mode shows the preview stream immediately, loads A-Frame plus the GLB transition component, fetches the manifest, preloads short AR sound effects, fetches the Step 06 GLB into cache, and asks the hidden A-Frame GLB entity to parse it.
-- BGM is not requested during landing, permission, loading, or scan preload; it starts only when AR playback explicitly cues it.
+- Permission does not prepare A-Frame, MindAR, the AR manifest, the active `.mind` target pack, or GLB before the user taps the camera button.
+- The camera permission tap plays only the UI button click audibly. It silently primes BGM, `drop-bounce`, and `branch-pop` for browser media policy, but does not prime the AR shutter sound.
+- After camera approval, default manual mode starts BGM on the Waking up EMO screen, shows the preview stream immediately, loads A-Frame plus the GLB transition component, fetches the manifest, preloads short AR sound effects, fetches the Step 06 GLB into cache, and asks the hidden A-Frame GLB entity to parse it.
+- BGM is not requested during landing or passive permission viewing. Once camera approval succeeds, it loops from Waking up EMO through scan and AR flows.
 - Legacy `?mode=mindar` keeps the older MindAR startup path for regression testing.
 
 When legacy MindAR starts, it attempts to reuse the preview stream for the first camera start. After MindAR has taken over, the preview video element is detached without stopping the camera tracks.
