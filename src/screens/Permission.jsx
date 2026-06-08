@@ -11,18 +11,11 @@ export function Permission({ lang = 'zh', setLang }) {
     setProbing(true);
     if (!navigator.mediaDevices?.getUserMedia) {
       window.__setProtoState?.('error');
+      setProbing(false);
       return;
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-      stream.getTracks().forEach((track) => track.stop());
-      window.__setProtoState?.('loading');
-    } catch (error) {
-      const denied = error && (error.name === 'NotAllowedError' || error.name === 'SecurityError');
-      window.__setProtoState?.(denied ? 'denied' : 'error');
-    } finally {
-      setProbing(false);
-    }
+    window.__setProtoState?.('loading');
+    setProbing(false);
   }, [probing]);
 
   return (

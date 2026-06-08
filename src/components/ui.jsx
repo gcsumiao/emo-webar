@@ -16,9 +16,9 @@ export const TOKENS = {
   green: '#A9D45A',
 };
 
-export const FONT_ZH = "'Source Han Sans CN', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
-export const FONT_EN = "'Gantari', 'Inter', system-ui, sans-serif";
-export const FONT_MONO = "'JetBrains Mono', ui-monospace, monospace";
+export const FONT_ZH = "'PingFang SC', 'Microsoft YaHei', 'Heiti SC', system-ui, sans-serif";
+export const FONT_EN = "'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+export const FONT_MONO = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 export const GLASS_BUTTON_CLASS = 'glass-button';
 
 const GLASS_BLUR = 'saturate(160%) blur(18px)';

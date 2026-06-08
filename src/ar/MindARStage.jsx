@@ -1,5 +1,6 @@
 import React from 'react';
 import { aframeAssets, isDebugMode, debugGlbAssetId } from './aframeAssets.js';
+import { ensureArLibraries } from './arLibraries.js';
 import {
   getRuntimeSceneManifest,
   getSceneCatalog,
@@ -10,7 +11,6 @@ import {
 import { arTargets } from './arTargets.js';
 import { DEFAULT_GLB_INTERACTION } from './arManifestDefaults.js';
 import { spriteConfigForTarget, FROZEN_SPRITE_DEFAULTS } from './arSpriteConfig.js';
-import './components/index.js';
 
 const PERSISTENT_SPRITE_CONFIG_KEY = 'persistent-sprite';
 const PERSISTENT_GLB_CONFIG_KEY = 'persistent-glb';
@@ -199,8 +199,8 @@ function getThree() {
 }
 
 function buildGltfModelAttr(glb) {
-  if (glb?.assetId) return `#${glb.assetId}`;
   if (glb?.src) return `url(${glb.src})`;
+  if (glb?.assetId) return `#${glb.assetId}`;
   return '';
 }
 
@@ -271,7 +271,7 @@ function buildAFrameAssetsMarkup(manifest) {
   return Array.from(assetMap.values()).map((item) => {
     const id = escapeAttr(item.id);
     const src = escapeAttr(item.src);
-    if (item.type === 'model') return `<a-asset-item id="${id}" src="${src}"></a-asset-item>`;
+    if (item.type === 'model') return '';
     if (item.type === 'video') {
       return `<video id="${id}" src="${src}" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>`;
     }
@@ -409,7 +409,7 @@ function createDiagnostics() {
   };
 }
 
-export function MindARStage({ active, visible, onDiagnostics }) {
+export function MindARStage({ prepared = false, active, visible, onDiagnostics }) {
   const containerRef = React.useRef(null);
   const sceneRef = React.useRef(null);
   const startedRef = React.useRef(false);
@@ -448,7 +448,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
   }, [active, startIfNeeded]);
 
   React.useEffect(() => {
-    if (!active) return undefined;
+    if (!prepared) return undefined;
 
     let cancelled = false;
     let cleanupScene = null;
@@ -469,6 +469,13 @@ export function MindARStage({ active, visible, onDiagnostics }) {
     const setup = async (requestedSceneId = currentSceneId) => {
       const container = containerRef.current;
       if (!container || sceneRef.current) return;
+
+      if (!window.AFRAME?.components?.['mindar-image']) {
+        pushDiagnostics({ status: 'libraries-loading', lastEvent: 'libraries-loading' });
+        await ensureArLibraries();
+        if (cancelled || !containerRef.current) return;
+        pushDiagnostics({ status: 'libraries-loaded', lastEvent: 'libraries-loaded' });
+      }
 
       if (!manifest) {
         pushDiagnostics({ status: 'manifest-loading', lastEvent: 'manifest-loading' });
@@ -1111,19 +1118,6 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         return sys;
       };
 
-      const probeCameraFacingMode = async (facingMode, exact = false) => {
-        if (!navigator.mediaDevices?.getUserMedia) return;
-        let probeStream = null;
-        try {
-          probeStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: cameraFacingConstraint(facingMode, exact) },
-            audio: false,
-          });
-        } finally {
-          probeStream?.getTracks?.().forEach((track) => track.stop());
-        }
-      };
-
       const runWithCameraFacingMode = async (facingMode, exact, task) => {
         const mediaDevices = navigator.mediaDevices;
         const nativeGetUserMedia = mediaDevices?.getUserMedia;
@@ -1170,7 +1164,6 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         const nextFacingMode = normalizeCameraFacingMode(facingMode);
         if (status) setRuntimeStatus(status);
         try {
-          await probeCameraFacingMode(nextFacingMode, exact);
           await runWithCameraFacingMode(nextFacingMode, exact, () => sys.start());
           cameraFacingMode = nextFacingMode;
           startedRef.current = true;
@@ -2308,14 +2301,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       frozenModel?.addEventListener('gltf-animation-marker', onGltfMarker);
       frozenModel?.addEventListener('model-loaded', onGltfLoaded);
       frozenModel?.addEventListener('model-error', onGltfError);
-      configurePersistentGlb(targets[0]?.targetIndex ?? 0);
-
-      assets?.addEventListener('loaded', () => pushDiagnostics({ assetsLoaded: true, modelAssetLoaded: true, lastEvent: 'assets-loaded' }), { once: true });
-      scene.addEventListener('loaded', () => {
-        pushDiagnostics({ sceneLoaded: true, lastEvent: 'scene-loaded', liveModelLoaded: true });
-        if (!startedRef.current && statusRef.current === 'manifest-loaded') setRuntimeStatus('ready');
-      }, { once: true });
-
+      assets?.addEventListener('loaded', () => pushDiagnostics({ assetsLoaded: true, lastEvent: 'assets-loaded' }), { once: true });
       window.__mindar = {
         scene,
         anchors: anchors.map(({ element }) => element),
@@ -2408,9 +2394,15 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         },
       };
 
-      window.dispatchEvent(new CustomEvent('emo-mindar-runtime-ready', {
-        detail: { scene: getCurrentScene() },
-      }));
+      const onSceneLoaded = () => {
+        pushDiagnostics({ sceneLoaded: true, lastEvent: 'scene-loaded', liveModelLoaded: true });
+        if (!startedRef.current) setRuntimeStatus('ready');
+        window.dispatchEvent(new CustomEvent('emo-mindar-runtime-ready', {
+          detail: { scene: getCurrentScene() },
+        }));
+      };
+      if (scene.hasLoaded) onSceneLoaded();
+      else scene.addEventListener('loaded', onSceneLoaded, { once: true });
 
       cleanupScene = () => {
         try {
@@ -2425,6 +2417,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         frozenModel?.removeEventListener('gltf-animation-marker', onGltfMarker);
         frozenModel?.removeEventListener('model-loaded', onGltfLoaded);
         frozenModel?.removeEventListener('model-error', onGltfError);
+        scene.removeEventListener('loaded', onSceneLoaded);
         lostTimers.forEach(({ dim, hide }) => { window.clearTimeout(dim); window.clearTimeout(hide); });
         lostTimers.clear();
         if (window.__mindar && window.__mindar.scene === scene) delete window.__mindar;
@@ -2436,14 +2429,24 @@ export function MindARStage({ active, visible, onDiagnostics }) {
       if (activeRef.current) startIfNeeded();
     };
 
-    setup();
+    setup().catch((error) => {
+      if (cancelled) return;
+      console.error('[MindAR] setup failed', error);
+      pushDiagnostics({
+        status: 'error',
+        modelError: String(error?.message || error),
+        lastError: String(error?.message || error),
+        lastEvent: 'setup-failed',
+      });
+      window.__setProtoState?.('error');
+    });
 
     return () => {
       cancelled = true;
       cleanupScene?.();
       setStatus('idle');
     };
-  }, [active, pushDiagnostics, startIfNeeded]);
+  }, [prepared, pushDiagnostics, startIfNeeded]);
 
   return (
     <div

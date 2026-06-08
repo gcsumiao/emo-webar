@@ -9,30 +9,16 @@ import { ARActive } from './screens/ARActive.jsx';
 import { Denied } from './screens/Denied.jsx';
 import { ErrorScreen } from './screens/Error.jsx';
 import { arAudio } from './lib/arAudio.js';
-import { asset } from './lib/assetUrl.js';
 import { preloadStep06 } from './lib/step06Assets.js';
 
-function SiteFontFaces() {
-  return (
-    <style>
-      {`
-        @font-face {
-          font-family: "Source Han Sans CN";
-          src: url("${asset('/assets/fonts/SourceHanSansCN-Heavy.otf')}") format("opentype");
-          font-weight: 800 900;
-          font-style: normal;
-          font-display: swap;
-        }
-        @font-face {
-          font-family: "Source Han Sans CN";
-          src: url("${asset('/assets/fonts/SourceHanSansCN-Bold.otf')}") format("opentype");
-          font-weight: 700;
-          font-style: normal;
-          font-display: swap;
-        }
-      `}
-    </style>
-  );
+const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
+const MIN_LOADING_MS = 900;
+
+function waitForRuntimeReady() {
+  if (window.__mindar?.isReady?.()) return Promise.resolve();
+  return new Promise((resolve) => {
+    window.addEventListener(RUNTIME_READY_EVENT, resolve, { once: true });
+  });
 }
 
 function IcpFooter() {
@@ -115,17 +101,25 @@ export default function App() {
 
   React.useEffect(() => {
     if (state === 'loading') {
-      preloadStep06({ full: true });
-      const timer = setTimeout(() => setState('scan'), 2200);
-      return () => clearTimeout(timer);
+      let cancelled = false;
+      const minLoading = new Promise((resolve) => {
+        window.setTimeout(resolve, MIN_LOADING_MS);
+      });
+      Promise.all([minLoading, waitForRuntimeReady()])
+        .then(() => {
+          if (!cancelled) setState('scan');
+        });
+      return () => {
+        cancelled = true;
+      };
     }
     return undefined;
   }, [state, setState]);
 
   React.useEffect(() => {
     arAudio.setState(state);
-    arAudio.preload();
-    if (state === 'scan' || state === 'ar') {
+    if (state === 'scan' || state === 'ar') arAudio.preload();
+    if (state === 'permission' || state === 'loading' || state === 'scan' || state === 'ar') {
       preloadStep06({ full: true });
     }
     if (state === 'scan') arAudio.startScan();
@@ -148,14 +142,12 @@ export default function App() {
       const control = findInteractiveControl(event);
       if (!control) return;
       lastPointerSound = { time: performance.now(), control };
-      void arAudio.unlock(event);
       arAudio.playButtonClick();
     };
     const playClickSound = (event) => {
       const control = findInteractiveControl(event);
       if (!control) return;
       if (control === lastPointerSound.control && performance.now() - lastPointerSound.time < 600) return;
-      void arAudio.unlock(event);
       arAudio.playButtonClick();
     };
 
@@ -183,12 +175,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [state, setState]);
 
+  const arPrepared = state === 'permission' || state === 'loading' || state === 'scan' || state === 'ar';
   const arActive = state === 'scan' || state === 'ar';
 
   return (
     <div className="app-shell">
-      <SiteFontFaces />
-      <MindARStage active={arActive} visible={arActive} onDiagnostics={handleDiagnostics} />
+      <MindARStage prepared={arPrepared} active={arActive} visible={arActive} onDiagnostics={handleDiagnostics} />
       <div key={nonce} className="ui-layer screen-enter">
         <ScreenFor state={state} lang={lang} setLang={setLang} diagnostics={diagnostics} />
       </div>

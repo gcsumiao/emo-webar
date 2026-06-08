@@ -18,7 +18,7 @@ body,
   overflow: hidden;
   background: #000;
   color: var(--cream);
-  font-family: "Gantari", "Source Han Sans CN", "Noto Sans SC", system-ui, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
@@ -175,7 +175,7 @@ canvas.a-canvas {
   color: rgba(255, 255, 255, 0.64);
   border: 0.5px solid rgba(255, 255, 255, 0.12);
   text-decoration: none;
-  font-family: "Source Han Sans CN", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  font-family: "PingFang SC", "Microsoft YaHei", "Heiti SC", system-ui, sans-serif;
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
