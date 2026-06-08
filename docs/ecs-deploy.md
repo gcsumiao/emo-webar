@@ -71,7 +71,23 @@ server {
     root /var/www/emoar/current;
     index index.html;
 
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 6;
+    gzip_types
+        application/javascript
+        application/json
+        image/svg+xml
+        text/css
+        text/javascript;
+
     location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location /vendor/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
@@ -81,6 +97,8 @@ server {
     }
 }
 ```
+
+Brotli can be enabled too if the installed Nginx build includes the module; at minimum keep gzip on for JavaScript, CSS, JSON, and SVG so the A-Frame/MindAR legacy scripts are not transferred uncompressed.
 
 Validate and start Nginx:
 

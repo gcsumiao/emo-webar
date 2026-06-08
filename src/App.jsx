@@ -1,6 +1,6 @@
 import React from 'react';
 import { STATES, HAPPY_PATH } from './app/flowConfig.js';
-import { MindARStage } from './ar/MindARStage.jsx';
+import { ManualARStage } from './ar/ManualARStage.jsx';
 import { Landing } from './screens/Landing.jsx';
 import { Permission } from './screens/Permission.jsx';
 import { Loading } from './screens/Loading.jsx';
@@ -14,12 +14,24 @@ import { stopCameraPreview, subscribeCameraPreview } from './lib/cameraPreview.j
 
 const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
 const MIN_LOADING_MS = 900;
+const LazyMindARStage = React.lazy(() => import('./ar/MindARStage.jsx').then((module) => ({
+  default: module.MindARStage,
+})));
 
 function waitForRuntimeReady() {
-  if (window.__mindar?.isReady?.()) return Promise.resolve();
+  const runtime = window.__ar || window.__mindar;
+  if (runtime?.isReady?.()) return Promise.resolve();
   return new Promise((resolve) => {
     window.addEventListener(RUNTIME_READY_EVENT, resolve, { once: true });
   });
+}
+
+function readArMode() {
+  try {
+    return new URLSearchParams(window.location.search).get('mode') === 'mindar' ? 'mindar' : 'manual';
+  } catch {
+    return 'manual';
+  }
 }
 
 function IcpFooter() {
@@ -98,6 +110,7 @@ function ScreenFor({ state, lang, setLang, diagnostics, hasCameraPreview }) {
 
 export default function App() {
   const [state, setStateRaw] = React.useState('landing');
+  const arMode = React.useMemo(readArMode, []);
   const [lang, setLangRaw] = React.useState(() => {
     try {
       return localStorage.getItem('emo_proto_lang') || 'en';
@@ -162,15 +175,13 @@ export default function App() {
 
   React.useEffect(() => {
     arAudio.setState(state);
-    if (state === 'scan' || state === 'ar') arAudio.preload({ includeBgm: true });
+    if (state === 'scan' || state === 'ar') arAudio.preload({ includeBgm: false });
     if (state === 'permission') {
       preloadStep06({ full: false, includeAudio: false });
     } else if (state === 'loading' || state === 'scan' || state === 'ar') {
       preloadStep06({ full: true, includeAudio: false });
     }
-    if (state === 'scan') arAudio.startScan();
-    else if (state === 'ar') arAudio.cueARIntro();
-    else if (state !== 'loading') arAudio.stop();
+    if (state !== 'loading' && state !== 'scan' && state !== 'ar') arAudio.stop();
   }, [state]);
 
   React.useEffect(() => {
@@ -227,19 +238,33 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [state, setState]);
 
-  const arPrepared = state === 'permission' || state === 'loading' || state === 'scan' || state === 'ar';
+  const arPrepared = arMode === 'mindar'
+    ? state === 'permission' || state === 'loading' || state === 'scan' || state === 'ar'
+    : state === 'loading' || state === 'scan' || state === 'ar';
   const arActive = state === 'scan' || state === 'ar';
 
   return (
     <div className="app-shell">
       <CameraPreviewLayer stream={cameraPreview} />
-      <MindARStage
-        prepared={arPrepared}
-        active={arActive}
-        visible={arActive}
-        preloadModel={state === 'loading' || state === 'scan' || state === 'ar'}
-        onDiagnostics={handleDiagnostics}
-      />
+      {arMode === 'mindar' ? (
+        <React.Suspense fallback={null}>
+          <LazyMindARStage
+            prepared={arPrepared}
+            active={arActive}
+            visible={arActive}
+            preloadModel={state === 'loading' || state === 'scan' || state === 'ar'}
+            onDiagnostics={handleDiagnostics}
+          />
+        </React.Suspense>
+      ) : (
+        <ManualARStage
+          prepared={arPrepared}
+          active={arActive}
+          visible={arActive}
+          preloadModel={state === 'loading' || state === 'scan' || state === 'ar'}
+          onDiagnostics={handleDiagnostics}
+        />
+      )}
       <div key={nonce} className="ui-layer screen-enter">
         <ScreenFor
           state={state}

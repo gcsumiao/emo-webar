@@ -74,6 +74,8 @@ function getDiagnostics() {
 }
 
 function recordPlayFailure(audio, error, context = {}) {
+  if (context.action === 'button-click' && error?.name === 'AbortError') return;
+
   const diagnostics = getDiagnostics();
   const failure = {
     at: new Date().toISOString(),
@@ -101,32 +103,46 @@ function playAudio(audio, context) {
   if (!audio) return Promise.resolve(false);
   let playPromise;
   try {
+    audio.__emoPendingPlay = true;
     playPromise = audio.play();
   } catch (error) {
+    audio.__emoPendingPlay = false;
     recordPlayFailure(audio, error, context);
     return Promise.resolve(false);
   }
 
   if (!playPromise || typeof playPromise.catch !== 'function') {
+    audio.__emoPendingPlay = false;
     return Promise.resolve(true);
   }
 
   return playPromise
-    .then(() => true)
+    .then(() => {
+      audio.__emoPendingPlay = false;
+      return true;
+    })
     .catch((error) => {
+      audio.__emoPendingPlay = false;
       recordPlayFailure(audio, error, context);
       return false;
     });
 }
 
+function safeLoadAudio(audio) {
+  if (!audio || audio.__emoPendingPlay || (!audio.paused && !audio.ended)) return;
+  try {
+    audio.load();
+  } catch {}
+}
+
 function preloadAudio({ includeBgm = false } = {}) {
   if (!preloaded) {
     preloaded = true;
-    [...getDropBounce(), ...getBranchPop(), ...getShutter(), ...getButtonClick()].forEach((audio) => audio.load());
+    [...getDropBounce(), ...getBranchPop(), ...getShutter(), ...getButtonClick()].forEach(safeLoadAudio);
   }
   if (includeBgm && !bgmPreloaded) {
     bgmPreloaded = true;
-    getBgm().load();
+    safeLoadAudio(getBgm());
   }
 }
 
@@ -151,7 +167,9 @@ function recordMarkerAudio(marker, played) {
 
 function playOneShot(pool, action, context = {}) {
   const items = Array.isArray(pool) ? pool : [pool];
-  const audio = items.find((item) => item.paused || item.ended) || items[0];
+  const audio = items.find((item) => !item.__emoPendingPlay && (item.paused || item.ended))
+    || items.find((item) => !item.__emoPendingPlay)
+    || items[0];
   if (!audio) return Promise.resolve(false);
   try {
     audio.currentTime = 0;
@@ -174,6 +192,30 @@ function startBgm({ restart = false } = {}) {
   playAudio(audio, { action: 'bgm' });
 }
 
+function primeAudio(audio, action) {
+  if (!audio) return Promise.resolve(false);
+  if (audio.__emoPendingPlay) return Promise.resolve(false);
+  const previousVolume = audio.volume;
+  audio.volume = 0;
+  return playAudio(audio, { action }).then((started) => {
+    audio.pause();
+    audio.volume = previousVolume;
+    try {
+      audio.currentTime = 0;
+    } catch {}
+    return started;
+  });
+}
+
+function primeAudioFromPool(pool, action) {
+  const items = Array.isArray(pool) ? pool : [pool];
+  const audio = items.find((item) => item && !item.__emoPendingPlay && (item.paused || item.ended))
+    || items.find((item) => item && !item.__emoPendingPlay)
+    || items[1]
+    || items[0];
+  return primeAudio(audio, action);
+}
+
 export const arAudio = {
   setState: (nextState) => {
     currentState = nextState || 'unknown';
@@ -188,16 +230,14 @@ export const arAudio = {
     }
     preloadAudio({ includeBgm });
 
-    const buttonAudio = getButtonClick()[0];
-    const previousButtonVolume = buttonAudio.volume;
-    buttonAudio.volume = 0;
-    const effectUnlock = playAudio(buttonAudio, { action: 'unlock-effects' }).then((started) => {
+    const effectUnlock = Promise.all([
+      primeAudioFromPool(getDropBounce(), 'unlock-drop-bounce'),
+      primeAudioFromPool(getBranchPop(), 'unlock-branch-pop'),
+      primeAudioFromPool(getShutter(), 'unlock-shutter'),
+      primeAudioFromPool(getButtonClick(), 'unlock-button-click'),
+    ]).then((results) => {
+      const started = results.some(Boolean);
       effectsPrimed = started || effectsPrimed;
-      buttonAudio.pause();
-      buttonAudio.volume = previousButtonVolume;
-      try {
-        buttonAudio.currentTime = 0;
-      } catch {}
       return started;
     });
 

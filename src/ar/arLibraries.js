@@ -4,6 +4,7 @@ const AFRAME_VENDOR_URL = asset('/vendor/aframe-1.6.0.min.js');
 const MINDAR_VENDOR_URL = asset('/vendor/mindar-image-aframe-1.2.5.prod.js');
 
 let librariesPromise = null;
+let aframePromise = null;
 
 function loadScriptOnce({ id, src, isReady }) {
   if (isReady?.()) return Promise.resolve();
@@ -35,20 +36,29 @@ function loadScriptOnce({ id, src, isReady }) {
   });
 }
 
-export function ensureArLibraries() {
-  if (librariesPromise) return librariesPromise;
+export function ensureAFrameLibrary() {
+  if (aframePromise) return aframePromise;
 
-  librariesPromise = loadScriptOnce({
+  aframePromise = loadScriptOnce({
     id: 'emo-aframe-runtime',
     src: AFRAME_VENDOR_URL,
     isReady: () => Boolean(window.AFRAME),
   })
+    .then(() => import('./components/index.js'))
+    .then(() => window.AFRAME);
+
+  return aframePromise;
+}
+
+export function ensureArLibraries() {
+  if (librariesPromise) return librariesPromise;
+
+  librariesPromise = ensureAFrameLibrary()
     .then(() => loadScriptOnce({
       id: 'emo-mindar-runtime',
       src: MINDAR_VENDOR_URL,
       isReady: () => Boolean(window.AFRAME?.components?.['mindar-image']),
     }))
-    .then(() => import('./components/index.js'))
     .then(() => window.AFRAME);
 
   return librariesPromise;

@@ -4,7 +4,6 @@ import { getARRuntime } from '../ar/arRuntime.js';
 import { asset } from '../lib/assetUrl.js';
 import { useScanGeometry } from '../lib/viewport.js';
 
-const MANUAL_LOCK_DELAY_MS = 3000;
 const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
 const SCAN_FRAME_BOUNDS = {
   x: 219,
@@ -149,7 +148,7 @@ function readDebugFlag() {
 
 export function Scan({ lang = 'zh', setLang }) {
   const [scanState, setScanState] = React.useState('searching');
-  const [showManualLock, setShowManualLock] = React.useState(false);
+  const [showManualLock, setShowManualLock] = React.useState(true);
   const [sceneCatalog, setSceneCatalog] = React.useState([]);
   const [selectedSceneId, setSelectedSceneId] = React.useState('');
   const debugMode = React.useMemo(readDebugFlag, []);
@@ -229,8 +228,8 @@ export function Scan({ lang = 'zh', setLang }) {
       setShowManualLock(false);
       return undefined;
     }
-    const timer = window.setTimeout(() => setShowManualLock(true), MANUAL_LOCK_DELAY_MS);
-    return () => window.clearTimeout(timer);
+    setShowManualLock(true);
+    return undefined;
   }, [isLocked]);
 
   React.useEffect(() => {
@@ -267,13 +266,27 @@ export function Scan({ lang = 'zh', setLang }) {
   const scanHintText = isLocked
     ? t(lang, '已锁定，一毛出现中…', 'Locked · EMO is appearing…')
     : isLandscapePhone
-      ? t(lang, '横屏模式 · 对准目标', 'Landscape · aim at target')
-      : t(lang, '对准目标，自动扫描', 'Aim at the target · auto scanning');
+      ? t(lang, '横屏模式 · 点击锁定', 'Landscape · tap to lock')
+      : t(lang, '点击锁定目标', 'Tap to lock the target');
 
-  const lockManually = React.useCallback(() => {
+  const lockManually = React.useCallback(async () => {
     setShowManualLock(false);
+    const runtime = getARRuntime();
+    try {
+      const sceneId = selectedSceneId || runtime?.getCurrentScene?.()?.sceneId || runtime?.getSceneCatalog?.()?.[0]?.sceneId;
+      const targetIndex = runtime?.getCurrentTargetConfig?.()?.targetIndex ?? 0;
+      await runtime?.applyRecognitionResult?.({
+        matched: true,
+        sceneId,
+        targetIndex,
+        confidence: 1,
+        source: 'manual-button',
+      });
+    } catch (error) {
+      console.warn('[EMO-AR] manual lock recognition failed', error);
+    }
     setScanState('locked');
-  }, []);
+  }, [selectedSceneId]);
 
   const applyDebugScene = React.useCallback(async (event) => {
     const sceneId = event.target.value;

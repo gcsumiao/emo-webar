@@ -1,6 +1,6 @@
 # AR Manifest
 
-The MindAR runtime loads AR target and render configuration from a JSON manifest.
+The default runtime is a manual AR trigger that loads render configuration from a JSON manifest, shows the live camera preview, and reveals the configured GLB when the user taps the lock button. The legacy MindAR image-tracking runtime remains available with `?mode=mindar`.
 The default local manifest lives at:
 
 ```text
@@ -18,7 +18,9 @@ If that request fails or returns invalid JSON, the frontend falls back to the bu
 
 ## Scene Catalog
 
-The app now separates scene recognition from local MindAR tracking. The manifest points to a generated scene catalog:
+The app separates scene selection from rendering. In default manual mode, the selected scene/target is a trigger payload only; no `.mind` pack is loaded. In legacy `?mode=mindar`, the selected scene pack is loaded and MindAR handles local image tracking.
+
+The manifest points to a generated scene catalog:
 
 ```json
 {
@@ -28,7 +30,7 @@ The app now separates scene recognition from local MindAR tracking. The manifest
 }
 ```
 
-`mindTargetUrl` and `targets` remain supported for the original single-scene contract. When `sceneCatalogUrl` is present, the runtime loads the catalog and chooses one scene pack at a time.
+`mindTargetUrl` and `targets` remain supported for the original single-scene contract. When `sceneCatalogUrl` is present, the runtime loads the catalog and chooses one scene at a time. Default manual mode uses the scene metadata but does not fetch `mindTargetUrl`; legacy MindAR mode fetches the active scene's `.mind` pack.
 
 The catalog shape is:
 
@@ -53,7 +55,7 @@ For scenes without explicit `targets`, the runtime generates target metadata as 
 
 The manifest can change model URLs, sprite frame URLs, target labels, per-target transforms, animation clip names, GLB lighting/material tuning, and sprite-to-GLB transition timing without changing frontend code.
 
-It does not merge image targets at runtime. Each `.mind` file is a scene pack, and MindAR tracks only the active pack. A cloud or mock recognition result should choose `sceneId`; the frontend then loads that scene pack and lets MindAR handle local image tracking.
+It does not merge image targets at runtime. Each `.mind` file is a scene pack for legacy MindAR mode, and MindAR tracks only the active pack. A cloud, mock, or manual recognition result should choose `sceneId` and optional `targetIndex`; default manual mode uses that result to reveal the scene GLB directly.
 
 To add a new target pack:
 
@@ -64,22 +66,22 @@ To add a new target pack:
 
 ## Runtime Scene API
 
-The local MindAR runtime exposes:
+Default mode exposes the active runtime as `window.__ar`. Compatibility helpers should use `getARRuntime()`, which resolves `window.__ar || window.__mindar`.
 
 ```js
-window.__mindar.getSceneCatalog()
-window.__mindar.getCurrentScene()
-window.__mindar.switchScene(sceneId)
-window.__mindar.recognizeFrameMock({ sceneId, targetIndex, confidence })
-window.__mindar.applyRecognitionResult({ matched, sceneId, targetIndex, confidence })
-window.__mindar.setMockSceneId(sceneId)
+window.__ar.getSceneCatalog()
+window.__ar.getCurrentScene()
+window.__ar.switchScene(sceneId)
+window.__ar.recognizeFrameMock({ sceneId, targetIndex, confidence })
+window.__ar.applyRecognitionResult({ matched, sceneId, targetIndex, confidence })
+window.__ar.setMockSceneId(sceneId)
 ```
 
-`switchScene(sceneId)` stops the current MindAR system, rebuilds the A-Frame scene with that scene's `mindTargetUrl`, and restarts scanning when the AR layer is active.
+In default manual mode, `switchScene(sceneId)` updates the active manifest scene without loading a `.mind` file. In legacy `?mode=mindar`, `window.__mindar.switchScene(sceneId)` stops the current MindAR system, rebuilds the A-Frame scene with that scene's `mindTargetUrl`, and restarts scanning when the AR layer is active.
 
-`applyRecognitionResult()` is the frontend placeholder for the future Kivicube-like recognition response. It switches scenes when `matched: true` and `sceneId` is provided; MindAR target-found events remain authoritative for local tracking.
+`applyRecognitionResult()` is the frontend placeholder for the future Kivicube-like recognition response. It switches scenes when `matched: true` and `sceneId` is provided. Default manual mode treats this as enough to reveal the GLB after the user taps the lock button; legacy MindAR mode still uses target-found events for local tracking.
 
-`recognizeFrameMock()` is a frontend-only scene selection adapter for testing the future cloud recognition handoff. It returns `{ matched, sceneId, targetIndex, confidence, source: "mock" }`, reading `sceneId` from the function argument first, then `?mockScene=...`, then the debug scene picker state. It does not confirm a target by itself; it only selects the scene pack that MindAR should track locally.
+`recognizeFrameMock()` is a frontend-only scene selection adapter for testing the future cloud recognition handoff. It returns `{ matched, sceneId, targetIndex, confidence, source }`, reading `sceneId` from the function argument first, then `?mockScene=...`, then the debug scene picker state. In manual mode this can select the GLB target directly; in legacy MindAR mode it only selects the scene pack that MindAR should track locally.
 
 For local testing:
 
@@ -114,16 +116,17 @@ The old PNG frame sequence is no longer part of the active Step 06 path.
 
 ## First-Open Loading Flow
 
-The permission screen separates camera authorization from MindAR startup. When the user taps the camera permission button, the app first requests a plain `getUserMedia()` preview stream and shows that video behind the loading UI. MindAR is still responsible for image tracking; the preview stream is only a temporary visual handoff so users do not see a black screen while the AR runtime, scene manifest, target pack, and GLB are getting ready.
+The permission screen separates camera authorization from AR startup. When the user taps the camera permission button, the app first requests a plain `getUserMedia()` preview stream and shows that video behind the loading UI. Default manual mode keeps that preview stream as the camera background, then overlays the GLB after the user taps the lock button.
 
 Loading is staged to reduce first-open contention:
 
 - Landing loads only the regular page UI.
-- Permission prepares A-Frame, MindAR, the AR manifest, and the active `.mind` target pack without blocking the permission controls.
-- After camera approval, the app shows the preview stream immediately, preloads short AR sound effects, fetches the Step 06 GLB into cache, and asks the hidden A-Frame GLB entity to parse it.
-- BGM is not requested during landing or permission; it starts when scanning/AR playback starts.
+- Permission does not prepare A-Frame, MindAR, the AR manifest, the active `.mind` target pack, GLB, or BGM.
+- After camera approval, default manual mode shows the preview stream immediately, loads A-Frame plus the GLB transition component, fetches the manifest, preloads short AR sound effects, fetches the Step 06 GLB into cache, and asks the hidden A-Frame GLB entity to parse it.
+- BGM is not requested during landing, permission, loading, or scan preload; it starts only when AR playback explicitly cues it.
+- Legacy `?mode=mindar` keeps the older MindAR startup path for regression testing.
 
-When MindAR starts, it attempts to reuse the preview stream for the first camera start. After MindAR has taken over, the preview video element is detached without stopping the camera tracks.
+When legacy MindAR starts, it attempts to reuse the preview stream for the first camera start. After MindAR has taken over, the preview video element is detached without stopping the camera tracks.
 
 The WebAR runtime applies the configured GLB lighting and material profile to the final GLB. The default `soft-product-face` profile adds neutral, pink-balanced camera-space product lighting without adding a virtual ground plane, so the AR layer keeps the live camera background while giving the model stronger face volume, a soft right-edge/bottom falloff, and the source GLB's pink body texture.
 
@@ -197,14 +200,14 @@ The optional `glb.interaction` object controls the final editable GLB behavior. 
 
 `pivot: "boundsCenter"` rotates around the model's current visual bounds center rather than the animated mesh origin. `screenBoundsMode: "center-anchor"` keeps only the model's interaction center inside the editable AR layer, so an enlarged GLB can sit at the edge or partially off screen without being auto-shrunk back into full view. Use `screenBoundsMode: "projected-bounds"` for older scenes that require the whole projected GLB bounds to remain visible. `screenEdgePaddingPx` adds an optional CSS-pixel inset to whichever screen-bounds mode is active, and `screenMarginNdc` remains available as an optional extra inset in normalized device coordinates for scenes that need a wider margin. `minScale` and `maxScale` are the user-facing pinch limits; `nearPlaneMargin` adds world-space distance in front of the camera near plane before scale is reduced to avoid near-plane clipping.
 
-The runtime drag API accepts pointer positions and applies the default bounds check while dragging and on drag end:
+The runtime drag API accepts pointer positions and applies the default bounds check while dragging and on drag end. Use `getARRuntime()` or `window.__ar` in default manual mode; `window.__mindar` is only guaranteed in legacy mode:
 
 ```js
-window.__mindar.beginFrozenDrag({ pointerId, clientX, clientY })
-window.__mindar.dragFrozenToScreenPoint({ pointerId, clientX, clientY, clampToViewport: true })
-window.__mindar.endFrozenDrag({ clampToViewport: true })
-window.__mindar.rotateFrozenBy({ yawDelta, pitchDelta })
-window.__mindar.scaleFrozenBy({ scaleFactor })
+window.__ar.beginFrozenDrag({ pointerId, clientX, clientY })
+window.__ar.dragFrozenToScreenPoint({ pointerId, clientX, clientY, clampToViewport: true })
+window.__ar.endFrozenDrag({ clampToViewport: true })
+window.__ar.rotateFrozenBy({ yawDelta, pitchDelta })
+window.__ar.scaleFrozenBy({ scaleFactor })
 ```
 
 ## GLB Animation
@@ -246,10 +249,10 @@ Marker audio is best-effort but diagnosed. The `audio` value supports the built-
 
 ## Runtime Debug API
 
-The local MindAR runtime exposes:
+The active runtime exposes:
 
 ```js
-window.__mindar.getFinalModelDebug()
+window.__ar.getFinalModelDebug()
 ```
 
 `getFinalModelDebug()` reports the active GLB source, ready state, bounds, animation clip names, animation frame window, final yaw/pitch, and projected mesh center for checking final screen placement.
