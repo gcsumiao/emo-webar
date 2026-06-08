@@ -117,6 +117,48 @@ canvas.a-canvas {
   pointer-events: auto;
 }
 
+.icp-footer {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + 8px);
+  z-index: 32;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 32px);
+  min-height: 24px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(31, 26, 31, 0.18);
+  color: rgba(255, 255, 255, 0.72);
+  border: 0.5px solid rgba(255, 255, 255, 0.16);
+  text-decoration: none;
+  font-family: "Source Han Sans CN", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition:
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.icp-footer:hover,
+.icp-footer:focus-visible {
+  color: #fff;
+  background: rgba(31, 26, 31, 0.28);
+  border-color: rgba(255, 255, 255, 0.26);
+  outline: none;
+}
+
 [data-ar-edit-surface="true"],
 [data-ar-gesture-ui="true"] {
   user-select: none;
@@ -153,7 +195,7 @@ canvas.a-canvas {
   position: absolute;
   left: calc(var(--safe-left) + 16px);
   right: calc(var(--safe-right) + 16px);
-  bottom: calc(var(--safe-bottom) + 16px);
+  bottom: calc(var(--safe-bottom) + 50px);
   z-index: 20;
 }
 
@@ -235,6 +277,6 @@ canvas.a-canvas {
   }
 
   .bottom-controls {
-    bottom: calc(var(--safe-bottom) + 10px);
+    bottom: calc(var(--safe-bottom) + 40px);
   }
 }

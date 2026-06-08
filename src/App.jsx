@@ -35,6 +35,21 @@ function SiteFontFaces() {
   );
 }
 
+function IcpFooter() {
+  return (
+    <a
+      className="icp-footer"
+      href="https://beian.miit.gov.cn/"
+      target="_blank"
+      rel="noreferrer"
+      aria-label="工信部备案查询：鄂ICP备2026028745号-1"
+      data-interactive="true"
+    >
+      鄂ICP备2026028745号-1
+    </a>
+  );
+}
+
 function ScreenFor({ state, lang, setLang, diagnostics }) {
   switch (state) {
     case 'landing':
@@ -177,6 +192,7 @@ export default function App() {
       <div key={nonce} className="ui-layer screen-enter">
         <ScreenFor state={state} lang={lang} setLang={setLang} diagnostics={diagnostics} />
       </div>
+      <IcpFooter />
     </div>
   );
 }
