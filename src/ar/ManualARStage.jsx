@@ -11,11 +11,13 @@ import { DEFAULT_GLB_INTERACTION } from './arManifestDefaults.js';
 import { requestCameraPreview } from '../lib/cameraPreview.js';
 
 const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
+const MODEL_READY_EVENT = 'emo-ar-model-ready';
 const MANUAL_GLB_CONFIG_KEY = 'manual-glb';
 const MANUAL_OBJECT_POSITION = { x: 0, y: -0.02, z: -1.18 };
 const MANUAL_OBJECT_ROTATION = { x: 0, y: 0, z: 0 };
 const MANUAL_OBJECT_SCALE = { x: 1, y: 1, z: 1 };
 const MANUAL_MODEL_READY_TIMEOUT_MS = 10000;
+const MANUAL_MODEL_PRELOAD_TIMEOUT_MS = 15000;
 const FALLBACK_TARGET_INDEX = 0;
 
 function ensureGltfRegistry() {
@@ -263,6 +265,7 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
       let persistentModelAttr = '';
       let persistentModelSrc = '';
       let persistentModelTargetIndex = initialTargetIndex;
+      let lastModelReadyEventKey = '';
       let lastTarget = targets[0] ? clone(targets[0]) : null;
       let mockSceneId = readSearchParam('mockScene') || '';
       let initialGlbFrozenState = null;
@@ -320,6 +323,25 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
         scale: { ...frozenState.scale },
       });
       const getPersistentModelComp = () => frozenModel?.components?.['gltf-transition-model'] || null;
+      const isFinalModelReady = (targetIndex = persistentModelTargetIndex) => {
+        const idx = Number.isFinite(Number(targetIndex)) ? Number(targetIndex) : persistentModelTargetIndex;
+        return persistentModelTargetIndex === idx && Boolean(getPersistentModelComp()?.isReady?.());
+      };
+      const dispatchFinalModelReady = (targetIndex = persistentModelTargetIndex) => {
+        if (!isFinalModelReady(targetIndex)) return false;
+        const key = `${targetIndex}:${persistentModelAttr}`;
+        if (lastModelReadyEventKey === key) return true;
+        lastModelReadyEventKey = key;
+        window.dispatchEvent(new CustomEvent(MODEL_READY_EVENT, {
+          detail: {
+            provider: 'manual',
+            targetIndex,
+            modelSrc: persistentModelSrc,
+            scene: getCurrentScene(),
+          },
+        }));
+        return true;
+      };
       const syncRenderMatrices = () => {
         scene.camera?.updateMatrixWorld?.(true);
         scene.object3D?.updateMatrixWorld?.(true);
@@ -462,6 +484,7 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
         persistentModelAttr = modelAttr;
         persistentModelSrc = modelSrc;
         persistentModelTargetIndex = idx;
+        if (attrChanged) lastModelReadyEventKey = '';
         gltfRegistry.configs.set(MANUAL_GLB_CONFIG_KEY, glb);
         frozenModel.setAttribute('gltf-transition-model', 'configKey', MANUAL_GLB_CONFIG_KEY);
         const comp = getPersistentModelComp();
@@ -482,12 +505,14 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
           animationEndFrame: glb.animation ? readAnimationEndFrame(glb.animation) : null,
           lastEvent: `manual-glb-preload:${idx}`,
         });
+        if (comp?.isReady?.()) dispatchFinalModelReady(idx);
         return { idx, glb, modelAttr, modelSrc };
       };
       const waitForPersistentModelReady = (timeoutMs = MANUAL_MODEL_READY_TIMEOUT_MS) => new Promise((resolve) => {
         const comp = getPersistentModelComp();
         if (comp?.isReady?.()) {
           pushDiagnostics({ ...readRenderDiagnostics('manual-glb-ready-existing'), frozenModelLoaded: true });
+          dispatchFinalModelReady(persistentModelTargetIndex);
           resolve(true);
           return;
         }
@@ -497,6 +522,7 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
           settled = true;
           window.clearTimeout(timeoutId);
           frozenModel?.removeEventListener('gltf-transition-ready', onReady);
+          if (ready) dispatchFinalModelReady(persistentModelTargetIndex);
           resolve(ready);
         };
         const onReady = () => {
@@ -506,6 +532,11 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
         const timeoutId = window.setTimeout(() => finish(Boolean(getPersistentModelComp()?.isReady?.())), timeoutMs);
         frozenModel?.addEventListener('gltf-transition-ready', onReady, { once: true });
       });
+      const preloadPersistentGlb = async (targetIndex = initialTargetIndex) => {
+        const configured = configurePersistentGlb(targetIndex);
+        if (!configured) return false;
+        return waitForPersistentModelReady(MANUAL_MODEL_PRELOAD_TIMEOUT_MS);
+      };
       const hideFinalObject = () => {
         dragState.active = false;
         dragState.pointerId = null;
@@ -783,6 +814,7 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
         getCurrentTargetConfig,
         getCurrentRenderMode,
         getCurrentGlbConfig,
+        isFinalModelReady,
         getGlbAnimationNames: () => getPersistentModelComp()?.getAnimationNames?.() || [],
         getCameraFacingMode: () => cameraFacingMode,
         switchCameraFacing,
@@ -799,7 +831,7 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
         },
         hideFinalObject,
         showFinalModel: revealModel,
-        preloadFinalModel: (targetIndex) => configurePersistentGlb(targetIndex ?? initialTargetIndex),
+        preloadFinalModel: (targetIndex) => preloadPersistentGlb(targetIndex ?? initialTargetIndex),
         hideFinalModel: hideFinalObject,
         revealModelAfterSprite: revealModel,
         getFinalModelDebug,
@@ -843,7 +875,7 @@ export function ManualARStage({ prepared = false, visible = false, preloadModel 
         },
       };
 
-      if (preloadModelRef.current) configurePersistentGlb(initialTargetIndex);
+      if (preloadModelRef.current) preloadPersistentGlb(initialTargetIndex);
 
       const onSceneLoaded = () => {
         pushDiagnostics({ sceneLoaded: true, status: 'ready', liveModelLoaded: true, lastEvent: 'manual-scene-loaded' });

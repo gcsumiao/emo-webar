@@ -75,11 +75,15 @@ window.__ar.switchScene(sceneId)
 window.__ar.recognizeFrameMock({ sceneId, targetIndex, confidence })
 window.__ar.applyRecognitionResult({ matched, sceneId, targetIndex, confidence })
 window.__ar.setMockSceneId(sceneId)
+window.__ar.preloadFinalModel(targetIndex) // Promise<boolean>
+window.__ar.isFinalModelReady(targetIndex) // boolean
 ```
 
 In default manual mode, `switchScene(sceneId)` updates the active manifest scene without loading a `.mind` file. In legacy `?mode=mindar`, `window.__mindar.switchScene(sceneId)` stops the current MindAR system, rebuilds the A-Frame scene with that scene's `mindTargetUrl`, and restarts scanning when the AR layer is active.
 
 `applyRecognitionResult()` is the frontend placeholder for the future Kivicube-like recognition response. It switches scenes when `matched: true` and `sceneId` is provided. Default manual mode treats this as enough to reveal the GLB after the user taps the lock button; legacy MindAR mode still uses target-found events for local tracking.
+
+In default manual mode, `preloadFinalModel()` configures the hidden A-Frame GLB entity and resolves only after the GLB has emitted `gltf-transition-ready`. The app also emits `emo-ar-model-ready` on `window` when that hidden model is parsed and ready to show. The scan screen should be treated as safe for immediate target-triggered reveal only after both `window.__ar.isReady()` and `window.__ar.isFinalModelReady()` are true.
 
 `recognizeFrameMock()` is a frontend-only scene selection adapter for testing the future cloud recognition handoff. It returns `{ matched, sceneId, targetIndex, confidence, source }`, reading `sceneId` from the function argument first, then `?mockScene=...`, then the debug scene picker state. In manual mode this can select the GLB target directly; in legacy MindAR mode it only selects the scene pack that MindAR should track locally.
 
@@ -121,9 +125,11 @@ The permission screen separates camera authorization from AR startup. When the u
 Loading is staged to reduce first-open contention:
 
 - Landing loads only the regular page UI.
-- Permission does not prepare A-Frame, MindAR, the AR manifest, the active `.mind` target pack, or GLB before the user taps the camera button.
+- Default manual mode starts AR warmup on the passive permission screen. It loads A-Frame, registers the GLB transition component, fetches the AR manifest, requests the Step 06 GLB into cache, and asks the hidden A-Frame entity to parse it. This does not request camera access.
+- Legacy `?mode=mindar` keeps permission-time preparation limited to the existing MindAR-compatible setup path.
 - The camera permission tap plays only the UI button click audibly. It silently primes BGM, `drop-bounce`, and `branch-pop` for browser media policy, but does not prime the AR shutter sound.
-- After camera approval, default manual mode starts BGM on the Waking up EMO screen, shows the preview stream immediately, loads A-Frame plus the GLB transition component, fetches the manifest, preloads short AR sound effects, fetches the Step 06 GLB into cache, and asks the hidden A-Frame GLB entity to parse it.
+- After camera approval, default manual mode starts BGM on the Waking up EMO screen, shows the preview stream immediately, preloads short AR sound effects, and waits for both the hidden runtime scene and hidden GLB parse to be ready before entering scan.
+- The Waking up EMO mascot uses the small loading-specific WebP/PNG derivative, preloaded from `index.html`, so it appears with the progress bar instead of waiting for the full 2000px mascot PNG.
 - BGM is not requested during landing or passive permission viewing. Once camera approval succeeds, it loops from Waking up EMO through scan and AR flows.
 - Legacy `?mode=mindar` keeps the older MindAR startup path for regression testing.
 

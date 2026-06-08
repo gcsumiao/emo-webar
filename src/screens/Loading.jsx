@@ -19,7 +19,7 @@ export function Loading({ lang = 'zh', hasCameraPreview = false }) {
       <GitHubCredit tone="light" placement="lower-left" />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
         <div style={{ marginBottom: mascotGap, lineHeight: 0 }}>
-          <Mascot3D state="sprout" size={mascotSize} animate="bob" />
+          <Mascot3D state="sprout" size={mascotSize} animate="bob" loadingOptimized />
         </div>
         <div style={{ width: 220, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden', position: 'relative' }}>
           <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, ${TOKENS.pink} 0%, ${TOKENS.pinkDeep} 100%)`, borderRadius: 999, boxShadow: `0 0 10px ${TOKENS.pink}`, animation: 'loading-bar-fill 1.8s ease-in-out infinite' }} />

@@ -143,6 +143,13 @@ Check:
 https://www.emoar.fun/
 https://www.emoar.fun/assets/ar/manifest.json
 https://www.emoar.fun/assets/mindar/targets.mind
+https://www.emoar.fun/vendor/aframe-1.6.0.min.js
+```
+
+The vendor script response should include:
+
+```text
+Cache-Control: public, max-age=31536000, immutable
 ```
 
 On mobile Safari or Chrome, verify the HTTPS camera permission prompt appears.

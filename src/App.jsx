@@ -13,7 +13,9 @@ import { preloadStep06 } from './lib/step06Assets.js';
 import { stopCameraPreview, subscribeCameraPreview } from './lib/cameraPreview.js';
 
 const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
+const MODEL_READY_EVENT = 'emo-ar-model-ready';
 const MIN_LOADING_MS = 900;
+const MODEL_READY_TIMEOUT_MS = 15000;
 const LazyMindARStage = React.lazy(() => import('./ar/MindARStage.jsx').then((module) => ({
   default: module.MindARStage,
 })));
@@ -23,6 +25,34 @@ function waitForRuntimeReady() {
   if (runtime?.isReady?.()) return Promise.resolve();
   return new Promise((resolve) => {
     window.addEventListener(RUNTIME_READY_EVENT, resolve, { once: true });
+  });
+}
+
+function waitForManualModelReady() {
+  const runtime = window.__ar;
+  if (runtime?.isFinalModelReady?.()) return Promise.resolve(true);
+
+  const warmup = runtime?.preloadFinalModel?.();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ready) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      window.removeEventListener(MODEL_READY_EVENT, onReady);
+      resolve(Boolean(ready));
+    };
+    const onReady = () => finish(true);
+    const timeoutId = window.setTimeout(() => {
+      finish(Boolean(window.__ar?.isFinalModelReady?.()));
+    }, MODEL_READY_TIMEOUT_MS);
+
+    window.addEventListener(MODEL_READY_EVENT, onReady, { once: true });
+    Promise.resolve(warmup)
+      .then((ready) => {
+        if (ready || window.__ar?.isFinalModelReady?.()) finish(true);
+      })
+      .catch(() => finish(false));
   });
 }
 
@@ -166,27 +196,37 @@ export default function App() {
       const minLoading = new Promise((resolve) => {
         window.setTimeout(resolve, MIN_LOADING_MS);
       });
-      Promise.all([minLoading, waitForRuntimeReady()])
+      const runtimeReady = waitForRuntimeReady()
+        .then(() => (arMode === 'manual' ? waitForManualModelReady() : true))
+        .then((modelReady) => {
+          if (!modelReady) throw new Error('Final GLB model was not ready before scan.');
+        });
+      Promise.all([minLoading, runtimeReady])
         .then(() => {
           if (!cancelled) setState('scan');
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.error('[EMO-AR] loading readiness failed', error);
+          setState('error');
         });
       return () => {
         cancelled = true;
       };
     }
     return undefined;
-  }, [state, setState]);
+  }, [arMode, state, setState]);
 
   React.useEffect(() => {
     arAudio.setState(state);
     if (state === 'scan' || state === 'ar') arAudio.preload({ includeBgm: false });
     if (state === 'permission') {
-      preloadStep06({ full: false, includeAudio: false });
+      preloadStep06({ full: arMode === 'manual', includeAudio: false });
     } else if (state === 'loading' || state === 'scan' || state === 'ar') {
       preloadStep06({ full: true, includeAudio: false });
     }
     if (state !== 'loading' && state !== 'scan' && state !== 'ar') arAudio.stopArAudio();
-  }, [state]);
+  }, [arMode, state]);
 
   React.useEffect(() => {
     if (state === 'landing' || state === 'denied' || state === 'error') {
@@ -242,8 +282,9 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [state, setState]);
 
-  const arPrepared = arMode === 'mindar'
-    ? state === 'permission' || state === 'loading' || state === 'scan' || state === 'ar'
+  const arPrepared = state === 'permission' || state === 'loading' || state === 'scan' || state === 'ar';
+  const preloadModel = arMode === 'manual'
+    ? arPrepared
     : state === 'loading' || state === 'scan' || state === 'ar';
   const arActive = state === 'scan' || state === 'ar';
 
@@ -256,7 +297,7 @@ export default function App() {
             prepared={arPrepared}
             active={arActive}
             visible={arActive}
-            preloadModel={state === 'loading' || state === 'scan' || state === 'ar'}
+            preloadModel={preloadModel}
             onDiagnostics={handleDiagnostics}
           />
         </React.Suspense>
@@ -265,7 +306,7 @@ export default function App() {
           prepared={arPrepared}
           active={arActive}
           visible={arActive}
-          preloadModel={state === 'loading' || state === 'scan' || state === 'ar'}
+          preloadModel={preloadModel}
           onDiagnostics={handleDiagnostics}
         />
       )}
