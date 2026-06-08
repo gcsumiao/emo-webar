@@ -112,6 +112,19 @@ Step 06 now uses `assets/step06/models/yimao_animation_ultra_fast_growth.glb` di
 
 The old PNG frame sequence is no longer part of the active Step 06 path.
 
+## First-Open Loading Flow
+
+The permission screen separates camera authorization from MindAR startup. When the user taps the camera permission button, the app first requests a plain `getUserMedia()` preview stream and shows that video behind the loading UI. MindAR is still responsible for image tracking; the preview stream is only a temporary visual handoff so users do not see a black screen while the AR runtime, scene manifest, target pack, and GLB are getting ready.
+
+Loading is staged to reduce first-open contention:
+
+- Landing loads only the regular page UI.
+- Permission prepares A-Frame, MindAR, the AR manifest, and the active `.mind` target pack without blocking the permission controls.
+- After camera approval, the app shows the preview stream immediately, preloads short AR sound effects, fetches the Step 06 GLB into cache, and asks the hidden A-Frame GLB entity to parse it.
+- BGM is not requested during landing or permission; it starts when scanning/AR playback starts.
+
+When MindAR starts, it attempts to reuse the preview stream for the first camera start. After MindAR has taken over, the preview video element is detached without stopping the camera tracks.
+
 The WebAR runtime applies the configured GLB lighting and material profile to the final GLB. The default `soft-product-face` profile adds neutral, pink-balanced camera-space product lighting without adding a virtual ground plane, so the AR layer keeps the live camera background while giving the model stronger face volume, a soft right-edge/bottom falloff, and the source GLB's pink body texture.
 
 ## GLB Lighting And Material Profile
@@ -228,6 +241,8 @@ The manifest can reference `introClip` and `idleClip`, or use `playMode: "all-cl
 ```
 
 Marker `frame` values are converted with `frame / fps`; Step 06 starts the `Scene` clip at frame 1 (`0.0417s`), plays `drop-bounce.mp3` immediately at that start frame, plays `branch-pop.mp3` at frame 52 (`2.1667s`), and stops/clamps playback at frame 70 (`2.9167s`). `hiddenNodesUntilFrame` keeps the branch and leaf nodes hidden until `revealHiddenNodesFrame`, preventing them from flashing before their growth animation. If configured clip names do not exist, the model still appears and the runtime emits a missing-animation diagnostic instead of crashing.
+
+Marker audio is best-effort but diagnosed. The `audio` value supports the built-in one-shot names `drop-bounce` and `branch-pop`. When a marker fires, the runtime emits `gltf-animation-marker`; after the matching sound finishes or is blocked by browser audio policy, it emits `gltf-animation-marker-audio`. The app records the marker id, audio name, elapsed animation time, and whether playback succeeded in both AR diagnostics and `window.__emoAudioDiagnostics.markers`.
 
 ## Runtime Debug API
 

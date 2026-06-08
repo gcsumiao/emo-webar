@@ -10,6 +10,7 @@ import { Denied } from './screens/Denied.jsx';
 import { ErrorScreen } from './screens/Error.jsx';
 import { arAudio } from './lib/arAudio.js';
 import { preloadStep06 } from './lib/step06Assets.js';
+import { stopCameraPreview, subscribeCameraPreview } from './lib/cameraPreview.js';
 
 const RUNTIME_READY_EVENT = 'emo-mindar-runtime-ready';
 const MIN_LOADING_MS = 900;
@@ -36,14 +37,52 @@ function IcpFooter() {
   );
 }
 
-function ScreenFor({ state, lang, setLang, diagnostics }) {
+function CameraPreviewLayer({ stream }) {
+  const videoRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return undefined;
+    video.srcObject = stream || null;
+    if (stream) {
+      video.play?.().catch(() => {});
+    }
+    return () => {
+      if (video.srcObject === stream) video.srcObject = null;
+    };
+  }, [stream]);
+
+  if (!stream) return null;
+
+  return (
+    <video
+      ref={videoRef}
+      aria-hidden="true"
+      muted
+      playsInline
+      autoPlay
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 0,
+        width: '100vw',
+        height: '100dvh',
+        objectFit: 'cover',
+        background: '#000',
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
+function ScreenFor({ state, lang, setLang, diagnostics, hasCameraPreview }) {
   switch (state) {
     case 'landing':
       return <Landing lang={lang} setLang={setLang} />;
     case 'permission':
       return <Permission lang={lang} setLang={setLang} />;
     case 'loading':
-      return <Loading lang={lang} setLang={setLang} />;
+      return <Loading lang={lang} setLang={setLang} hasCameraPreview={hasCameraPreview} />;
     case 'scan':
       return <Scan lang={lang} setLang={setLang} />;
     case 'ar':
@@ -68,6 +107,7 @@ export default function App() {
   });
   const [nonce, setNonce] = React.useState(0);
   const [diagnostics, setDiagnostics] = React.useState(null);
+  const [cameraPreview, setCameraPreview] = React.useState(null);
 
   const setState = React.useCallback((nextState) => {
     setStateRaw(nextState);
@@ -91,6 +131,10 @@ export default function App() {
   React.useEffect(() => {
     document.documentElement.lang = lang === 'en' ? 'en' : 'zh';
   }, [lang]);
+
+  React.useEffect(() => subscribeCameraPreview(({ stream }) => {
+    setCameraPreview(stream || null);
+  }), []);
 
   React.useEffect(() => {
     window.__setProtoState = setState;
@@ -118,13 +162,21 @@ export default function App() {
 
   React.useEffect(() => {
     arAudio.setState(state);
-    if (state === 'scan' || state === 'ar') arAudio.preload();
-    if (state === 'permission' || state === 'loading' || state === 'scan' || state === 'ar') {
-      preloadStep06({ full: true });
+    if (state === 'scan' || state === 'ar') arAudio.preload({ includeBgm: true });
+    if (state === 'permission') {
+      preloadStep06({ full: false, includeAudio: false });
+    } else if (state === 'loading' || state === 'scan' || state === 'ar') {
+      preloadStep06({ full: true, includeAudio: false });
     }
     if (state === 'scan') arAudio.startScan();
     else if (state === 'ar') arAudio.cueARIntro();
     else if (state !== 'loading') arAudio.stop();
+  }, [state]);
+
+  React.useEffect(() => {
+    if (state === 'landing' || state === 'denied' || state === 'error') {
+      stopCameraPreview();
+    }
   }, [state]);
 
   React.useEffect(() => {
@@ -180,9 +232,22 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <MindARStage prepared={arPrepared} active={arActive} visible={arActive} onDiagnostics={handleDiagnostics} />
+      <CameraPreviewLayer stream={cameraPreview} />
+      <MindARStage
+        prepared={arPrepared}
+        active={arActive}
+        visible={arActive}
+        preloadModel={state === 'loading' || state === 'scan' || state === 'ar'}
+        onDiagnostics={handleDiagnostics}
+      />
       <div key={nonce} className="ui-layer screen-enter">
-        <ScreenFor state={state} lang={lang} setLang={setLang} diagnostics={diagnostics} />
+        <ScreenFor
+          state={state}
+          lang={lang}
+          setLang={setLang}
+          diagnostics={diagnostics}
+          hasCameraPreview={Boolean(cameraPreview)}
+        />
       </div>
       <IcpFooter />
     </div>

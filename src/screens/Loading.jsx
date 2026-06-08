@@ -1,10 +1,15 @@
 import React from 'react';
 import { GitHubCredit, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
 
-export function Loading({ lang = 'zh' }) {
+export function Loading({ lang = 'zh', hasCameraPreview = false }) {
+  const background = hasCameraPreview ? 'rgba(13,15,19,0.34)' : '#0d0f13';
+  const overlay = hasCameraPreview
+    ? 'linear-gradient(180deg, rgba(0,0,0,0.16), rgba(13,15,19,0.42))'
+    : 'radial-gradient(80% 50% at 50% 40%, #2a2028 0%, #0d0f13 70%)';
+
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: '#0d0f13' }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(80% 50% at 50% 40%, #2a2028 0%, #0d0f13 70%)' }} />
+    <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background }}>
+      <div style={{ position: 'absolute', inset: 0, background: overlay }} />
       <GitHubCredit tone="light" placement="lower-left" />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
         <div style={{ width: 220, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden', position: 'relative' }}>
@@ -14,7 +19,7 @@ export function Loading({ lang = 'zh' }) {
         <div style={{ marginTop: 18, textAlign: 'center', fontFamily: langFont(lang), fontSize: 18, fontWeight: 700, color: '#fff' }}>{t(lang, '唤醒一毛中…', 'Waking up EMO…')}</div>
       </div>
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(var(--safe-bottom) + 29px)', textAlign: 'center', fontFamily: FONT_MONO, fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.18em' }}>
-        {t(lang, '首次加载约需 3-5 秒', 'FIRST LOAD · 3-5 SECONDS')}
+        {hasCameraPreview ? t(lang, '相机已开启 · 正在加载 AR', 'CAMERA ON · LOADING AR') : t(lang, '首次加载约需 3-5 秒', 'FIRST LOAD · 3-5 SECONDS')}
       </div>
     </div>
   );

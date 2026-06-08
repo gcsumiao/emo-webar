@@ -42,16 +42,16 @@ export function loadStep06Manifest() {
   return manifestPromise;
 }
 
-export function preloadStep06({ full = false } = {}) {
+export function preloadStep06({ full = false, includeAudio = true } = {}) {
   return loadStep06Manifest().then((loaded) => {
-    if (!warmAudio) {
+    if (includeAudio && !warmAudio) {
       warmAudio = new Audio(loaded.audioUrl);
       warmAudio.preload = full ? 'auto' : 'metadata';
       warmAudio.playsInline = true;
       try {
         warmAudio.load();
       } catch {}
-    } else if (full && warmAudio.preload !== 'auto') {
+    } else if (includeAudio && full && warmAudio.preload !== 'auto') {
       warmAudio.preload = 'auto';
       try {
         warmAudio.load();

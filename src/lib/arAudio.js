@@ -12,7 +12,9 @@ let branchPopPool = null;
 let shutterPool = null;
 let buttonClickPool = null;
 let preloaded = false;
+let bgmPreloaded = false;
 let bgmPrimed = false;
+let effectsPrimed = false;
 let unlockPromise = null;
 let currentState = 'unknown';
 
@@ -64,6 +66,8 @@ function getDiagnostics() {
     window.__emoAudioDiagnostics = {
       failures: [],
       lastFailure: null,
+      markers: [],
+      lastMarker: null,
     };
   }
   return window.__emoAudioDiagnostics;
@@ -115,21 +119,47 @@ function playAudio(audio, context) {
     });
 }
 
-function preloadAudio() {
-  if (preloaded) return;
-  preloaded = true;
-  getBgm().load();
-  [...getDropBounce(), ...getBranchPop(), ...getShutter(), ...getButtonClick()].forEach((audio) => audio.load());
+function preloadAudio({ includeBgm = false } = {}) {
+  if (!preloaded) {
+    preloaded = true;
+    [...getDropBounce(), ...getBranchPop(), ...getShutter(), ...getButtonClick()].forEach((audio) => audio.load());
+  }
+  if (includeBgm && !bgmPreloaded) {
+    bgmPreloaded = true;
+    getBgm().load();
+  }
 }
 
-function playOneShot(pool, action) {
+function recordMarkerAudio(marker, played) {
+  const diagnostics = getDiagnostics();
+  if (!diagnostics || !marker) return;
+  const entry = {
+    at: new Date().toISOString(),
+    id: marker.id || '',
+    frame: marker.frame ?? null,
+    timeSec: marker.timeSec ?? null,
+    elapsedSec: marker.elapsedSec ?? null,
+    audio: marker.audioName || marker.audio || '',
+    played: Boolean(played),
+  };
+  diagnostics.lastMarker = entry;
+  diagnostics.markers.push(entry);
+  if (diagnostics.markers.length > DIAGNOSTIC_LIMIT) {
+    diagnostics.markers.splice(0, diagnostics.markers.length - DIAGNOSTIC_LIMIT);
+  }
+}
+
+function playOneShot(pool, action, context = {}) {
   const items = Array.isArray(pool) ? pool : [pool];
   const audio = items.find((item) => item.paused || item.ended) || items[0];
-  if (!audio) return;
+  if (!audio) return Promise.resolve(false);
   try {
     audio.currentTime = 0;
   } catch {}
-  playAudio(audio, { action });
+  return playAudio(audio, { action, ...context }).then((played) => {
+    if (context.marker) recordMarkerAudio(context.marker, played);
+    return played;
+  });
 }
 
 function startBgm({ restart = false } = {}) {
@@ -148,31 +178,58 @@ export const arAudio = {
   setState: (nextState) => {
     currentState = nextState || 'unknown';
   },
-  preload: () => {
-    preloadAudio();
+  preload: (options) => {
+    preloadAudio(options);
   },
-  unlock: (event) => {
+  unlock: ({ event, includeBgm = true } = {}) => {
     if (event && event.isTrusted === false) return Promise.resolve(false);
-    if (bgmPrimed && bgm && !bgm.paused) return unlockPromise || Promise.resolve(true);
-    preloadAudio();
+    if (effectsPrimed && (!includeBgm || (bgmPrimed && bgm && !bgm.paused))) {
+      return unlockPromise || Promise.resolve(true);
+    }
+    preloadAudio({ includeBgm });
+
+    const buttonAudio = getButtonClick()[0];
+    const previousButtonVolume = buttonAudio.volume;
+    buttonAudio.volume = 0;
+    const effectUnlock = playAudio(buttonAudio, { action: 'unlock-effects' }).then((started) => {
+      effectsPrimed = started || effectsPrimed;
+      buttonAudio.pause();
+      buttonAudio.volume = previousButtonVolume;
+      try {
+        buttonAudio.currentTime = 0;
+      } catch {}
+      return started;
+    });
+
+    if (!includeBgm) {
+      unlockPromise = effectUnlock;
+      return unlockPromise;
+    }
 
     const audio = getBgm();
+    const previousBgmVolume = audio.volume;
     audio.muted = false;
     audio.volume = 0;
-    unlockPromise = playAudio(audio, { action: 'unlock-bgm' }).then((started) => {
-      bgmPrimed = started;
-      return started;
+    unlockPromise = Promise.all([
+      effectUnlock,
+      playAudio(audio, { action: 'unlock-bgm' }).then((started) => {
+        bgmPrimed = started;
+        return started;
+      }),
+    ]).then(([effectStarted, bgmStarted]) => {
+      audio.volume = previousBgmVolume;
+      return effectStarted || bgmStarted;
     });
     return unlockPromise;
   },
   startScan: () => startBgm(),
   cueARIntro: () => startBgm(),
-  playDropBounce: () => playOneShot(getDropBounce(), 'drop-bounce'),
-  playBranchPop: () => playOneShot(getBranchPop(), 'branch-pop'),
+  playDropBounce: (context) => playOneShot(getDropBounce(), 'drop-bounce', context),
+  playBranchPop: (context) => playOneShot(getBranchPop(), 'branch-pop', context),
   playShutter: () => playOneShot(getShutter(), 'shutter'),
   playButtonClick: () => playOneShot(getButtonClick(), 'button-click'),
   stop: () => {
-    [bgm, ...(dropBouncePool || []), ...(branchPopPool || []), ...(shutterPool || [])].forEach((audio) => {
+    [bgm, ...(dropBouncePool || []), ...(branchPopPool || []), ...(shutterPool || []), ...(buttonClickPool || [])].forEach((audio) => {
       if (!audio) return;
       audio.pause();
       audio.muted = false;
@@ -182,6 +239,7 @@ export const arAudio = {
       } catch {}
     });
     bgmPrimed = false;
+    effectsPrimed = false;
     unlockPromise = null;
   },
 };

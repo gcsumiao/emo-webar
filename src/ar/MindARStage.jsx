@@ -1,6 +1,7 @@
 import React from 'react';
 import { aframeAssets, isDebugMode, debugGlbAssetId } from './aframeAssets.js';
 import { ensureArLibraries } from './arLibraries.js';
+import { detachCameraPreview, takeCameraPreviewStream } from '../lib/cameraPreview.js';
 import {
   getRuntimeSceneManifest,
   getSceneCatalog,
@@ -43,6 +44,20 @@ const GLB_LIGHT_PRESETS = {
     { id: 'rim', type: 'directional', color: '#eaf3ff', intensity: 0.045, position: [0.82, 0.16, 0.34], targetPosition: [0.05, 0, -FINAL_BASE_RENDER_DEPTH] },
   ],
 };
+const mindTargetWarmups = new Map();
+
+function prewarmMindTarget(url) {
+  if (!url || mindTargetWarmups.has(url)) return mindTargetWarmups.get(url) || Promise.resolve(false);
+  const promise = fetch(url, { cache: 'force-cache' })
+    .then((response) => {
+      if (!response.ok) throw new Error(`Mind target preload failed: ${response.status}`);
+      return response.arrayBuffer();
+    })
+    .then(() => true)
+    .catch(() => false);
+  mindTargetWarmups.set(url, promise);
+  return promise;
+}
 
 function ensureSpriteRegistry() {
   if (!window.__spriteRegistry) {
@@ -375,6 +390,10 @@ function createDiagnostics() {
     contentMode: null,
     glbBounds: null,
     glbScale: null,
+    gltfMarkerId: '',
+    gltfMarkerAudio: '',
+    gltfMarkerAudioPlayed: null,
+    gltfMarkerElapsedSec: null,
     glbWorld: null,
     glbNdc: null,
     glbCenterTargetNdc: null,
@@ -409,12 +428,13 @@ function createDiagnostics() {
   };
 }
 
-export function MindARStage({ prepared = false, active, visible, onDiagnostics }) {
+export function MindARStage({ prepared = false, active, visible, preloadModel = false, onDiagnostics }) {
   const containerRef = React.useRef(null);
   const sceneRef = React.useRef(null);
   const startedRef = React.useRef(false);
   const statusRef = React.useRef('idle');
   const activeRef = React.useRef(active);
+  const preloadModelRef = React.useRef(preloadModel);
   const diagnosticsRef = React.useRef(createDiagnostics());
 
   const pushDiagnostics = React.useCallback((patch = {}) => {
@@ -446,6 +466,11 @@ export function MindARStage({ prepared = false, active, visible, onDiagnostics }
     if (active) startIfNeeded();
     else if (startedRef.current) window.__mindar?.stop();
   }, [active, startIfNeeded]);
+
+  React.useEffect(() => {
+    preloadModelRef.current = preloadModel;
+    if (preloadModel) window.__mindar?.preloadFinalModel?.();
+  }, [preloadModel]);
 
   React.useEffect(() => {
     if (!prepared) return undefined;
@@ -497,6 +522,9 @@ export function MindARStage({ prepared = false, active, visible, onDiagnostics }
         sceneLabel: activeScene?.label || '',
         mindTargetUrl: runtimeManifest.mindTargetUrl || '',
         lastEvent: `scene-selected:${currentSceneId || 'default'}`,
+      });
+      prewarmMindTarget(runtimeManifest.mindTargetUrl).then((ready) => {
+        if (!cancelled && ready) pushDiagnostics({ lastEvent: `mind-target-prewarmed:${currentSceneId || 'default'}` });
       });
 
       const spriteRegistry = ensureSpriteRegistry();
@@ -1124,9 +1152,20 @@ export function MindARStage({ prepared = false, active, visible, onDiagnostics }
         if (!nativeGetUserMedia) return task();
 
         const originalGetUserMedia = nativeGetUserMedia.bind(mediaDevices);
-        const patchedGetUserMedia = (constraints) => originalGetUserMedia(
-          withCameraFacingConstraint(constraints, facingMode, exact)
-        );
+        let previewStreamUsed = false;
+        const patchedGetUserMedia = (constraints) => {
+          if (!exact && !previewStreamUsed) {
+            const previewStream = takeCameraPreviewStream({ facingMode });
+            if (previewStream) {
+              previewStreamUsed = true;
+              pushDiagnostics({ lastEvent: `camera-preview-handoff:${facingMode}` });
+              return Promise.resolve(previewStream);
+            }
+          }
+          return originalGetUserMedia(
+            withCameraFacingConstraint(constraints, facingMode, exact)
+          );
+        };
         let patched = false;
         try {
           mediaDevices.getUserMedia = patchedGetUserMedia;
@@ -1167,6 +1206,7 @@ export function MindARStage({ prepared = false, active, visible, onDiagnostics }
           await runWithCameraFacingMode(nextFacingMode, exact, () => sys.start());
           cameraFacingMode = nextFacingMode;
           startedRef.current = true;
+          detachCameraPreview();
           pushDiagnostics({
             cameraFacingMode,
             cameraSwitching: false,
@@ -2295,10 +2335,27 @@ export function MindARStage({ prepared = false, active, visible, onDiagnostics }
         });
       };
       const onGltfMarker = (event) => {
-        pushDiagnostics({ lastEvent: `gltf-marker:${event.detail?.id || event.detail?.frame || ''}` });
+        const detail = event.detail || {};
+        pushDiagnostics({
+          gltfMarkerId: detail.id || '',
+          gltfMarkerAudio: detail.audioName || detail.audio || '',
+          gltfMarkerElapsedSec: detail.elapsedSec ?? detail.timeSec ?? null,
+          lastEvent: `gltf-marker:${detail.id || detail.frame || ''}`,
+        });
+      };
+      const onGltfMarkerAudio = (event) => {
+        const detail = event.detail || {};
+        pushDiagnostics({
+          gltfMarkerId: detail.id || '',
+          gltfMarkerAudio: detail.audioName || detail.audio || '',
+          gltfMarkerAudioPlayed: Boolean(detail.audioPlayed),
+          gltfMarkerElapsedSec: detail.elapsedSec ?? detail.timeSec ?? null,
+          lastEvent: `gltf-marker-audio:${detail.id || detail.frame || ''}:${detail.audioPlayed ? 'played' : 'blocked'}`,
+        });
       };
       frozenModel?.addEventListener('gltf-animation-missing', onGltfMissing);
       frozenModel?.addEventListener('gltf-animation-marker', onGltfMarker);
+      frozenModel?.addEventListener('gltf-animation-marker-audio', onGltfMarkerAudio);
       frozenModel?.addEventListener('model-loaded', onGltfLoaded);
       frozenModel?.addEventListener('model-error', onGltfError);
       assets?.addEventListener('loaded', () => pushDiagnostics({ assetsLoaded: true, lastEvent: 'assets-loaded' }), { once: true });
@@ -2330,6 +2387,7 @@ export function MindARStage({ prepared = false, active, visible, onDiagnostics }
         showFinalObject,
         hideFinalObject,
         showFinalModel,
+        preloadFinalModel: (targetIndex) => configurePersistentGlb(targetIndex ?? initialTargetIndex),
         hideFinalModel,
         revealModelAfterSprite,
         getFinalModelDebug,
@@ -2394,6 +2452,8 @@ export function MindARStage({ prepared = false, active, visible, onDiagnostics }
         },
       };
 
+      if (preloadModelRef.current) configurePersistentGlb(initialTargetIndex);
+
       const onSceneLoaded = () => {
         pushDiagnostics({ sceneLoaded: true, lastEvent: 'scene-loaded', liveModelLoaded: true });
         if (!startedRef.current) setRuntimeStatus('ready');
@@ -2415,6 +2475,7 @@ export function MindARStage({ prepared = false, active, visible, onDiagnostics }
         });
         frozenModel?.removeEventListener('gltf-animation-missing', onGltfMissing);
         frozenModel?.removeEventListener('gltf-animation-marker', onGltfMarker);
+        frozenModel?.removeEventListener('gltf-animation-marker-audio', onGltfMarkerAudio);
         frozenModel?.removeEventListener('model-loaded', onGltfLoaded);
         frozenModel?.removeEventListener('model-error', onGltfError);
         scene.removeEventListener('loaded', onSceneLoaded);

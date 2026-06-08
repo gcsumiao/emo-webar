@@ -1,6 +1,8 @@
 import React from 'react';
 import { FrostButton, GLASS_BUTTON_CLASS, LangChip, PillBtn, SectionLabel, TOKENS, FONT_MONO, glassIconButtonStyle, langFont, t } from '../components/ui.jsx';
 import { asset } from '../lib/assetUrl.js';
+import { arAudio } from '../lib/arAudio.js';
+import { requestCameraPreview } from '../lib/cameraPreview.js';
 
 export function Permission({ lang = 'zh', setLang }) {
   const [probing, setProbing] = React.useState(false);
@@ -14,8 +16,17 @@ export function Permission({ lang = 'zh', setLang }) {
       setProbing(false);
       return;
     }
-    window.__setProtoState?.('loading');
-    setProbing(false);
+    arAudio.unlock({ includeBgm: false });
+    try {
+      await requestCameraPreview({ facingMode: 'environment' });
+      window.__setProtoState?.('loading');
+    } catch (error) {
+      const message = String(error?.name || error?.message || error);
+      if (/NotAllowed|Permission|denied/i.test(message)) window.__setProtoState?.('denied');
+      else window.__setProtoState?.('error');
+    } finally {
+      setProbing(false);
+    }
   }, [probing]);
 
   return (

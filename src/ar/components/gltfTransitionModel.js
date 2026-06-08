@@ -515,12 +515,24 @@ if (AFRAME && !AFRAME.components['gltf-transition-model']) {
     },
     _triggerMarker(marker) {
       const audioName = markerAudioName(marker);
+      const detail = {
+        ...marker,
+        audioName,
+        elapsedSec: this.markerRun?.elapsedSec ?? marker.timeSec ?? null,
+      };
+      let audioPromise = Promise.resolve(false);
       if (audioName === 'drop-bounce' || audioName === 'dropbounce' || audioName === 'drop') {
-        arAudio.playDropBounce();
+        audioPromise = arAudio.playDropBounce({ marker: detail });
       } else if (audioName === 'branch-pop' || audioName === 'branchpop' || audioName === 'branch') {
-        arAudio.playBranchPop();
+        audioPromise = arAudio.playBranchPop({ marker: detail });
       }
-      this.el.emit('gltf-animation-marker', marker);
+      this.el.emit('gltf-animation-marker', detail);
+      Promise.resolve(audioPromise).then((audioPlayed) => {
+        this.el.emit('gltf-animation-marker-audio', {
+          ...detail,
+          audioPlayed,
+        });
+      });
     },
     applyAnimationFrame(frame = 0, options = {}) {
       if (!this.mixer || !this.actions?.size) return false;
