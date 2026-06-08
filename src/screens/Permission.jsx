@@ -1,5 +1,5 @@
 import React from 'react';
-import { LangChip, PillBtn, SectionLabel, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { FrostButton, GLASS_BUTTON_CLASS, LangChip, PillBtn, SectionLabel, TOKENS, FONT_MONO, glassIconButtonStyle, langFont, t } from '../components/ui.jsx';
 import { asset } from '../lib/assetUrl.js';
 
 export function Permission({ lang = 'zh', setLang }) {
@@ -28,9 +28,9 @@ export function Permission({ lang = 'zh', setLang }) {
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: TOKENS.emoPinkLight }}>
       <div className="top-controls">
-        <button type="button" data-interactive="true" onClick={() => window.__setProtoState?.('landing')} style={{ width: 38, height: 38, borderRadius: 999, border: 'none', background: 'rgba(255,255,255,0.42)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+        <FrostButton tone="light" onClick={() => window.__setProtoState?.('landing')} style={{ width: 38, height: 38, color: TOKENS.ink }}>
           <svg width="14" height="14" viewBox="0 0 14 14"><path d="M10 2L4 7l6 5" stroke={TOKENS.ink} strokeWidth="1.8" fill="none" strokeLinecap="round" /></svg>
-        </button>
+        </FrostButton>
         <div style={{ fontFamily: FONT_MONO, fontSize: 10, letterSpacing: '0.42em', color: 'rgba(31,26,31,0.28)' }}>{t(lang, '第 2 / 4 步', 'STEP 2 / 4')}</div>
         <LangChip lang={lang} onToggle={setLang} />
       </div>
@@ -45,15 +45,16 @@ export function Permission({ lang = 'zh', setLang }) {
       </div>
 
       <button
+        className={GLASS_BUTTON_CLASS}
         type="button"
         data-interactive="true"
         onClick={() => setShowPrivacy(true)}
-        style={{ position: 'absolute', left: 'calc(50% - 22px)', bottom: 'calc(var(--safe-bottom) + 150px)', transform: 'translateX(-50%)', width: 'fit-content', maxWidth: 'calc(100% - max(44px, calc(var(--safe-left) + var(--safe-right) + 44px)))', padding: '8px 12px', borderRadius: 14, border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', textAlign: 'center' }}
+        style={{ position: 'absolute', left: 'calc(50% - 22px)', bottom: 'calc(var(--safe-bottom) + 150px)', '--glass-transform': 'translateX(-50%)', width: 'fit-content', maxWidth: 'calc(100% - max(44px, calc(var(--safe-left) + var(--safe-right) + 44px)))', padding: '8px 12px', border: 'none', background: 'transparent', boxShadow: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, cursor: 'pointer', textAlign: 'center', color: TOKENS.emoPink }}
       >
-        <div style={{ width: 32, height: 32, borderRadius: 10, background: TOKENS.pinkSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: 34, height: 34, borderRadius: 12, border: '1px solid rgba(255,255,255,0.74)', background: 'linear-gradient(135deg, rgba(255,255,255,0.68), rgba(255,220,234,0.34))', backdropFilter: 'saturate(160%) blur(18px)', WebkitBackdropFilter: 'saturate(160%) blur(18px)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.86), inset 0 -8px 18px rgba(234,164,196,0.12), 0 8px 20px rgba(219,134,177,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <svg width="14" height="16" viewBox="0 0 14 16" fill="none"><path d="M7 1L1 3v5c0 4 3 6 6 7 3-1 6-3 6-7V3L7 1z" stroke={TOKENS.emoPink} strokeWidth="1.6" fill="none" strokeLinejoin="round" /></svg>
         </div>
-        <SectionLabel lang={lang} zh="隐私说明" en="Privacy note" style={{ fontSize: 13, color: TOKENS.emoPink }} />
+        <SectionLabel lang={lang} zh="隐私说明" en="Privacy note" style={{ fontSize: 13, color: TOKENS.emoPink, textShadow: '0 1px 6px rgba(255,255,255,0.42)' }} />
       </button>
 
       {showPrivacy && (
@@ -75,10 +76,11 @@ export function Permission({ lang = 'zh', setLang }) {
                 {t(lang, 'AR website「相机权限」', 'AR website "Camera Access"')}
               </h3>
               <button
+                className={GLASS_BUTTON_CLASS}
                 type="button"
                 aria-label={t(lang, '关闭隐私说明', 'Close privacy note')}
                 onClick={() => setShowPrivacy(false)}
-                style={{ flex: '0 0 auto', width: 34, height: 34, borderRadius: 999, border: '1px solid rgba(219,134,177,0.26)', background: 'rgba(255,255,255,0.68)', color: TOKENS.emoPink, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                style={{ ...glassIconButtonStyle({ tone: 'lightPink', size: 34 }), flex: '0 0 auto', color: TOKENS.emoPink }}
               >
                 <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14">
                   <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -107,8 +109,8 @@ export function Permission({ lang = 'zh', setLang }) {
       )}
 
       <div className="bottom-controls" style={{ maxWidth: 560, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 8, pointerEvents: 'auto' }}>
-        <PillBtn lang={lang} zh={probing ? '正在请求…' : '允许访问'} en={probing ? 'Requesting…' : 'Allow Camera'} onClick={requestCamera} disabled={probing} style={{ background: TOKENS.emoPink, color: '#fff', boxShadow: 'none' }} />
-        <PillBtn lang={lang} zh="暂不使用" en="Not now" variant="ghost" onClick={() => window.__setProtoState?.('denied')} style={{ background: '#fff', color: TOKENS.emoPink, border: `2px solid ${TOKENS.emoPinkLight}`, boxShadow: 'none' }} />
+        <PillBtn lang={lang} zh={probing ? '正在请求…' : '允许访问'} en={probing ? 'Requesting…' : 'Allow Camera'} onClick={requestCamera} disabled={probing} />
+        <PillBtn lang={lang} zh="暂不使用" en="Not now" variant="ghost" onClick={() => window.__setProtoState?.('denied')} />
       </div>
     </div>
   );

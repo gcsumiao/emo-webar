@@ -19,6 +19,104 @@ export const TOKENS = {
 export const FONT_ZH = "'Source Han Sans CN', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif";
 export const FONT_EN = "'Gantari', 'Inter', system-ui, sans-serif";
 export const FONT_MONO = "'JetBrains Mono', ui-monospace, monospace";
+export const GLASS_BUTTON_CLASS = 'glass-button';
+
+const GLASS_BLUR = 'saturate(160%) blur(18px)';
+
+const GLASS_BUTTON_TONES = {
+  pink: {
+    background: 'linear-gradient(135deg, rgba(234,164,196,0.86), rgba(242,156,176,0.62))',
+    border: '1px solid rgba(255,255,255,0.58)',
+    color: '#fff',
+    boxShadow: [
+      'inset 0 1px 0 rgba(255,255,255,0.56)',
+      'inset 0 -12px 26px rgba(219,134,177,0.18)',
+      '0 16px 34px rgba(219,134,177,0.34)',
+      '0 4px 12px rgba(31,26,31,0.08)',
+    ].join(', '),
+  },
+  light: {
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,220,234,0.42))',
+    border: '1px solid rgba(255,255,255,0.68)',
+    color: TOKENS.ink,
+    boxShadow: [
+      'inset 0 1px 0 rgba(255,255,255,0.82)',
+      'inset 0 -10px 24px rgba(242,156,176,0.11)',
+      '0 12px 28px rgba(219,134,177,0.18)',
+      '0 2px 8px rgba(31,26,31,0.05)',
+    ].join(', '),
+  },
+  lightPink: {
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.76), rgba(255,220,234,0.58))',
+    border: '1px solid rgba(255,255,255,0.72)',
+    color: TOKENS.emoPink,
+    boxShadow: [
+      'inset 0 1px 0 rgba(255,255,255,0.86)',
+      'inset 0 -10px 24px rgba(234,164,196,0.13)',
+      '0 12px 26px rgba(219,134,177,0.16)',
+      '0 2px 8px rgba(31,26,31,0.045)',
+    ].join(', '),
+  },
+  dark: {
+    background: 'linear-gradient(135deg, rgba(54,50,54,0.68), rgba(16,14,18,0.42))',
+    border: '1px solid rgba(255,255,255,0.22)',
+    color: '#fff',
+    boxShadow: [
+      'inset 0 1px 0 rgba(255,255,255,0.22)',
+      'inset 0 -12px 28px rgba(0,0,0,0.18)',
+      '0 14px 34px rgba(0,0,0,0.32)',
+      '0 2px 10px rgba(242,156,176,0.12)',
+    ].join(', '),
+  },
+  subtleLight: {
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,220,234,0.1))',
+    border: '1px solid rgba(255,255,255,0.26)',
+    color: TOKENS.ink60,
+    boxShadow: [
+      'inset 0 1px 0 rgba(255,255,255,0.38)',
+      '0 6px 18px rgba(219,134,177,0.08)',
+    ].join(', '),
+  },
+  subtleDark: {
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.14), rgba(255,255,255,0.06))',
+    border: '1px solid rgba(255,255,255,0.16)',
+    color: 'rgba(255,255,255,0.86)',
+    boxShadow: [
+      'inset 0 1px 0 rgba(255,255,255,0.2)',
+      '0 8px 22px rgba(0,0,0,0.16)',
+    ].join(', '),
+  },
+};
+
+export function glassButtonStyle({ tone = 'light', shape = 'pill', disabled = false } = {}) {
+  const palette = GLASS_BUTTON_TONES[tone] || GLASS_BUTTON_TONES.light;
+  const radius = shape === 'soft' ? 18 : 999;
+
+  return {
+    borderRadius: radius,
+    border: palette.border,
+    background: palette.background,
+    color: palette.color,
+    backdropFilter: GLASS_BLUR,
+    WebkitBackdropFilter: GLASS_BLUR,
+    boxShadow: palette.boxShadow,
+    cursor: disabled ? 'default' : 'pointer',
+    opacity: disabled ? 0.62 : 1,
+    WebkitTapHighlightColor: 'transparent',
+  };
+}
+
+export function glassIconButtonStyle({ tone = 'light', size = 40, disabled = false } = {}) {
+  return {
+    ...glassButtonStyle({ tone, shape: 'circle', disabled }),
+    width: size,
+    height: size,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 0,
+  };
+}
 
 export function t(lang, zh, en) {
   return lang === 'en' ? en : zh;
@@ -135,24 +233,19 @@ export function PillBtn({ lang = 'zh', zh, en, variant = 'primary', icon, onClic
   const primary = variant === 'primary';
   return (
     <button
+      className={GLASS_BUTTON_CLASS}
       type="button"
       onClick={onClick}
       disabled={disabled}
       style={{
+        ...glassButtonStyle({ tone: primary ? 'pink' : 'lightPink', disabled }),
         width: '100%',
         minHeight: 48,
         padding: '14px 20px',
-        borderRadius: 999,
-        border: primary ? 'none' : `1px solid ${TOKENS.ink30}`,
-        background: primary ? TOKENS.ink : 'rgba(255,255,255,0.64)',
-        color: primary ? TOKENS.cream : TOKENS.ink,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 10,
-        cursor: disabled ? 'default' : 'pointer',
-        boxShadow: primary ? '0 8px 20px rgba(31,26,31,0.18)' : 'none',
-        opacity: disabled ? 0.68 : 1,
         ...style,
       }}
     >
@@ -181,9 +274,13 @@ export function LangChip({ lang = 'zh', onToggle, light = false }) {
         gap: 2,
         padding: 4,
         borderRadius: 999,
-        background: light ? 'rgba(255,255,255,0.18)' : 'rgba(31,26,31,0.06)',
-        backdropFilter: light ? 'blur(12px)' : 'none',
-        WebkitBackdropFilter: light ? 'blur(12px)' : 'none',
+        background: light ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.34)',
+        border: light ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(255,255,255,0.52)',
+        backdropFilter: GLASS_BLUR,
+        WebkitBackdropFilter: GLASS_BLUR,
+        boxShadow: light
+          ? 'inset 0 1px 0 rgba(255,255,255,0.2), 0 10px 26px rgba(0,0,0,0.12)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.74), 0 10px 24px rgba(219,134,177,0.1)',
         color: light ? 'rgba(255,255,255,0.86)' : TOKENS.ink60,
       }}
     >
@@ -192,22 +289,21 @@ export function LangChip({ lang = 'zh', onToggle, light = false }) {
         { key: 'en', label: 'EN' },
       ].map((option) => (
         <button
+          className={GLASS_BUTTON_CLASS}
           type="button"
           key={option.key}
           onClick={() => onToggle?.(option.key)}
           style={{
+            ...glassButtonStyle({
+              tone: lang === option.key ? (light ? 'light' : 'lightPink') : (light ? 'subtleDark' : 'subtleLight'),
+            }),
             minWidth: option.key === 'en' ? 44 : 34,
             height: 30,
             padding: '0 10px',
-            borderRadius: 999,
-            border: 'none',
-            background: lang === option.key ? '#fff' : 'transparent',
             color: lang === option.key ? TOKENS.ink : light ? '#fff' : TOKENS.ink60,
             fontFamily: option.key === 'en' ? FONT_MONO : FONT_ZH,
             fontSize: 11,
             fontWeight: 700,
-            cursor: 'pointer',
-            boxShadow: lang === option.key ? '0 2px 10px rgba(31,26,31,0.08)' : 'none',
           }}
         >
           {option.label}
@@ -233,29 +329,17 @@ export function SectionLabel({ lang, zh, en, style = {} }) {
   );
 }
 
-export function FrostButton({ children, onClick, disabled = false, style = {}, title }) {
+export function FrostButton({ children, onClick, disabled = false, style = {}, title, tone = 'dark' }) {
   return (
     <button
+      className={GLASS_BUTTON_CLASS}
       type="button"
       onClick={onClick}
       disabled={disabled}
       title={title}
       data-interactive="true"
       style={{
-        width: 40,
-        height: 40,
-        borderRadius: 999,
-        border: 'none',
-        background: 'rgba(255,255,255,0.18)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        color: '#fff',
-        cursor: disabled ? 'default' : 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-        opacity: disabled ? 0.72 : 1,
+        ...glassIconButtonStyle({ tone, size: 40, disabled }),
         ...style,
       }}
     >

@@ -1,5 +1,5 @@
 import React from 'react';
-import { GitHubCredit, LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
+import { GitHubCredit, GLASS_BUTTON_CLASS, LangChip, FrostButton, TOKENS, langFont, t } from '../components/ui.jsx';
 import { getARRuntime } from '../ar/arRuntime.js';
 import { asset } from '../lib/assetUrl.js';
 import { useScanGeometry } from '../lib/viewport.js';
@@ -333,6 +333,7 @@ export function Scan({ lang = 'zh', setLang }) {
         </div>
         {showManualLock && !isLocked && (
           <button
+            className={GLASS_BUTTON_CLASS}
             type="button"
             aria-label={t(lang, '一键锁定目标', 'Tap to lock target')}
             onClick={lockManually}
@@ -341,6 +342,7 @@ export function Scan({ lang = 'zh', setLang }) {
               minHeight: 88,
               border: 'none',
               background: 'transparent',
+              boxShadow: 'none',
               color: '#fff',
               fontFamily: langFont(lang),
               fontSize: isLandscapePhone ? 12 : 13,
@@ -352,16 +354,76 @@ export function Scan({ lang = 'zh', setLang }) {
               gap: 5,
               cursor: 'pointer',
               pointerEvents: 'auto',
-              padding: '8px 12px',
-              textShadow: '0 2px 8px rgba(0,0,0,0.55)',
+              padding: '4px 12px',
+              textShadow: '0 2px 8px rgba(0,0,0,0.48), 0 0 14px rgba(242,156,176,0.38)',
             }}
           >
-            <svg aria-hidden="true" width="46" height="46" viewBox="0 0 32 32" style={{ filter: 'drop-shadow(0 3px 9px rgba(0,0,0,0.48))' }}>
-              <circle cx="16" cy="16" r="9" fill="none" stroke="#fff" strokeWidth="2.4" />
-              <circle cx="16" cy="16" r="2.8" fill={TOKENS.pink} />
-              <path d="M16 3.5v6M16 22.5v6M3.5 16h6M22.5 16h6" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
-            </svg>
-            <span>{t(lang, '一键锁定', 'Tap to lock')}</span>
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'relative',
+                width: isLandscapePhone ? 58 : 68,
+                height: isLandscapePhone ? 58 : 68,
+                borderRadius: 999,
+                display: 'grid',
+                placeItems: 'center',
+                overflow: 'hidden',
+                background: 'radial-gradient(circle at 34% 22%, rgba(255,255,255,0.5), rgba(255,255,255,0.18) 34%, rgba(255,220,234,0.22) 66%, rgba(242,156,176,0.13) 100%)',
+                border: '1px solid rgba(255,255,255,0.64)',
+                backdropFilter: 'saturate(160%) blur(18px)',
+                WebkitBackdropFilter: 'saturate(160%) blur(18px)',
+                boxShadow: [
+                  'inset 0 1px 0 rgba(255,255,255,0.72)',
+                  'inset 0 -12px 28px rgba(234,164,196,0.16)',
+                  '0 0 0 1px rgba(255,255,255,0.12)',
+                  '0 0 28px rgba(242,156,176,0.38)',
+                  '0 10px 26px rgba(0,0,0,0.18)',
+                ].join(', '),
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  inset: 7,
+                  borderRadius: 999,
+                  border: '1px solid rgba(255,255,255,0.24)',
+                }}
+              />
+              <span
+                style={{
+                  position: 'absolute',
+                  width: '42%',
+                  height: '42%',
+                  borderRadius: 999,
+                  background: 'radial-gradient(circle, rgba(242,156,176,0.28), rgba(242,156,176,0) 70%)',
+                  filter: 'blur(2px)',
+                }}
+              />
+              <svg
+                width={isLandscapePhone ? 42 : 48}
+                height={isLandscapePhone ? 42 : 48}
+                viewBox="0 0 44 44"
+                fill="none"
+                style={{ position: 'relative', filter: 'drop-shadow(0 2px 7px rgba(0,0,0,0.34))' }}
+              >
+                <circle cx="22" cy="22" r="11.5" stroke="rgba(255,255,255,0.9)" strokeWidth="2.8" />
+                <path d="M22 6.5v6M22 31.5v6M6.5 22h6M31.5 22h6" stroke="rgba(255,255,255,0.96)" strokeWidth="3" strokeLinecap="round" />
+                <circle cx="22" cy="22" r="4.6" fill={TOKENS.pink} stroke="rgba(255,255,255,0.7)" strokeWidth="1.4" />
+                <path d="M31.8 9.4 33.2 13l3.4 1.4-3.4 1.4-1.4 3.6-1.4-3.6-3.4-1.4 3.4-1.4 1.4-3.6Z" fill="rgba(255,220,234,0.96)" />
+              </svg>
+            </span>
+            <span
+              style={{
+                color: 'rgba(255,255,255,0.96)',
+                fontSize: isLandscapePhone ? 12 : 13,
+                fontWeight: 900,
+                lineHeight: 1,
+                letterSpacing: lang === 'en' ? 0 : '0.03em',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {t(lang, '一键锁定', 'Tap to lock')}
+            </span>
           </button>
         )}
       </div>

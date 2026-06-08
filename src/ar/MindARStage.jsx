@@ -26,6 +26,7 @@ const GLB_INITIAL_CENTER_NDC = { x: 0, y: 0 };
 const GLB_SCREEN_BOUNDS_CENTER_ANCHOR = 'center-anchor';
 const GLB_SCREEN_BOUNDS_PROJECTED_BOUNDS = 'projected-bounds';
 const GLB_SCALE_PIVOT_TOLERANCE_NDC = 0.12;
+const PERSISTENT_GLB_READY_TIMEOUT_MS = 10000;
 const GLB_LIGHT_RIG_ID = 'glb-light-rig';
 const GLB_LIGHT_TARGET_ID_PREFIX = 'glb-light-target';
 const GLB_LIGHT_DEFAULT_TARGET_POSITION = [0, -0.02, -FINAL_BASE_RENDER_DEPTH];
@@ -1384,7 +1385,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
         window.requestAnimationFrame(check);
       });
 
-      const waitForPersistentModelReady = (timeoutMs = 3000) => new Promise((resolve) => {
+      const waitForPersistentModelReady = (timeoutMs = PERSISTENT_GLB_READY_TIMEOUT_MS) => new Promise((resolve) => {
         const comp = getPersistentModelComp();
         if (comp?.isReady?.()) {
           pushDiagnostics({
@@ -1580,7 +1581,7 @@ export function MindARStage({ active, visible, onDiagnostics }) {
           lastEvent: `glb-loading:${idx}`,
         });
 
-        const ready = await waitForPersistentModelReady(3000);
+        const ready = await waitForPersistentModelReady(PERSISTENT_GLB_READY_TIMEOUT_MS);
         const comp = getPersistentModelComp();
         if (!ready || !comp) {
           frozenState.contentMode = renderMode === 'gltf-only' ? null : 'sprite';

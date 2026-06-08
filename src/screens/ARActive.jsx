@@ -1,5 +1,5 @@
 import React from 'react';
-import { GitHubCredit, LangChip, FrostButton, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
+import { GitHubCredit, GLASS_BUTTON_CLASS, LangChip, FrostButton, TOKENS, FONT_MONO, glassButtonStyle, glassIconButtonStyle, langFont, t } from '../components/ui.jsx';
 import { arAudio } from '../lib/arAudio.js';
 import { createARPhoto, createFramedARPhoto } from '../lib/arCapture.js';
 import { asset } from '../lib/assetUrl.js';
@@ -194,6 +194,7 @@ function CameraFlipControl({ lang, isLandscapePhone, onFlip, disabled = false })
       }}
     >
       <button
+        className={GLASS_BUTTON_CLASS}
         type="button"
         onClick={onFlip}
         onPointerDown={(event) => {
@@ -202,20 +203,7 @@ function CameraFlipControl({ lang, isLandscapePhone, onFlip, disabled = false })
         aria-label={t(lang, '翻转镜头', 'Flip camera')}
         disabled={disabled}
         style={{
-          width: controlSize,
-          height: controlSize,
-          borderRadius: 999,
-          border: '0.5px solid rgba(255,255,255,0.14)',
-          background: 'rgba(48,48,50,0.78)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 0,
-          cursor: disabled ? 'default' : 'pointer',
-          opacity: disabled ? 0.58 : 1,
+          ...glassIconButtonStyle({ tone: 'dark', size: controlSize, disabled }),
         }}
       >
         <IconCameraFlip size={isLandscapePhone ? 24 : 28} />
@@ -259,6 +247,7 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
       }}
     >
       <button
+        className={GLASS_BUTTON_CLASS}
         type="button"
         onClick={onReset}
         onPointerDown={(event) => {
@@ -266,19 +255,7 @@ function ResetControl({ lang, isLandscapePhone, onReset }) {
         }}
         aria-label={t(lang, '一键还原', 'Reset')}
         style={{
-          width: controlSize,
-          height: controlSize,
-          borderRadius: 999,
-          border: '0.5px solid rgba(255,255,255,0.14)',
-          background: 'rgba(48,48,50,0.78)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          boxShadow: '0 10px 28px rgba(0,0,0,0.28)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 0,
-          cursor: 'pointer',
+          ...glassIconButtonStyle({ tone: 'dark', size: controlSize }),
         }}
       >
         <IconResetArrow size={isLandscapePhone ? 24 : 28} />
@@ -1046,24 +1023,18 @@ export function ARActive({ lang = 'zh', setLang, diagnostics }) {
         )}
         {isCaptured ? null : isLive ? (
           <button
+            className={GLASS_BUTTON_CLASS}
             type="button"
             onClick={captureFrame}
             disabled={!isLive || isCapturing}
             style={{
+              ...glassIconButtonStyle({ tone: 'light', size: isLandscapePhone ? 54 : 68, disabled: !isLive || isCapturing }),
               pointerEvents: 'auto',
-              width: isLandscapePhone ? 54 : 68,
-              height: isLandscapePhone ? 54 : 68,
-              borderRadius: 999,
               border: '5px solid rgba(255,255,255,0.94)',
-              background: 'rgba(255,255,255,0.18)',
+              background: 'radial-gradient(circle at 50% 42%, rgba(255,255,255,0.36), rgba(255,220,234,0.18))',
               cursor: isLive && !isCapturing ? 'pointer' : 'default',
-              boxShadow: '0 0 0 3px rgba(255,255,255,0.24), 0 10px 28px rgba(0,0,0,0.42)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.64), inset 0 -10px 24px rgba(219,134,177,0.16), 0 0 0 3px rgba(255,255,255,0.24), 0 14px 34px rgba(0,0,0,0.4)',
               opacity: isLive && !isCapturing ? 1 : 0.55,
-              transition: 'transform 220ms cubic-bezier(.22,1,.36,1), opacity 220ms ease',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 0,
             }}
           >
             <div style={{ width: isLandscapePhone ? 34 : 46, height: isLandscapePhone ? 34 : 46, borderRadius: 999, background: '#fff' }} />
@@ -1300,28 +1271,18 @@ function PolaroidPreviewOverlay({ backdropUrl, framedPhotoUrl, framedPhotoWidth,
         }}
       />
       <button
+        className={GLASS_BUTTON_CLASS}
         type="button"
         aria-label={t(lang, '返回首页', 'Back home')}
         title={t(lang, '返回首页', 'Back home')}
         onClick={onHome}
         style={{
+          ...glassIconButtonStyle({ tone: 'light', size: 44 }),
           position: 'absolute',
           top: 'calc(var(--safe-top) + 18px)',
           left: 'calc(var(--safe-left) + 18px)',
           zIndex: 38,
-          width: 44,
-          height: 44,
-          borderRadius: 999,
-          border: '0.5px solid rgba(255,255,255,0.58)',
-          background: 'rgba(255,255,255,0.88)',
           color: TOKENS.ink,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          cursor: 'pointer',
         }}
       >
         <svg width="19" height="19" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -1413,21 +1374,17 @@ function ActionPill({ lang, zh, en, onClick, icon }) {
   const label = t(lang, zh, en);
   return (
     <button
+      className={GLASS_BUTTON_CLASS}
       type="button"
       onClick={onClick}
       style={{
+        ...glassButtonStyle({ tone: 'pink' }),
         minWidth: 128,
         padding: '12px 24px',
-        borderRadius: 999,
-        border: 'none',
-        background: '#f5bbd3',
-        color: '#fff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        cursor: 'pointer',
-        boxShadow: '0 10px 28px rgba(245,187,211,0.32)',
       }}
     >
       {icon}

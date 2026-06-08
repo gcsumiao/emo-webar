@@ -57,7 +57,6 @@ export function Landing({ lang = 'zh', setLang }) {
           en="Begin"
           icon={<span aria-hidden="true" style={{ width: 0, height: 0, borderTop: '7px solid transparent', borderBottom: '7px solid transparent', borderLeft: '9px solid #fff', display: 'block' }} />}
           onClick={() => window.__setProtoState?.('permission')}
-          style={{ background: TOKENS.emoPink, color: '#fff', boxShadow: 'none' }}
         />
       </div>
     </div>

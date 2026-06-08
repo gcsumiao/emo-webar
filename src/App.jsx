@@ -115,7 +115,7 @@ export default function App() {
 
   React.useEffect(() => {
     if (state === 'loading') {
-      preloadStep06({ full: false });
+      preloadStep06({ full: true });
       const timer = setTimeout(() => setState('scan'), 2200);
       return () => clearTimeout(timer);
     }
@@ -126,7 +126,7 @@ export default function App() {
     arAudio.setState(state);
     arAudio.preload();
     if (state === 'scan' || state === 'ar') {
-      preloadStep06({ full: false });
+      preloadStep06({ full: true });
     }
     if (state === 'scan') arAudio.startScan();
     else if (state === 'ar') arAudio.cueARIntro();

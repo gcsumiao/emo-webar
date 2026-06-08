@@ -11,6 +11,7 @@ const manifestDefaults = {
 let manifest = { ...manifestDefaults };
 let manifestPromise = null;
 let warmAudio = null;
+let warmModel = null;
 
 function normalizeAssetUrl(url) {
   if (!url) return url;
@@ -42,7 +43,7 @@ export function loadStep06Manifest() {
 }
 
 export function preloadStep06({ full = false } = {}) {
-  loadStep06Manifest().then((loaded) => {
+  return loadStep06Manifest().then((loaded) => {
     if (!warmAudio) {
       warmAudio = new Audio(loaded.audioUrl);
       warmAudio.preload = full ? 'auto' : 'metadata';
@@ -50,7 +51,27 @@ export function preloadStep06({ full = false } = {}) {
       try {
         warmAudio.load();
       } catch {}
+    } else if (full && warmAudio.preload !== 'auto') {
+      warmAudio.preload = 'auto';
+      try {
+        warmAudio.load();
+      } catch {}
     }
+
+    if (full && loaded.glbUrl && !warmModel) {
+      warmModel = fetch(loaded.glbUrl, { cache: 'force-cache' })
+        .then((response) => {
+          if (!response.ok) throw new Error(`Step06 GLB preload failed: ${response.status}`);
+          return response.arrayBuffer();
+        })
+        .then(() => true)
+        .catch(() => {
+          warmModel = null;
+          return false;
+        });
+    }
+
+    return warmModel;
   });
 }
 
