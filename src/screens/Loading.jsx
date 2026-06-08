@@ -26,9 +26,9 @@ export function Loading({ lang = 'zh', hasCameraPreview = false }) {
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)', width: '40%', animation: 'loading-bar-shimmer 1.6s ease-in-out infinite', mixBlendMode: 'screen' }} />
         </div>
         <div style={{ marginTop: 18, textAlign: 'center', fontFamily: langFont(lang), fontSize: 18, fontWeight: 700, color: '#fff' }}>{t(lang, '唤醒一毛中…', 'Waking up EMO…')}</div>
-      </div>
-      <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(var(--safe-bottom) + 29px)', textAlign: 'center', fontFamily: FONT_MONO, fontSize: 10, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.18em' }}>
-        {t(lang, '首次加载约需 3-5 秒', 'FIRST LOAD · 3-5 SECONDS')}
+        <div style={{ marginTop: 8, textAlign: 'center', fontFamily: FONT_MONO, fontSize: 10, lineHeight: 1.4, color: 'rgba(255,255,255,0.48)', letterSpacing: '0.18em' }}>
+          {t(lang, '首次加载约需 3-5 秒', 'FIRST LOAD · 3-5 SECONDS')}
+        </div>
       </div>
     </div>
   );

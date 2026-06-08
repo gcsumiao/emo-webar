@@ -274,41 +274,64 @@ export function LangChip({ lang = 'zh', onToggle, light = false }) {
         gap: 2,
         padding: 4,
         borderRadius: 999,
-        background: light ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.34)',
-        border: light ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(255,255,255,0.52)',
+        background: light ? 'rgba(18,17,20,0.3)' : 'rgba(255,255,255,0.44)',
+        border: light ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.68)',
         backdropFilter: GLASS_BLUR,
         WebkitBackdropFilter: GLASS_BLUR,
         boxShadow: light
-          ? 'inset 0 1px 0 rgba(255,255,255,0.2), 0 10px 26px rgba(0,0,0,0.12)'
-          : 'inset 0 1px 0 rgba(255,255,255,0.74), 0 10px 24px rgba(219,134,177,0.1)',
-        color: light ? 'rgba(255,255,255,0.86)' : TOKENS.ink60,
+          ? 'inset 0 1px 0 rgba(255,255,255,0.16), 0 10px 26px rgba(0,0,0,0.16)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.82), 0 10px 24px rgba(219,134,177,0.12)',
+        color: light ? 'rgba(255,255,255,0.72)' : TOKENS.ink30,
       }}
     >
       {[
         { key: 'zh', label: '中' },
         { key: 'en', label: 'EN' },
-      ].map((option) => (
-        <button
-          className={GLASS_BUTTON_CLASS}
-          type="button"
-          key={option.key}
-          onClick={() => onToggle?.(option.key)}
-          style={{
-            ...glassButtonStyle({
-              tone: lang === option.key ? (light ? 'light' : 'lightPink') : (light ? 'subtleDark' : 'subtleLight'),
-            }),
-            minWidth: option.key === 'en' ? 44 : 34,
-            height: 30,
-            padding: '0 10px',
-            color: lang === option.key ? TOKENS.ink : light ? '#fff' : TOKENS.ink60,
-            fontFamily: option.key === 'en' ? FONT_MONO : FONT_ZH,
-            fontSize: 11,
-            fontWeight: 700,
-          }}
-        >
-          {option.label}
-        </button>
-      ))}
+      ].map((option) => {
+        const selected = lang === option.key;
+        return (
+          <button
+            className={GLASS_BUTTON_CLASS}
+            type="button"
+            key={option.key}
+            onClick={() => onToggle?.(option.key)}
+            style={{
+              ...glassButtonStyle({
+                tone: selected ? (light ? 'light' : 'lightPink') : (light ? 'subtleDark' : 'subtleLight'),
+              }),
+              minWidth: option.key === 'en' ? 44 : 34,
+              height: 30,
+              padding: '0 10px',
+              border: selected
+                ? '1px solid rgba(255,255,255,0.82)'
+                : light
+                  ? '1px solid rgba(255,255,255,0.08)'
+                  : '1px solid rgba(31,26,31,0.06)',
+              background: selected
+                ? (light
+                  ? 'linear-gradient(135deg, rgba(255,255,255,0.92), rgba(255,230,240,0.78))'
+                  : 'linear-gradient(135deg, rgba(255,255,255,0.94), rgba(255,233,242,0.82))')
+                : (light
+                  ? 'linear-gradient(135deg, rgba(28,26,30,0.42), rgba(18,16,20,0.26))'
+                  : 'linear-gradient(135deg, rgba(220,221,221,0.28), rgba(255,255,255,0.14))'),
+              color: selected ? TOKENS.ink : light ? 'rgba(255,255,255,0.54)' : TOKENS.ink30,
+              boxShadow: selected
+                ? [
+                  'inset 0 1px 0 rgba(255,255,255,0.92)',
+                  'inset 0 -10px 22px rgba(234,164,196,0.14)',
+                  light ? '0 10px 22px rgba(0,0,0,0.22)' : '0 10px 22px rgba(219,134,177,0.2)',
+                ].join(', ')
+                : 'inset 0 1px 0 rgba(255,255,255,0.16), 0 4px 12px rgba(31,26,31,0.04)',
+              fontFamily: option.key === 'en' ? FONT_MONO : FONT_ZH,
+              fontSize: 11,
+              fontWeight: selected ? 800 : 700,
+              opacity: selected ? 1 : 0.76,
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
