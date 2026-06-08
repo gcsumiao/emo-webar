@@ -82,7 +82,7 @@ export const DEFAULT_GLB_CONFIG = {
   src: DEFAULT_GLB_URL,
   position: [0, 0, 0.02],
   rotation: [0, -90, 0],
-  scale: [0.135, 0.135, 0.135],
+  scale: [0.24, 0.24, 0.24],
   visibleOnTarget: false,
   showAfterSpriteIntro: false,
   animation: {

@@ -1,6 +1,5 @@
 import React from 'react';
 import { GitHubCredit, TOKENS, FONT_MONO, langFont, t } from '../components/ui.jsx';
-import { asset } from '../lib/assetUrl.js';
 
 export function Loading({ lang = 'zh' }) {
   return (
@@ -8,9 +7,6 @@ export function Loading({ lang = 'zh' }) {
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(80% 50% at 50% 40%, #2a2028 0%, #0d0f13 70%)' }} />
       <GitHubCredit tone="light" placement="lower-left" />
       <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
-        <div style={{ width: 132, height: 132, marginBottom: 28, animation: 'mascot-bob 3.6s ease-in-out infinite' }}>
-          <img src={asset('/assets/mascot-face-emoji.png')} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', filter: 'drop-shadow(0 16px 18px rgba(229,109,137,0.28))' }} />
-        </div>
         <div style={{ width: 220, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden', position: 'relative' }}>
           <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, ${TOKENS.pink} 0%, ${TOKENS.pinkDeep} 100%)`, borderRadius: 999, boxShadow: `0 0 10px ${TOKENS.pink}`, animation: 'loading-bar-fill 1.8s ease-in-out infinite' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)', width: '40%', animation: 'loading-bar-shimmer 1.6s ease-in-out infinite', mixBlendMode: 'screen' }} />
